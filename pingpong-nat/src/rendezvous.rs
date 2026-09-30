@@ -187,10 +187,16 @@ impl Rendezvous {
         })
     }
 
-    /// Join a private network instead (tests).
+    /// Join a private network on this computer's loopback instead, as a
+    /// testnet's nodes are (tests). Bound to loopback too: a socket on
+    /// every address hears nothing back on a Windows CI runner, whose
+    /// firewall lets loopback alone through.
     pub fn join_with(bootstrap: &[String]) -> std::io::Result<Rendezvous> {
         Ok(Rendezvous {
-            dht: Dht::builder().bootstrap(bootstrap).build()?,
+            dht: Dht::builder()
+                .bootstrap(bootstrap)
+                .bind_address(Ipv4Addr::LOCALHOST)
+                .build()?,
         })
     }
 
