@@ -104,6 +104,9 @@ run started by Ping.
 - `Ping mcp` (or `ping-app mcp`) runs the MCP server, as `ping-agent mcp`.
 - On Linux, `ping-app --ping-stream` is the stream's own process, started by
   the app.
+- `Pong Control --background` (`pong-app --background`) starts Pong's window
+  app as its icon only, without the window: what starting at login does.
+  Where there is no tray (Linux) the window opens all the same.
 - Starting either app while it runs shows the copy that runs, and adds none
   (one copy per data folder: a `PING_DATA_DIR` or `PONG_DATA_DIR` elsewhere
   is another app).

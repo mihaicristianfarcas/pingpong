@@ -3,20 +3,26 @@
 use gpui::{div, prelude::*, px, AnyElement, Context, FontWeight, Window};
 use pingpong_ui::{button, field, notice, spinner, IconName, Ink, TextField, Theme, Type};
 
+use crate::host;
 use crate::worker::Cmd;
 
 use super::{centered, mark, PongApp};
 
 impl PongApp {
     pub(super) fn not_running(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        let can_start = host::can_start();
         let how = match std::env::consts::OS {
             "windows" => {
                 "Pong runs as a service, PongService. Start it in Services, or \
                     install it with pong install from an administrator's terminal."
             }
+            "macos" if can_start => {
+                "Start it here: Pong then runs whenever you are logged in, and \
+                    asks for Screen Recording and Accessibility the first time."
+            }
             "macos" => {
-                "Open Pong.app, or install it to start at login with \
-                    tools/build-pong-app --install."
+                "Put Pong.app beside this app (both in Applications) and start it \
+                    here, or run tools/build-pong-app --install from the source."
             }
             _ => "Start it with systemctl --user start pong, or run pong host.",
         };
@@ -54,15 +60,34 @@ impl PongApp {
                         .child(spinner("waiting-host", 11.0, t.tertiary))
                         .child("This window connects as soon as it starts."),
                 )
+                .children(
+                    self.start_error
+                        .clone()
+                        .map(|e| notice(IconName::Warning, Ink::DANGER, e, t)),
+                )
                 .child(
                     div()
                         .pt(px(8.0))
+                        .flex()
+                        .gap(px(8.0))
                         .child(button("retry", "Try Again", t).on_click(cx.listener(
                             |this, _, _, cx| {
                                 this.send(Cmd::Refresh);
                                 cx.notify();
                             },
-                        ))),
+                        )))
+                        .when(can_start, |d| {
+                            d.child(button("start-host", "Start Pong", t).solid().on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.start_error = host::start().err();
+                                    if let Some(e) = &this.start_error {
+                                        tracing::warn!(error = e, "the host was not started");
+                                    }
+                                    this.send(Cmd::Refresh);
+                                    cx.notify();
+                                }),
+                            ))
+                        }),
                 ),
         )
     }

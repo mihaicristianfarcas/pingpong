@@ -101,8 +101,10 @@ powershell -ExecutionPolicy Bypass -File tools\host-deploy.ps1
 
 `host-deploy.ps1` copies the host to `C:\Program Files\Pong`, installs and
 starts **PongService** (it starts at boot, before anyone signs in, and adds
-Windows Firewall rules for Pong), and puts Pong's window in the Start menu as
-**Pong**. Run it again after each build to update. `pong uninstall` (as
+Windows Firewall rules for Pong), puts Pong's window in the Start menu as
+**Pong**, and puts Pong's icon in the taskbar's notification area from your
+next sign-in on (your `Run` key; **Show Pong's icon at login** in the window
+turns it off). Run it again after each build to update. `pong uninstall` (as
 administrator, from `C:\Program Files\Pong`) removes the service and its
 firewall rules.
 
@@ -179,7 +181,7 @@ anywhere ([networking.md](networking.md)). Next: [usage.md](usage.md).
 | Ping, macOS | Delete `/Applications/Ping.app` and `~/Library/Application Support/Ping` |
 | Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist`, delete that file, the two apps, and `~/Library/Application Support/Pong` |
 | Ping, Windows | Delete `%LOCALAPPDATA%\Programs\Ping`, its Start menu entry and `%APPDATA%\Ping` |
-| Pong, Windows | `pong uninstall` as administrator, then delete `C:\Program Files\Pong`, `C:\ProgramData\Pong` and the Start menu entry |
+| Pong, Windows | `pong uninstall` as administrator, then delete `C:\Program Files\Pong`, `C:\ProgramData\Pong`, `%APPDATA%\Pong`, the Start menu entry, and the `Pong` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
 | Ping, Linux | Delete the binary and `~/.config/ping` |
 | Pong, Linux | `systemctl --user disable --now pong`, then delete the unit, the binary and `~/.config/pong` |
 

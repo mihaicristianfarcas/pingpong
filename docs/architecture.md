@@ -56,7 +56,7 @@ it is, and what was measured on the way, is in the
 | `ping-app` | Ping's window (GPUI), and `Ping mcp` |
 | `ping-agent` | Computer use: a headless session, the actions, the MCP server, the agent runners; the `ping-agent` CLI |
 | `pong` | The host: sessions, the video and audio pipelines, pairing, presence, the web UI, the Windows service |
-| `pong-app` | Pong's window (GPUI), a client of the host's web API on localhost |
+| `pong-app` | Pong's window and tray icon (GPUI), a client of the host's web API on localhost |
 
 `vendor/` holds two tiny no-op crates GPUI names but does not use (see the
 workspace `Cargo.toml`); `spikes/` holds the early experiments

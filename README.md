@@ -31,7 +31,9 @@ Linux.
    one you sit at (both are built from source for now).
 2. Open Ping, click the host, and type the PIN it shows into Pong.
 3. Click the host again to stream. Ctrl+Alt+Shift+Q ends the stream
-   ([usage](docs/usage.md)).
+   ([usage](docs/usage.md)). Pong's icon in the menu bar or the taskbar's
+   notification area says what the host is doing; both apps say when there
+   is an update.
 
 ## Status
 

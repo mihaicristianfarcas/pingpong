@@ -1,5 +1,7 @@
 # Install (or update) the freshly built pong.exe as the PongService, and
-# Pong's window (pong-app.exe, as "Pong Control.exe") with a Start menu entry.
+# Pong's window (pong-app.exe, as "Pong Control.exe") with a Start menu entry
+# and its icon in the notification area from the next sign-in on (for the
+# user running this; "Show Pong's icon at login" in the window turns it off).
 #
 #   powershell -File host-deploy.ps1 [-Source <path to pong.exe>] [-NoStart]
 param(
@@ -22,13 +24,18 @@ Start-Sleep -Milliseconds 500
 Copy-Item -Force $Source (Join-Path $dest 'pong.exe')
 if (Test-Path $Window) {
     Get-Process 'Pong Control' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Copy-Item -Force $Window (Join-Path $dest 'Pong Control.exe')
+    $control = Join-Path $dest 'Pong Control.exe'
+    Copy-Item -Force $Window $control
     # For everyone on this PC: Start menu, "Pong".
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Pong.lnk'))
-    $link.TargetPath = Join-Path $dest 'Pong Control.exe'
+    $link.TargetPath = $control
     $link.WorkingDirectory = $dest
     $link.Save()
+    # Pong's icon at sign-in, without its window: this user's Run key, the
+    # value the window's own setting reads and writes. Not started from here:
+    # this shell is elevated, and the icon is the signed-in user's.
+    Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Pong' -Value ('"{0}" --background' -f $control)
 }
 
 & (Join-Path $dest 'pong.exe') install

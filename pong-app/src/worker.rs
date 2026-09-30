@@ -1,6 +1,10 @@
 //! One thread talks to the host: every second it asks how things are (the
 //! session, pairing requests, devices, the agent's activity), and it carries
 //! out what the window asks, one at a time.
+//!
+//! With no window open only the tray icon is looking, and it needs little:
+//! whether the host runs, who streams, who asks to pair. The host is then
+//! asked every three seconds, and not for the devices or the agent's log.
 
 use std::time::{Duration, Instant};
 
@@ -26,6 +30,8 @@ pub enum Cmd {
     SignOut,
     /// Whether the Logs page is open (logs are read only then).
     WantLogs(bool),
+    /// Whether a window is open (see the module's words on the tray).
+    Watched(bool),
     Refresh,
 }
 
@@ -68,6 +74,14 @@ pub enum Msg {
     Done(Done),
 }
 
+/// How often the host is asked how things are while a window shows it:
+/// the session's numbers move every second.
+const WATCHED_EVERY: Duration = Duration::from_secs(1);
+
+/// And while only the tray icon does: a pairing request or a session
+/// starting is said within three seconds, at a third of the requests.
+const UNWATCHED_EVERY: Duration = Duration::from_secs(3);
+
 pub fn spawn(wake: impl Fn() + Send + 'static) -> (Sender<Cmd>, Receiver<Msg>) {
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<Cmd>();
     let (msg_tx, msg_rx) = crossbeam_channel::unbounded::<Msg>();
@@ -82,40 +96,39 @@ fn run(cmds: Receiver<Cmd>, out: Sender<Msg>, wake: impl Fn()) {
     let mut api = Api::discover();
     let mut snap = Snapshot::default();
     let mut want_logs = false;
+    let mut watched = false;
     let mut clients_at: Option<Instant> = None;
     let mut logs_at: Option<Instant> = None;
     loop {
-        match cmds.recv_timeout(Duration::from_secs(1)) {
+        let every = if watched {
+            WATCHED_EVERY
+        } else {
+            UNWATCHED_EVERY
+        };
+        match cmds.recv_timeout(every) {
             Ok(cmd) => {
-                let done = match cmd {
-                    Cmd::WantLogs(w) => {
-                        want_logs = w;
-                        logs_at = None;
-                        None
-                    }
-                    Cmd::Refresh => {
-                        clients_at = None;
-                        None
-                    }
-                    cmd => {
-                        clients_at = None;
-                        Some(execute(&mut api, &mut snap, cmd))
-                    }
-                };
-                if let Some(d) = done {
-                    if out.send(Msg::Done(d)).is_err() {
-                        return;
-                    }
-                }
                 // Drain what else is queued before looking again.
-                while let Ok(cmd) = cmds.try_recv() {
-                    if let Cmd::WantLogs(w) = cmd {
-                        want_logs = w;
-                        logs_at = None;
-                    } else if !matches!(cmd, Cmd::Refresh) {
-                        let d = execute(&mut api, &mut snap, cmd);
-                        let _ = out.send(Msg::Done(d));
+                let mut next = Some(cmd);
+                while let Some(cmd) = next {
+                    match cmd {
+                        Cmd::WantLogs(w) => {
+                            want_logs = w;
+                            logs_at = None;
+                        }
+                        Cmd::Watched(w) => {
+                            watched = w;
+                            clients_at = None;
+                        }
+                        Cmd::Refresh => clients_at = None,
+                        cmd => {
+                            clients_at = None;
+                            let done = execute(&mut api, &mut snap, cmd);
+                            if out.send(Msg::Done(done)).is_err() {
+                                return;
+                            }
+                        }
                     }
+                    next = cmds.try_recv().ok();
                 }
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -125,6 +138,7 @@ fn run(cmds: Receiver<Cmd>, out: Sender<Msg>, wake: impl Fn()) {
         refresh(
             &mut api,
             &mut snap,
+            watched,
             want_logs,
             &mut clients_at,
             &mut logs_at,
@@ -151,6 +165,7 @@ fn run(cmds: Receiver<Cmd>, out: Sender<Msg>, wake: impl Fn()) {
 fn refresh(
     api: &mut Api,
     snap: &mut Snapshot,
+    watched: bool,
     want_logs: bool,
     clients_at: &mut Option<Instant>,
     logs_at: &mut Option<Instant>,
@@ -202,6 +217,9 @@ fn refresh(
         Err(e) => tracing::warn!(error = %e, "host status"),
     }
     snap.conn = Conn::Ready;
+    if !watched {
+        return;
+    }
     if clients_at.is_none_or(|t| t.elapsed() > Duration::from_secs(3)) {
         if let Ok(v) = api.get("/api/clients") {
             snap.clients = serde_json::from_value(v).unwrap_or_default();
@@ -307,6 +325,6 @@ fn execute_inner(api: &mut Api, snap: &mut Snapshot, cmd: Cmd) -> Done {
             snap.conn = Conn::SignIn { setup: false };
             Done::Saved { restart: false }
         }
-        Cmd::WantLogs(_) | Cmd::Refresh => Done::Saved { restart: false },
+        Cmd::WantLogs(_) | Cmd::Watched(_) | Cmd::Refresh => Done::Saved { restart: false },
     }
 }

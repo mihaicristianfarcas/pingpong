@@ -1,6 +1,9 @@
 //! Pong's window: the host at a glance (the session, with its numbers; an
 //! agent's, with its controls), the devices (pairing requests first), the
 //! settings, the log. What the web UI does, native, for this computer.
+//!
+//! The window comes and goes; what it shows (the host's state, the update
+//! check) is the app's, and outlives it (see `background`).
 
 mod demo;
 mod devices;
@@ -11,22 +14,35 @@ mod sidebar;
 mod signin;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crossbeam_channel::{Receiver, Sender};
-use futures::StreamExt;
+use crossbeam_channel::Sender;
 use gpui::{
     div, prelude::*, px, AnyElement, Context, Entity, FocusHandle, FontWeight, ScrollHandle,
     SharedString, Window,
 };
+use pingpong_ui::updates::UpdateApp;
 use pingpong_ui::{
     button, icon, sheet, spinner, FieldEvent, IconName, Ink, Metrics, TextField, Theme, Type,
 };
+use pingpong_update::{Build, Checker};
 use serde_json::{json, Value};
 
 use crate::api::Client;
-use crate::worker::{self, Cmd, Conn, Done, Msg, Snapshot};
+use crate::link::Link;
+use crate::prefs::Prefs;
+use crate::worker::{Cmd, Conn, Done, Snapshot};
 use demo::Demo;
+
+pub use demo::pretend;
+
+/// Pong, to the update check: its name and the cask that installs it.
+pub const UPDATE_APP: UpdateApp = UpdateApp {
+    name: "Pong",
+    cask: "pong",
+    build: Build::this(),
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -65,7 +81,16 @@ pub struct PongApp {
     page: Page,
     snap: Snapshot,
     cmds: Sender<Cmd>,
-    msgs: Receiver<Msg>,
+    /// The update check (the app's: it runs with no window open too).
+    updates: Rc<Checker>,
+    /// The window's own settings.
+    prefs: Prefs,
+    /// The sheet that says what the update check found.
+    update_sheet: bool,
+    /// Whether the app's icon starts at login, as last looked up.
+    starts_at_login: bool,
+    /// Why "Start Pong" did not start it.
+    start_error: Option<String>,
     /// A config just changed here, ahead of the host's word on it.
     config_ahead: Option<(Value, Instant)>,
     pins: HashMap<u32, Entity<TextField>>,
@@ -88,23 +113,28 @@ pub struct PongApp {
 const PORT_KEYS: [&str; 3] = ["port", "pairing_port", "web_port"];
 
 impl PongApp {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> PongApp {
-        let (tx, mut rx) = futures::channel::mpsc::unbounded::<()>();
-        let (cmds, msgs) = worker::spawn(move || {
-            let _ = tx.unbounded_send(());
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            while rx.next().await.is_some() {
-                while rx.try_recv().is_ok() {}
-                if this
-                    .update_in(cx, |this, window, cx| this.take_news(window, cx))
-                    .is_err()
-                {
-                    break;
-                }
-            }
+    pub fn new(
+        link: Entity<Link>,
+        updates: Rc<Checker>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> PongApp {
+        // What the host says, and what it answers to what is asked of it.
+        cx.observe_in(&link, window, |this, link, window, cx| {
+            let snap = link.read(cx).snap.clone();
+            this.take_snapshot(snap, window, cx);
+            cx.notify();
         })
         .detach();
+        cx.subscribe(&link, |this, _, done: &Done, cx| {
+            this.done(done.clone());
+            cx.notify();
+        })
+        .detach();
+        let (cmds, first) = {
+            let link = link.read(cx);
+            (link.sender(), link.snap.clone())
+        };
         cx.spawn_in(window, async move |this, cx| loop {
             cx.background_executor()
                 .timer(Duration::from_millis(300))
@@ -154,11 +184,15 @@ impl PongApp {
         let demo = Demo::from_env();
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        PongApp {
+        let mut app = PongApp {
             page: Page::Overview,
             snap: Snapshot::default(),
             cmds,
-            msgs,
+            updates,
+            prefs: Prefs::load(&crate::api::app_dir()),
+            update_sheet: false,
+            starts_at_login: false,
+            start_error: None,
             config_ahead: None,
             pins: HashMap::new(),
             pin_errors: HashMap::new(),
@@ -175,7 +209,11 @@ impl PongApp {
             logs_len: 0,
             demo,
             focus,
-        }
+        };
+        // A window opened over a host the app already knows shows it at
+        // once, not at the worker's next word.
+        app.take_snapshot(first, window, cx);
+        app
     }
 
     fn send(&self, cmd: Cmd) {
@@ -186,31 +224,32 @@ impl PongApp {
         if (page == Page::Logs) != (self.page == Page::Logs) {
             self.send(Cmd::WantLogs(page == Page::Logs));
         }
+        if page == Page::General {
+            self.starts_at_login = settings::starts_at_login();
+        }
         self.page = page;
         cx.notify();
     }
 
-    fn take_news(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut changed = false;
-        while let Ok(msg) = self.msgs.try_recv() {
-            changed = true;
-            match msg {
-                Msg::Snapshot(s) => self.take_snapshot(*s, window, cx),
-                Msg::Done(d) => self.done(d),
-            }
+    /// Show `page` (from the tray icon's menu, a notification, the menu
+    /// bar).
+    pub fn go(&mut self, page: Page, cx: &mut Context<Self>) {
+        self.confirm = None;
+        self.update_sheet = false;
+        self.set_page(page, cx);
+    }
+
+    /// Open the update sheet. With nothing newer known, that is a question:
+    /// GitHub is asked.
+    pub fn show_updates(&mut self, cx: &mut Context<Self>) {
+        self.update_sheet = true;
+        if self.updates.status().update.is_none() {
+            self.updates.check_now();
         }
-        if changed {
-            cx.notify();
-        }
+        cx.notify();
     }
 
     fn take_snapshot(&mut self, mut s: Snapshot, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.demo.sample {
-            demo::sample(&mut s);
-        }
-        if let Some(c) = self.demo.conn.clone() {
-            s.conn = c;
-        }
         if let Some((config, at)) = &self.config_ahead {
             if at.elapsed() < Duration::from_secs(3) {
                 s.config = Some(config.clone());
@@ -487,20 +526,54 @@ impl PongApp {
             );
         Some(sheet("confirm", 360.0, t, body).into_any_element())
     }
+
+    /// What the update check found (the sidebar's notice, the tray's menu
+    /// and Check for Updates open it).
+    fn updates_sheet(&mut self, t: Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.update_sheet {
+            return None;
+        }
+        let (check, close) = (self.updates.clone(), cx.weak_entity());
+        let body = pingpong_ui::updates::sheet_body(
+            &UPDATE_APP,
+            &self.updates.status(),
+            t,
+            move |_, _| check.check_now(),
+            move |_, cx| {
+                let _ = close.update(cx, |this, cx| {
+                    this.update_sheet = false;
+                    cx.notify();
+                });
+            },
+        );
+        Some(sheet("updates", 380.0, t, body).into_any_element())
+    }
 }
 
 impl Render for PongApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = Theme::of(window);
         let body = self.body(t, window, cx);
-        let confirm = self.confirm_sheet(t, cx);
+        let confirm = self
+            .confirm_sheet(t, cx)
+            .or_else(|| self.updates_sheet(t, cx));
         div()
             .key_context("PongApp")
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &crate::Dismiss, _, cx| {
                 this.confirm = None;
+                this.update_sheet = false;
                 cx.notify();
             }))
+            .on_action(
+                cx.listener(|this, _: &crate::GoOverview, _, cx| this.go(Page::Overview, cx)),
+            )
+            .on_action(cx.listener(|this, _: &crate::GoDevices, _, cx| this.go(Page::Devices, cx)))
+            .on_action(cx.listener(|this, _: &crate::GoGeneral, _, cx| this.go(Page::General, cx)))
+            .on_action(cx.listener(|this, _: &crate::GoVideo, _, cx| this.go(Page::Video, cx)))
+            .on_action(cx.listener(|this, _: &crate::GoNetwork, _, cx| this.go(Page::Network, cx)))
+            .on_action(cx.listener(|this, _: &crate::GoAgents, _, cx| this.go(Page::Agents, cx)))
+            .on_action(cx.listener(|this, _: &crate::GoLogs, _, cx| this.go(Page::Logs, cx)))
             .size_full()
             .relative()
             .flex()

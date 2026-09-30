@@ -99,6 +99,17 @@ window is for the host's own screen; the web UI for a headless host or
 another computer. On Windows the window signs in once with the web UI's
 admin account.
 
+**Pong's icon** sits in the menu bar on a Mac and in the taskbar's
+notification area on Windows, with or without the window open. Its menu
+says what the host is doing (running, streaming to whom, not running),
+opens the window, names a device asking to pair (a notification says so
+too), and says when a newer Pong exists. On a Mac, Pong's window app has no
+Dock icon at all: the menu bar icon is where it lives. Closing the window
+leaves the icon; **Quit Pong Control** in its menu removes it. Either way
+the host keeps running: it is a service of its own (PongService, or
+Pong.app). Linux has no single tray to put an icon in, so there Pong's
+window is an ordinary app: closing it quits it.
+
 | Page | Setting | Default | `config.toml` |
 |---|---|---|---|
 | General | Name (as clients see it) | the computer's name | `name` |
@@ -117,6 +128,15 @@ admin account.
 | AI agents | Allow paired AI agents | on | `agents` |
 | | Hold after local input | 10 s | `agent_local_input_hold_secs` |
 
+General's last section, **This window**, is the window's own, not the
+host's; it is kept per user, in `window.toml` beside the app token
+(`%APPDATA%\Pong` on Windows, Pong's data folder elsewhere):
+
+| Setting | Default | What it does |
+|---|---|---|
+| Show Pong's icon at login | on after `host-deploy.ps1` (Windows) | The icon at sign-in, without the window (a LaunchAgent on a Mac, the user's `Run` key on Windows; not on Linux) |
+| Look for updates | as Ping's | As Ping's, for Pong |
+
 A changed name or port applies after Pong restarts (the window offers to).
 Pong's data folder holds `config.toml`, its identity, the paired clients,
 the web UI's certificate and account, and `logs/`:
@@ -131,15 +151,16 @@ the web UI's certificate and account, and `logs/`:
 
 ## Updates
 
-Ping says when there is something newer than the copy that runs: a line
-at the foot of the sidebar ("Ping 0.7.0 is available"). Clicking it says what it is and how to get
+Ping and Pong's window say when there is something newer than the copy
+that runs: a line at the foot of the sidebar ("Ping 0.7.0 is available"),
+and on Pong's icon, its menu. Clicking it says what it is and how to get
 it: the release's page, or `brew upgrade --cask ping` for a copy Homebrew
 installed, or, for a build from a checkout, the commits on `main` it does
-not have. Nothing is downloaded or installed by the app.
+not have. Nothing is downloaded or installed by the apps.
 
-It asks GitHub's public API, without an account: a few seconds after
+They ask GitHub's public API, without an account: a few seconds after
 starting when the last answer is more than a day old, and once a day while
-it runs. What it sends is what any HTTPS request shows (this computer's
+they run. What they send is what any HTTPS request shows (this computer's
 address) and the version in the `User-Agent`. **Look for updates: Off**
 stops it; **Check for Updates** (in the app's menu, and in General) still
 asks once. The last answer is kept in `update.toml` in the app's data

@@ -173,6 +173,11 @@ impl PongApp {
                         cx,
                     )),
             )
+            .children(
+                pingpong_ui::updates::notice(&super::UPDATE_APP, &self.updates.status(), t).map(
+                    |notice| notice.on_click(cx.listener(|this, _, _, cx| this.show_updates(cx))),
+                ),
+            )
             .child(
                 div()
                     .flex_none()

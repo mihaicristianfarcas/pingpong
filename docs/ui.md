@@ -59,7 +59,16 @@ in `mod.rs`, the page in `view.rs`, the side panel in `panel.rs`).
 ## Pong
 
 A sidebar: **Overview**, **Devices**, the settings (**General**, **Video**,
-**Network**, **AI agents**), **Logs**; the host's name and state at its foot.
+**Network**, **AI agents**), **Logs**; the host's name and state at its foot,
+and above it a line when a newer Pong exists.
+
+The window belongs to Pong's icon, in the menu bar (a Mac) or the taskbar's
+notification area (Windows): the app keeps the host's state and the update
+check, and the window comes and goes (`pong-app/src/background.rs`,
+`link.rs`). With no window open the host is asked every three seconds, not
+every second, and not for its devices or the agent's log. A new pairing
+request is a system notification unless the window is in front. On a Mac
+the app has no Dock icon; on Linux, with no tray, closing the window quits.
 
 - **Overview**: a pairing request as a banner when there is one; the session
   (who, the mode, End Session; an agent's with Pause, Hand Back, Stop) with
@@ -70,7 +79,9 @@ A sidebar: **Overview**, **Devices**, the settings (**General**, **Video**,
   pairs); then the paired devices and agents with their access, each
   unpairable.
 - **Settings** save as they change (text fields on Return). Encoder settings
-  a Mac host does not have (NVENC, AV1) are not shown there.
+  a Mac host does not have (NVENC, AV1) are not shown there. General's last
+  section, **This window**, is the window's own: its icon at login and the
+  update check.
 - **Logs**: the last 400 lines of the host's log, following its end.
 
 Code: `pong-app/src/app/` (one module per page), `api.rs` (the web API
@@ -148,11 +159,18 @@ the log), `snapshot=PATH`, `quit`. `PING_UI_DEMO_SCREEN=PATH` gives the
 sample sessions a screenshot to show.
 
 Pong's steps: a page's name (`overview`, `devices`, `general`, `video`,
-`network`, `agents`, `logs`), `sample` (a made-up session, request and
-devices), `signin`, `setup`, `offline`, `signin-as=USER:PASSWORD`,
-`snapshot=PATH`, `quit`. `PONG_DATA_DIR` points the window at a test host's
-data folder; `PONG_APP_URL`, `PONG_APP_CERT` and `PONG_APP_TOKEN` at another
-host altogether.
+`network`, `agents`, `logs`), `sample` (a made-up session, request,
+devices and settings), `signin`, `setup`, `offline`,
+`signin-as=USER:PASSWORD`, `update`, `update-main`, `updates`, `menus` (the
+menu bar and the tray icon's menu, to the log), `snapshot=PATH`, `close`
+(the window closes as its button closes it; the app stays behind its icon),
+`quit`. `PONG_DATA_DIR` points the window at a test host's data folder,
+and keeps the window's own files there too; `PONG_APP_URL`, `PONG_APP_CERT`
+and `PONG_APP_TOKEN` at another host altogether.
+
+With either variable set, the update check asks GitHub nothing on its own
+(`update` makes up its answer), and the app runs beside a copy that is
+already running rather than showing it.
 
 Use an empty `PING_DATA_DIR` for checks, so they neither read nor change
 your own hosts and settings. An occluded window is not redrawn, so the demo

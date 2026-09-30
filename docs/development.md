@@ -13,7 +13,7 @@ ping-app/             Ping's window (GPUI)                    ─┐
 ping-core/            the client: stream, platforms, `ping`    │ the client
 ping-agent/           AI agents: MCP server, runners           ─┘
 pong/                 the host: sessions, pipelines, web UI    ─┐ the host
-pong-app/             Pong's window (GPUI)                     ─┘
+pong-app/             Pong's window and tray icon (GPUI)       ─┘
 pingpong-*/           the libraries both share (see docs/architecture.md)
 docs/                 documentation; docs/design/ is the design history
 tools/                build, deploy and test scripts (below)

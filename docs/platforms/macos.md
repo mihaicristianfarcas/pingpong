@@ -56,6 +56,22 @@ Everything after the encoder is shared with the other hosts: the paced
 sender, FEC, adaptive bitrate, the tunnel, pairing, discovery, reconnection
 and the web UI. The Mac-specific modules are in `pong/src/mac/`.
 
+### Pong's menu bar icon
+
+Pong Control.app, the window, is also Pong's menu bar icon: a menu bar item
+without a Dock icon or a place in the app switcher (`LSUIElement`, and the
+accessory activation policy once GPUI has launched it), as menu bar apps
+are. Its menu says what the host does, names a device asking to pair (a
+notification says so too), opens the window, and says when there is an
+update. It starts at login with a LaunchAgent of its own
+(`dev.pingpong.PongControl`), without its window; **Show Pong's icon at
+login** in General turns that agent on and off. Quitting it leaves the host
+running: the host is Pong.app, under a LaunchAgent that keeps it alive.
+
+When Pong.app is beside it and the host is not running, the window's
+**Start Pong** writes the host's LaunchAgent and loads it: that is how a
+copy installed with Homebrew, where no install script runs, starts the host.
+
 ### Permissions
 
 Pong needs **Screen Recording** (to capture) and **Accessibility** (to

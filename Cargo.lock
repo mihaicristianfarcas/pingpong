@@ -6268,6 +6268,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "pingpong-ui",
+ "pingpong-update",
  "serde",
  "serde_json",
  "toml 0.8.23",

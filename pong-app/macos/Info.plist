@@ -22,5 +22,10 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- A menu bar item: no Dock icon, no place in the app switcher, even
+	     for the moment before the app says so itself (see
+	     pong-app/src/background.rs). -->
+	<key>LSUIElement</key>
+	<true/>
 </dict>
 </plist>

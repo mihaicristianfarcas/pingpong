@@ -44,14 +44,23 @@ pub fn data_dir() -> PathBuf {
     }
 }
 
-/// This user's own app token: in the user's profile on Windows (the host's
-/// folder is the service's), else beside the host's state.
-fn app_token_path() -> PathBuf {
+/// Where this app keeps what is its own and the signed-in user's (the app
+/// token, the window's settings, what the update check found): the user's
+/// profile on Windows, where the host's folder is the service's alone; else
+/// beside the host's state, which is the user's already.
+pub fn app_dir() -> PathBuf {
+    // A check with its own host folder keeps everything in it.
     #[cfg(windows)]
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        return PathBuf::from(appdata).join("Pong").join("app-token");
+    if std::env::var_os("PONG_DATA_DIR").is_none() {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            return PathBuf::from(appdata).join("Pong");
+        }
     }
-    data_dir().join("app-token")
+    data_dir()
+}
+
+fn app_token_path() -> PathBuf {
+    app_dir().join("app-token")
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,7 +130,14 @@ impl Api {
         {
             Some(cert) => tls = tls.root_certs(ureq::tls::RootCerts::new_with_certs(&[cert])),
             // No certificate yet: the host has not run. Nothing will answer.
-            None => tracing::info!(path = %cert_path.display(), "no certificate from Pong yet"),
+            // Said once: this is looked for again every few seconds, for as
+            // long as the app sits in the tray.
+            None => {
+                static SAID: std::sync::Once = std::sync::Once::new();
+                SAID.call_once(
+                    || tracing::info!(path = %cert_path.display(), "no certificate from Pong yet"),
+                );
+            }
         }
         let http: ureq::Agent = ureq::Agent::config_builder()
             .tls_config(tls.build())

@@ -33,6 +33,21 @@ window needs (`config.toml`, `web-cert.pem`).
 `tools/host-deploy.ps1` installs a build as the service and adds Pong's
 window to the Start menu; see [../install.md](../install.md).
 
+### Pong's icon in the notification area
+
+Pong's window (`Pong Control.exe`) is also Pong's icon in the taskbar's
+notification area, as Apollo's is: it runs as the signed-in user, not as
+the service, so what its menu opens opens on that user's desktop. A click
+on the icon opens the window; the right button has the menu (what the host
+does, a device asking to pair, the window, an update, **Quit Pong
+Control**). A device asking to pair is also a Windows notification. The
+icon starts at sign-in from the user's `Run` key
+(`"C:\Program Files\Pong\Pong Control.exe" --background`), which
+`host-deploy.ps1` sets and **Show Pong's icon at login** turns on and off.
+If Explorer restarts, the icon comes back with it (the app listens for
+`TaskbarCreated`). Starting the window again while it runs opens the running
+one's window.
+
 ### A session, on Windows
 
 - **The display.** A SudoVDA virtual display is added in the client's exact
