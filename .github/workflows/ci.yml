@@ -1,0 +1,100 @@
+# What AGENTS.md asks before a change is done ("Before you finish"), on every
+# pull request and on main after each merge: the formatting cargo fmt gives,
+# clippy without warnings, and the tests, on macOS, Windows and Linux. main
+# takes changes only through pull requests, and these checks must pass for
+# one to merge.
+#
+# workflow_dispatch: the release workflow's pull request for the casks is
+# opened with the workflow's own token, which starts no pull_request run, so
+# it starts this one by hand for the checks to be there.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --component rustfmt && rustup default stable
+      - run: cargo fmt --all -- --check
+
+  macos:
+    name: macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      # The client decodes with FFmpeg (docs/install.md): a shared build of
+      # the current release, and LLVM's libclang (on the runner already) for
+      # its bindings.
+      - name: FFmpeg
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $asset = gh release view latest --repo BtbN/FFmpeg-Builds --json assets --jq '.assets[].name' |
+            Where-Object { $_ -match '^ffmpeg-n[0-9.]+-latest-win64-lgpl-shared-[0-9.]+\.zip$' } |
+            Sort-Object -Descending | Select-Object -First 1
+          if (-not $asset) { throw 'no FFmpeg build found' }
+          gh release download latest --repo BtbN/FFmpeg-Builds --pattern $asset --dir $env:RUNNER_TEMP
+          Expand-Archive (Join-Path $env:RUNNER_TEMP $asset) -DestinationPath $env:RUNNER_TEMP
+          $dir = Join-Path $env:RUNNER_TEMP ($asset -replace '\.zip$', '')
+          "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+          (Join-Path $dir 'bin') >> $env:GITHUB_PATH
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --component clippy && rustup default stable
+      # tools/linux/Dockerfile's build packages.
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config clang libclang-dev \
+            libavcodec-dev libavutil-dev libswscale-dev libva-dev \
+            libasound2-dev libpulse-dev libudev-dev \
+            libx11-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libxcursor-dev libxrandr-dev libxi-dev libfontconfig-dev libfreetype-dev libxcb1-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libdbus-1-dev
+      - uses: Swatinem/rust-cache@v2
+      # The host on its own: it and the GPUI apps ask one dependency for
+      # different async runtimes (docs/development.md).
+      - run: cargo clippy --workspace --exclude pong --all-targets -- -D warnings
+      - run: cargo clippy -p pong --all-targets -- -D warnings
+      # The GPUI apps linked two at a time at most: more can run the runner
+      # out of memory.
+      - run: cargo test --workspace --exclude pong -j 2
+      - run: cargo test -p pong

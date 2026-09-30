@@ -177,6 +177,9 @@ own.
 
 ## Commits and pull requests
 
+- `main` takes changes only through pull requests, and a pull request
+  merges once CI (`.github/workflows/ci.yml`: formatting, clippy and the
+  tests on macOS, Windows and Linux) passes. Work on a branch.
 - One logical change per commit. Keep formatting, refactors and behaviour
   changes in separate commits.
 - The summary line names the area and says what changed, in plain words:
@@ -200,6 +203,17 @@ tools/linux-dev cargo clippy -p pong --all-targets
 
 Plus, as the change needs: the UI demo screenshots before and after, the
 Linux loopback test, a real stream with the statistics on.
+
+The hooks in `.githooks/` check the cheap part as you go: nothing private
+and the formatting on commit, the summary line's shape, clippy on push.
+Enable them once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+CI runs all of the above but the screenshots and the real stream, on every
+pull request; there it cannot be skipped.
 
 ## For AI agents
 

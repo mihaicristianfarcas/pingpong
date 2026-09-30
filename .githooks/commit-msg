@@ -1,0 +1,19 @@
+#!/bin/sh
+# A commit message as AGENTS.md has it: a summary line that names the area
+# and fits a narrow log (72 characters at most), then a blank line, then
+# the why.
+summary=$(grep -v '^#' "$1" | head -n 1)
+second=$(grep -v '^#' "$1" | sed -n 2p)
+if [ -z "$summary" ]; then
+    echo "commit-msg: the message is empty" >&2
+    exit 1
+fi
+if [ "$(printf '%s' "$summary" | wc -m)" -gt 72 ]; then
+    echo "commit-msg: the summary line is longer than 72 characters:" >&2
+    echo "  $summary" >&2
+    exit 1
+fi
+if [ -n "$second" ]; then
+    echo "commit-msg: leave a blank line between the summary and the body" >&2
+    exit 1
+fi

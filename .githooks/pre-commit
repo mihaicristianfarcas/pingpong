@@ -1,0 +1,22 @@
+#!/bin/sh
+# Before a commit: nothing that must stay private, and the formatting
+# `cargo fmt` gives (AGENTS.md). Enabled with
+#
+#   git config core.hooksPath .githooks
+#
+# `git commit --no-verify` skips it; CI checks the same on every pull
+# request, and there it cannot be skipped.
+set -e
+secrets=$(git diff --cached --name-only --diff-filter=AM |
+    grep -E '(^|/)\.env$|^tools/dev\.env$|(^|/)pingpong-(client|server)\.toml$|\.toml\.bak-' || true)
+if [ -n "$secrets" ]; then
+    echo "pre-commit: these must not be committed (keys, local settings):" >&2
+    echo "$secrets" | sed 's/^/  /' >&2
+    exit 1
+fi
+if git diff --cached --name-only | grep -q '\.rs$'; then
+    if ! cargo fmt --all -- --check >/dev/null; then
+        echo "pre-commit: not formatted as cargo fmt formats it; run: cargo fmt --all" >&2
+        exit 1
+    fi
+fi

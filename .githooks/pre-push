@@ -1,0 +1,9 @@
+#!/bin/sh
+# Before a push: clippy without warnings on this system (AGENTS.md). The
+# other systems, and the tests, are CI's (.github/workflows/ci.yml).
+# `git push --no-verify` skips it.
+set -e
+if ! cargo clippy --workspace --all-targets --quiet -- -D warnings; then
+    echo "pre-push: clippy has something to say; fix it, or push with --no-verify to let CI say it" >&2
+    exit 1
+fi
