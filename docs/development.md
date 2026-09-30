@@ -176,11 +176,12 @@ cargo +nightly fuzz run depacketize   # also: control, input
 
 ## Assets
 
-- Ping's icon is drawn by code: `cargo run -p ping-app --example make-icon
-  -- OUTDIR` writes the macOS iconset, the Windows `Ping.ico` and the
-  window's `icon-256.png` (the last two are committed in
-  `ping-app/assets/`); `tools/build-ping-app` reruns it when the drawing
-  changes.
+- The icons are drawn by code: `cargo run -p ping-app --example make-icon
+  -- OUTDIR` writes Ping's and Pong's macOS iconsets, their Windows `.ico`
+  and 256-pixel PNGs, and Pong's menu bar mark (`tray.png`,
+  `tray@2x.png`). The `.ico`, the PNGs and the mark are committed in
+  `ping-app/assets/` and `pong-app/assets/` (`icon-256.png` there is
+  `pong-256.png`); the bundle scripts rerun the drawing when it changes.
 - The UI's icons are SVG files in `pingpong-ui/assets/icons/`, 24×24 with
   1.75 pt round strokes in `currentColor`, embedded in the binary.
 - `pingpong-decode/tests/fixtures/testsrc.h264` is the known stream the

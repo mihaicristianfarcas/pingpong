@@ -6273,6 +6273,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ureq",
+ "winresource",
 ]
 
 [[package]]

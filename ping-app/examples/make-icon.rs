@@ -1,9 +1,15 @@
-//! Draws Ping's icon: a dark rounded square, a ball in flight and its trail.
+//! Draws the apps' icons: a dark rounded square, a ball in flight and its
+//! trail. Ping's ball leaves to the right (the serve); Pong's comes back on
+//! the left (the return).
 //!
 //!   cargo run -p ping-app --example make-icon -- OUT_DIR
 //!
-//! writes OUT_DIR/AppIcon.iconset (for macOS's `iconutil`), OUT_DIR/Ping.ico
-//! (Windows) and OUT_DIR/icon-256.png (the window icon).
+//! writes, for Ping, OUT_DIR/AppIcon.iconset (for macOS's `iconutil`),
+//! OUT_DIR/Ping.ico (Windows) and OUT_DIR/icon-256.png (the window icon and
+//! the Linux desktop entry's); for Pong, OUT_DIR/Pong.iconset,
+//! OUT_DIR/Pong.ico and OUT_DIR/pong-256.png; and Pong's mark for the Mac
+//! menu bar, OUT_DIR/tray.png and OUT_DIR/tray@2x.png: the ball and its
+//! trail alone, black on nothing, which macOS tints as a template image.
 
 use std::path::Path;
 
@@ -14,6 +20,13 @@ use tiny_skia::{
 };
 
 const SIZE: u32 = 1024;
+
+/// Whose icon: the same table and ball, mirrored.
+#[derive(Clone, Copy, PartialEq)]
+enum Mark {
+    Ping,
+    Pong,
+}
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::from_rgba(r, g, b, a).unwrap()
@@ -94,7 +107,15 @@ fn soft(path: &SkPath, color: Color, sigma: f32, dx: f32, dy: f32) -> Pixmap {
     layer
 }
 
-fn draw() -> Pixmap {
+fn draw(mark: Mark) -> Pixmap {
+    // Pong's is Ping's seen from the other side of the table.
+    let x = |v: f32| {
+        if mark == Mark::Pong {
+            SIZE as f32 - v
+        } else {
+            v
+        }
+    };
     let mut canvas = Pixmap::new(SIZE, SIZE).unwrap();
     // macOS icon grid: an 824 px body, 100 px margins.
     let body = rounded_rect(100.0, 100.0, 824.0, 824.0, 185.0);
@@ -152,16 +173,16 @@ fn draw() -> Pixmap {
 
     // The trail: an arc from lower left to the ball, fading in.
     let mut trail = PathBuilder::new();
-    trail.move_to(210.0, 724.0);
-    trail.quad_to(380.0, 324.0, 640.0, 414.0);
+    trail.move_to(x(210.0), 724.0);
+    trail.quad_to(x(380.0), 324.0, x(640.0), 414.0);
     let trail = trail.finish().unwrap();
     let mut paint = Paint {
         anti_alias: true,
         ..Paint::default()
     };
     paint.shader = LinearGradient::new(
-        Point::from_xy(210.0, 724.0),
-        Point::from_xy(640.0, 414.0),
+        Point::from_xy(x(210.0), 724.0),
+        Point::from_xy(x(640.0), 414.0),
         vec![
             GradientStop::new(0.0, rgba(1.0, 0.48, 0.27, 0.0)),
             GradientStop::new(1.0, rgba(1.0, 0.48, 0.27, 0.85)),
@@ -178,7 +199,9 @@ fn draw() -> Pixmap {
     canvas.stroke_path(&trail, &paint, &stroke, Transform::identity(), Some(&clip));
 
     // The ball, with a soft glow and a shine.
-    let (cx, cy, r) = (690.0, 404.0, 92.0);
+    // The light comes from the upper left in both: the shine is not
+    // mirrored.
+    let (cx, cy, r) = (x(690.0), 404.0, 92.0);
     let ball = PathBuilder::from_circle(cx, cy, r).unwrap();
     let glow = soft(&ball, rgba(1.0, 0.45, 0.2, 0.9), 35.0, 0.0, 0.0);
     canvas.draw_pixmap(
@@ -249,12 +272,76 @@ fn halve(p: &Pixmap) -> Pixmap {
     out
 }
 
-fn main() {
-    let out = std::env::args().nth(1).expect("usage: make-icon OUT_DIR");
-    let out = Path::new(&out);
-    let iconset = out.join("AppIcon.iconset");
+/// The ball and its trail alone, for the Mac menu bar: black with the
+/// trail's fade in the alpha channel, on an 18-point grid drawn `scale`
+/// pixels to the point. The ball is larger against its trail than in the
+/// app icon, so it still reads at 18 points.
+fn draw_tray(scale: f32) -> Pixmap {
+    let size = (18.0 * scale).round() as u32;
+    let mut canvas = Pixmap::new(size, size).unwrap();
+    let to_pixels = Transform::from_scale(scale, scale);
+    let mut trail = PathBuilder::new();
+    trail.move_to(16.2, 14.6);
+    trail.quad_to(11.6, 3.4, 6.8, 6.4);
+    let trail = trail.finish().unwrap();
+    let mut paint = Paint {
+        anti_alias: true,
+        ..Paint::default()
+    };
+    paint.shader = LinearGradient::new(
+        Point::from_xy(16.2, 14.6),
+        Point::from_xy(6.8, 6.4),
+        vec![
+            GradientStop::new(0.0, rgba(0.0, 0.0, 0.0, 0.0)),
+            GradientStop::new(1.0, rgba(0.0, 0.0, 0.0, 0.85)),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    )
+    .unwrap();
+    let stroke = Stroke {
+        width: 1.8,
+        line_cap: LineCap::Round,
+        ..Stroke::default()
+    };
+    canvas.stroke_path(&trail, &paint, &stroke, to_pixels, None);
+    let ball = PathBuilder::from_circle(5.2, 6.6, 3.3).unwrap();
+    let mut paint = Paint {
+        anti_alias: true,
+        ..Paint::default()
+    };
+    paint.set_color(rgba(0.0, 0.0, 0.0, 1.0));
+    canvas.fill_path(&ball, &paint, FillRule::Winding, to_pixels, None);
+    canvas
+}
+
+/// An .ico of PNG images: 16, 32, 64 and 256 pixels.
+fn ico(png: &dyn Fn(u32) -> Vec<u8>) -> Vec<u8> {
+    let images: Vec<(u32, Vec<u8>)> = [16, 32, 64, 256].iter().map(|&s| (s, png(s))).collect();
+    let mut ico = vec![0u8, 0, 1, 0];
+    ico.extend((images.len() as u16).to_le_bytes());
+    let mut offset = 6 + 16 * images.len() as u32;
+    for (size, data) in &images {
+        let dim = if *size >= 256 { 0 } else { *size as u8 };
+        ico.extend([dim, dim, 0, 0]);
+        ico.extend(1u16.to_le_bytes());
+        ico.extend(32u16.to_le_bytes());
+        ico.extend((data.len() as u32).to_le_bytes());
+        ico.extend(offset.to_le_bytes());
+        offset += data.len() as u32;
+    }
+    for (_, data) in &images {
+        ico.extend(data);
+    }
+    ico
+}
+
+/// One app's icon in every form: the macOS iconset, the Windows .ico and
+/// the 256-pixel PNG.
+fn write_icon(mark: Mark, out: &Path, iconset: &str, ico_name: &str, png_name: &str) {
+    let iconset = out.join(iconset);
     std::fs::create_dir_all(&iconset).unwrap();
-    let mut sizes = vec![(SIZE, draw())];
+    let mut sizes = vec![(SIZE, draw(mark))];
     while sizes.last().unwrap().0 > 16 {
         let next = halve(&sizes.last().unwrap().1);
         sizes.push((next.width(), next));
@@ -276,25 +363,28 @@ fn main() {
         )
         .unwrap();
     }
-    std::fs::write(out.join("icon-256.png"), png(256)).unwrap();
+    std::fs::write(out.join(png_name), png(256)).unwrap();
+    std::fs::write(out.join(ico_name), ico(&png)).unwrap();
+}
 
-    // An .ico of PNG images: 16, 32, 64 and 256 pixels.
-    let images: Vec<(u32, Vec<u8>)> = [16, 32, 64, 256].iter().map(|&s| (s, png(s))).collect();
-    let mut ico = vec![0u8, 0, 1, 0];
-    ico.extend((images.len() as u16).to_le_bytes());
-    let mut offset = 6 + 16 * images.len() as u32;
-    for (size, data) in &images {
-        let dim = if *size >= 256 { 0 } else { *size as u8 };
-        ico.extend([dim, dim, 0, 0]);
-        ico.extend(1u16.to_le_bytes());
-        ico.extend(32u16.to_le_bytes());
-        ico.extend((data.len() as u32).to_le_bytes());
-        ico.extend(offset.to_le_bytes());
-        offset += data.len() as u32;
+fn main() {
+    let out = std::env::args().nth(1).expect("usage: make-icon OUT_DIR");
+    let out = Path::new(&out);
+    write_icon(
+        Mark::Ping,
+        out,
+        "AppIcon.iconset",
+        "Ping.ico",
+        "icon-256.png",
+    );
+    write_icon(Mark::Pong, out, "Pong.iconset", "Pong.ico", "pong-256.png");
+    // Drawn eight times as large and averaged down, as the icons are.
+    for (name, scale) in [("tray.png", 1.0), ("tray@2x.png", 2.0)] {
+        let mut glyph = draw_tray(scale * 8.0);
+        for _ in 0..3 {
+            glyph = halve(&glyph);
+        }
+        std::fs::write(out.join(name), glyph.encode_png().unwrap()).unwrap();
     }
-    for (_, data) in &images {
-        ico.extend(data);
-    }
-    std::fs::write(out.join("Ping.ico"), ico).unwrap();
     println!("wrote {}", out.display());
 }
