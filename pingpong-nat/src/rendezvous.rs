@@ -272,6 +272,13 @@ mod tests {
         let (seed, secret) = (random_32(), random_32());
         let host = Rendezvous::join_with(&net.bootstrap).unwrap();
         let client = Rendezvous::join_with(&net.bootstrap).unwrap();
+        // Both find the testnet's nodes in their first moments; a publish
+        // before that finds no one to store with. On a loaded machine (a CI
+        // runner, where it failed so) those moments are longer.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !(host.is_ready() && client.is_ready()) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
 
         let first = record(Kind::Host);
         host.publish(&seed, &secret, SALT, &first).unwrap();
