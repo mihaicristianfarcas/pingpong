@@ -1,0 +1,33 @@
+[package]
+name = "cuda-interop"
+version = "0.1.0"
+edition = "2021"
+
+# NOTE (deviation from plan Task 2 Step 1): the plan pins `windows = "0.58"`,
+# but windows-capture 1.5.0 depends on `windows ^0.61.3`. Two different `windows`
+# majors in one build means two DIFFERENT `ID3D11Texture2D` types, and the
+# texture pointer could not be passed between them. Pinned to 0.61 to match.
+#
+# NOTE (deviation from plan Task 2 Step 1): cudarc is 0.16, not 0.19.
+# nvidia-video-codec-sdk 0.4.0 depends on `cudarc ^0.16.4`, and Task 12 must
+# share ONE CudaContext between this interop path and NVENC. Two cudarc majors
+# would mean two incompatible `Arc<CudaContext>` types, so the whole project has
+# to sit on the version NVENC accepts. 0.16.6 has the same API surface this
+# spike uses, so the change is mechanical.
+[dependencies]
+windows-capture = "1.5"
+cudarc = { version = "0.16.4", features = ["cuda-12060", "driver"] }
+windows = { version = "0.61", features = [
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Foundation",
+] }
+image = "0.25"
+
+# Not a workspace member; a throwaway probe must not gate `cargo test`.
+[workspace]
+
+[build-dependencies]
+# Used only to locate MSVC cl.exe so nvcc can find its host compiler.
+cc = "1"

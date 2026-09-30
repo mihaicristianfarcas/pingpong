@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "pingpong-audio",
+    "pingpong-capture",
+    "pingpong-clipboard",
+    "pingpong-decode",
+    "pingpong-display",
+    "pingpong-encode",
+    "pingpong-input",
+    "pingpong-nat",
+    "pingpong-pairing",
+    "pingpong-proto",
+    "pong",
+    "ping-core",
+    "ping-agent",
+    "ping-app",
+    "pingpong-transport",
+    "pingpong-ui",
+    "pong-app",
+]
+# spikes/* are deliberately NOT members -- a throwaway probe must never gate a
+# workspace-wide `cargo test`. Each spike also carries its own empty
+# `[workspace]` table so it resolves standalone.
+exclude = ["spikes", "tools/rawinput-probe"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.96"
+repository = "https://github.com/mihaicristianfarcas/pingpong"
+license = "MIT"
+# Applications and their private libraries, not crates for crates.io.
+publish = false
+
+# GPUI (Zed's UI framework) draws Ping's and Pong's windows, pinned to one Zed
+# revision. Its Metal shaders are compiled ahead by Xcode's Metal toolchain, or when the
+# app starts with the apps' `runtime-shaders` feature (the default, so a build
+# needs only the Command Line Tools; the app bundles use Xcode when it is there).
+[workspace.dependencies]
+gpui = { git = "https://github.com/zed-industries/zed.git", rev = "dc2a339d5d043da448a3f7ddc7c0a85c63864aad" }
+gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "dc2a339d5d043da448a3f7ddc7c0a85c63864aad", features = ["font-kit", "wayland", "x11"] }
+
+[patch."https://github.com/zed-industries/zed.git"]
+# GPUI's sum_tree names Zed's GPL-licensed profiling shim though profiling is
+# off; vendor/ holds the same no-op API under Apache-2.0.
+ztracing = { path = "vendor/ztracing" }
+ztracing_macro = { path = "vendor/ztracing_macro" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+lto = true
+codegen-units = 1

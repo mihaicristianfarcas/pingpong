@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Linux Pong and Linux Ping in one container: Pong streams X screen :1 (a
+# scene of moving boxes that logs the input it receives), Ping shows it on
+# :2 with scripted input, and saves a picture; a PulseAudio server plays a
+# tone for the host to send. Logs, the picture and the
+# scene's input log land in target/linux-out/loopback.
+#
+#   tools/linux-dev tools/linux/loopback-test [PING STREAM ARGS]
+#   PING_TEST_INPUT="..." tools/linux-dev tools/linux/loopback-test
+#
+# The Wayland host is tested by hand in tools/linux/gnome-desktop.
+set -euo pipefail
+cargo build -q -p pong
+cargo build -q -p ping-core --bin ping
+cargo build -q -p pingpong-capture --example x11-scene
+bin=${CARGO_TARGET_DIR:-/src/target}/debug
+OUT=/src/target/linux-out/loopback
+rm -rf "$OUT"
+mkdir -p "$OUT/pong" "$OUT/ping"
+export PONG_DATA_DIR=$OUT/pong PING_DATA_DIR=$OUT/ping NO_COLOR=1
+cat >"$PONG_DATA_DIR/config.toml" <<'TOML'
+name = "linux-loop"
+port = 47810
+pairing_port = 47811
+web_port = 47812
+internet_access = false
+TOML
+
+# A sound server playing a 440 Hz tone, for the host to capture.
+pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || echo "no PulseAudio: no sound"
+pactl load-module module-sine frequency=440 >/dev/null 2>&1 || true
+
+Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 &
+Xvfb :2 -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 &
+sleep 1
+DISPLAY=:1 "$bin/examples/x11-scene" 60 >"$OUT/scene.log" &
+
+# Pair by hand, both ways.
+host_keys=$("$bin/pong" identity | sed -E 's/.*= "(.*)"/\1/' | paste -sd' ')
+client_keys=$("$bin/ping" identity)
+# shellcheck disable=SC2086
+"$bin/pong" add-client linux-ping $client_keys >/dev/null
+# shellcheck disable=SC2086
+"$bin/ping" add-host linux-loop 127.0.0.1:47810 $host_keys >/dev/null
+
+DISPLAY=:1 "$bin/pong" host >"$OUT/pong.log" 2>&1 &
+pong=$!
+sleep 3
+
+args=("$@")
+[[ ${#args[@]} -eq 0 ]] && args=(--windowed --size 1280x720 --fps 60 --stats)
+export PING_TEST_SNAPSHOT=${PING_TEST_SNAPSHOT:-$OUT/stream.png@240}
+export PING_TEST_INPUT=${PING_TEST_INPUT:-"wait 3000; abs 640 360; click; key 1e; key 30; text Hé!; wheel 120; wait 4000; quit"}
+DISPLAY=:2 RUST_LOG=${RUST_LOG:-info,mainline=error,ping_core::stats=debug} \
+    "$bin/ping" stream linux-loop "${args[@]}" >"$OUT/ping.log" 2>&1 || echo "ping exited with $?"
+
+kill -INT "$pong" 2>/dev/null || true
+for _ in $(seq 100); do kill -0 "$pong" 2>/dev/null || break; sleep 0.2; done
+kill -0 "$pong" 2>/dev/null && { echo "pong did not stop within 20 s"; kill -9 "$pong"; }
+wait "$pong" 2>/dev/null || true
+pkill -f x11-scene 2>/dev/null || true
+echo "logs in $OUT"

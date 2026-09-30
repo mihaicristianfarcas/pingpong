@@ -1,0 +1,31 @@
+[package]
+name = "pong-app"
+version = "0.3.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Pong's window: the host's session, devices and settings, for the PC or Mac it runs on"
+
+[[bin]]
+name = "pong-app"
+path = "src/main.rs"
+
+[features]
+default = ["runtime-shaders"]
+# See pingpong-ui; the app bundles build without it when Xcode is there.
+runtime-shaders = ["pingpong-ui/runtime-shaders"]
+
+[dependencies]
+crossbeam-channel = "0.5"
+futures = "0.3"
+gpui.workspace = true
+gpui_platform.workspace = true
+pingpong-ui = { path = "../pingpong-ui", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ureq = { version = "3", features = ["json"] }

@@ -1,0 +1,49 @@
+[package]
+name = "pingpong-display"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Virtual displays for the pingpong host: SudoVDA (Windows), CGVirtualDisplay (macOS)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# Keep `windows` on the same version as the other host crates: two majors in
+# one binary mean two different `LUID` and `HANDLE` types, and the values
+# SudoVDA's ioctls return could not be passed to the display (CCD) calls.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Devices_Display",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    # CreateFileW takes a SECURITY_ATTRIBUTES, so it needs Win32_Security too.
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    # SetThreadExecutionState: keeping the display awake during a session.
+    "Win32_System_Power",
+    # OpenInputDesktop/SetThreadDesktop: display changes from the lock screen.
+    "Win32_System_StationsAndDesktops",
+    # SendInput: waking the displays for a session's desktop.
+    "Win32_UI_Input_KeyboardAndMouse",
+    # SC_MONITORPOWER: powering them off before a session's desktop.
+    "Win32_UI_WindowsAndMessaging",
+] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tracing = "0.1"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["std", "NSArray", "NSString"] }
+objc2-core-foundation = { version = "0.3", features = ["std", "CFCGTypes", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+objc2-core-graphics = { version = "0.3", features = ["std", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+pingpong-capture = { path = "../pingpong-capture" }
+objc2-core-graphics = { version = "0.3", features = ["std", "CGDirectDisplay", "CGDisplayConfiguration"] }

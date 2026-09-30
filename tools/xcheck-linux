@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Type-check for Linux from a Mac, with the private rustup of
+# tools/xcheck-windows. Build scripts that compile C (ring) get clang and stub
+# libc headers: enough to check, not to link.
+#
+#   tools/xcheck-linux [ARGS]          cargo check ARGS (default: -p ping-app)
+#   tools/xcheck-linux clippy [ARGS]   cargo clippy ARGS
+#
+# Crates that link system libraries through pkg-config (GPUI's fontconfig and
+# freetype, ALSA, PulseAudio, FFmpeg) cannot be checked this way; build those
+# in the container instead (tools/linux-dev).
+#
+# One-time: rustup target add x86_64-unknown-linux-gnu (with the private
+# RUSTUP_HOME below).
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.local/share/pingpong-xcheck/rustup}
+export CARGO_HOME=${CARGO_HOME:-$HOME/.local/share/pingpong-xcheck/cargo}
+export CARGO_TARGET_DIR="$REPO/target/xcheck-linux"
+STUB=$HOME/.local/share/pingpong-xcheck/linux-stub-include
+mkdir -p "$STUB"
+printf '#pragma once\n#define assert(x) ((void)0)\n' > "$STUB/assert.h"
+printf '#pragma once\n#include <stddef.h>\nvoid *memcpy(void *, const void *, size_t);\nvoid *memset(void *, int, size_t);\nint memcmp(const void *, const void *, size_t);\nvoid *memmove(void *, const void *, size_t);\n' > "$STUB/string.h"
+printf '#pragma once\n#include <stddef.h>\nvoid *malloc(size_t);\nvoid free(void *);\nint posix_memalign(void **, size_t, size_t);\nvoid abort(void);\n' > "$STUB/stdlib.h"
+export CC_x86_64_unknown_linux_gnu=clang
+export CFLAGS_x86_64_unknown_linux_gnu="-I$STUB"
+cmd=check
+[[ ${1:-} == clippy ]] && { cmd=clippy; shift; }
+args=("$@")
+[[ ${#args[@]} -eq 0 ]] && args=(-p ping-app)
+exec "$CARGO_HOME/bin/cargo" "$cmd" --manifest-path "$REPO/Cargo.toml" --target x86_64-unknown-linux-gnu "${args[@]}"

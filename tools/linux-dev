@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Build, test and run pingpong on Linux in a container (Docker; on a Mac,
+# colima). The tree is mounted at /src; the build, the crate registry and
+# git dependencies (GPUI's Zed checkout) live in volumes of their own.
+#
+#   tools/linux-dev                      cargo build (the app and the CLI)
+#   tools/linux-dev cargo test -p ping-core
+#   tools/linux-dev xvfb-run -a ...      run with a virtual X display
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+docker build -q -t pingpong-linux "$REPO/tools/linux" >/dev/null
+args=("$@")
+[[ ${#args[@]} -eq 0 ]] && args=(cargo build -p ping-app -p ping-core)
+exec docker run --rm ${PINGPONG_DOCKER_ARGS:-} \
+    -v "$REPO":/src -w /src \
+    -v pingpong-linux-target:/target -e CARGO_TARGET_DIR=/target \
+    -v pingpong-linux-registry:/root/.cargo/registry \
+    -v pingpong-linux-git:/root/.cargo/git \
+    -e RUST_LOG \
+    pingpong-linux "${args[@]}"

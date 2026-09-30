@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pong</title>
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --panel-2: #f0efec; --line: #e2e0db;
+  --text: #1c1b19; --muted: #6d6a64; --accent: #e8622c; --accent-2: #fbe3d8;
+  --ok: #1f8a4c; --ok-bg: #dff3e6; --warn: #b7791f; --bad: #c0392b; --bad-bg: #f9e0dd;
+  --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121211; --panel: #1b1b19; --panel-2: #232320; --line: #2f2e2b;
+    --text: #ecebe8; --muted: #9a978f; --accent: #ff7a45; --accent-2: #3a2419;
+    --ok: #4cc47f; --ok-bg: #16301f; --warn: #e0a54a; --bad: #ff6b5b; --bad-bg: #3a1b18;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--accent); }
+.app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+nav { background: var(--panel); border-right: 1px solid var(--line); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 18px; padding: 4px 10px 18px; }
+.ball { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff 0 18%, var(--accent) 19% 100%); box-shadow: 0 0 0 3px var(--accent-2); }
+nav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-radius: 9px; color: var(--text); text-decoration: none; }
+nav a:hover { background: var(--panel-2); }
+nav a.on { background: var(--accent-2); color: var(--accent); font-weight: 600; }
+nav .spacer { flex: 1; }
+.badge { background: var(--accent); color: #fff; border-radius: 999px; font-size: 12px; padding: 0 8px; font-weight: 600; }
+main { padding: 32px 40px; max-width: 1080px; width: 100%; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
+.sub { color: var(--muted); margin: 0 0 26px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow); }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.big { font-size: 30px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 16px; }
+.stat { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; }
+.stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.pill.idle { background: var(--panel-2); color: var(--muted); }
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 8px 16px; border-radius: 9px; cursor: pointer; font-weight: 550; }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger { color: var(--bad); }
+.btn:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.req { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid var(--line); }
+.req:first-of-type { border-top: none; }
+.req .who b { font-size: 17px; }
+.req .who div { color: var(--muted); font-size: 13px; }
+.pin { width: 150px; text-align: center; font: 600 24px var(--mono); letter-spacing: .3em; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
+.pin:focus, .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.note { padding: 12px 16px; border-radius: 10px; background: var(--panel-2); color: var(--muted); }
+.note.ok { background: var(--ok-bg); color: var(--ok); }
+.note.bad { background: var(--bad-bg); color: var(--bad); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 12px 10px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: none; }
+.mono { font-family: var(--mono); font-size: 13px; }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; align-items: start; }
+.section + .section { margin-top: 18px; }
+.field label { display: block; font-weight: 600; margin-bottom: 4px; }
+.field small { display: block; color: var(--muted); margin-top: 4px; }
+.field input[type=text], .field input[type=number], .field input[type=password], .field select { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
+.check { display: flex; gap: 10px; align-items: flex-start; }
+.check input { margin-top: 5px; accent-color: var(--accent); }
+pre.logs { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; height: 62vh; overflow: auto; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-all; margin: 0; }
+.center { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.auth { width: 100%; max-width: 380px; }
+.auth .card { padding: 28px; }
+.auth .field { margin-bottom: 14px; }
+.empty { text-align: center; padding: 28px 10px; color: var(--muted); }
+.pill.agent { background: var(--accent-2); color: var(--accent); }
+.pill.warn { background: var(--bad-bg); color: var(--bad); }
+.activity { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow: auto; font-size: 14px; }
+.activity li { display: grid; grid-template-columns: 76px 1fr; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.activity li:last-child { border-bottom: none; }
+.activity time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+.activity span { font-family: var(--mono); font-size: 13px; word-break: break-word; }
+select.access { padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  nav { flex-direction: row; align-items: center; overflow-x: auto; padding: 10px; border-right: none; border-bottom: 1px solid var(--line); }
+  nav a { flex: none; white-space: nowrap; }
+  .brand { padding: 4px 10px; flex: none; }
+  nav .spacer { display: none; }
+  main { padding: 20px 16px; }
+  .form { grid-template-columns: 1fr; }
+  .req { flex-direction: column; align-items: stretch; }
+  .wide { display: none; }
+  td, th { padding-left: 6px; padding-right: 6px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const $ = (sel, el = document) => el.querySelector(sel);
+const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content; };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { 'content-type': 'application/json' }, credentials: 'same-origin', ...opts });
+  if (r.status === 401) { boot(); throw new Error('signed out'); }
+  const text = await r.text();
+  let body; try { body = JSON.parse(text); } catch { body = text; }
+  if (!r.ok) throw new Error((body && body.error) || r.statusText);
+  return body;
+}
+const post = (path, data) => api(path, { method: 'POST', body: JSON.stringify(data || {}) });
+const put = (path, data) => api(path, { method: 'PUT', body: JSON.stringify(data || {}) });
+const ago = (unix) => { const s = Math.max(0, Math.floor(Date.now() / 1000 - unix)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m ${s%60}s` : `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; };
+
+let timer = null, page = location.hash.slice(1) || 'dashboard', hostName = 'Pong', hostOs = 'windows';
+
+async function boot() {
+  clearInterval(timer);
+  const s = await fetch('/api/state').then(r => r.json());
+  hostName = s.name;
+  hostOs = s.os || 'windows';
+  document.title = `${hostName} — Pong`;
+  if (s.setup_needed) return authScreen(true);
+  if (!s.signed_in) return authScreen(false);
+  shell();
+}
+
+function authScreen(setup) {
+  const root = $('#root');
+  root.replaceChildren(h(`
+    <div class="center"><div class="auth">
+      <div class="brand" style="justify-content:center"><div class="ball"></div>Pong</div>
+      <form class="card">
+        <h1 style="font-size:21px">${setup ? 'Create your admin account' : 'Sign in'}</h1>
+        <p class="sub" style="margin-bottom:18px">${setup ? `This protects ${esc(hostName)}'s control panel. You'll use it to pair devices and change settings.` : esc(hostName)}</p>
+        <div class="field"><label>User name</label><input type="text" name="user" autocomplete="username" required></div>
+        <div class="field"><label>Password</label><input type="password" name="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required minlength="${setup ? 8 : 1}"></div>
+        <div id="err"></div>
+        <button class="btn primary" style="width:100%;margin-top:6px">${setup ? 'Create account' : 'Sign in'}</button>
+      </form>
+    </div></div>`));
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try { await post(setup ? '/api/setup' : '/api/login', { user: f.get('user'), password: f.get('password') }); shell(); }
+    catch (err) { $('#err').replaceChildren(h(`<p class="note bad">${esc(err.message)}</p>`)); }
+  });
+  $('input').focus();
+}
+
+const pages = {
+  dashboard: { title: 'Dashboard', render: dashboard, every: 1000 },
+  pair: { title: 'Pair a device', render: pairPage, every: 1000 },
+  clients: { title: 'Clients', render: clientsPage, every: 3000 },
+  settings: { title: 'Settings', render: settingsPage },
+  logs: { title: 'Logs', render: logsPage, every: 2000 },
+};
+
+function shell() {
+  $('#root').replaceChildren(h(`
+    <div class="app">
+      <nav>
+        <div class="brand"><div class="ball"></div>Pong</div>
+        ${Object.entries(pages).map(([k, p]) => `<a href="#${k}" data-page="${k}">${p.title}<span class="badge" id="badge-${k}" hidden></span></a>`).join('')}
+        <div class="spacer"></div>
+        <a href="#" id="signout">Sign out</a>
+      </nav>
+      <main id="main"></main>
+    </div>`));
+  $('#signout').addEventListener('click', async (e) => { e.preventDefault(); await post('/api/logout'); boot(); });
+  window.onhashchange = () => { page = location.hash.slice(1) || 'dashboard'; show(); };
+  show();
+}
+
+async function show() {
+  clearInterval(timer);
+  if (!pages[page]) page = 'dashboard';
+  document.querySelectorAll('nav a[data-page]').forEach(a => a.classList.toggle('on', a.dataset.page === page));
+  const p = pages[page];
+  const main = $('#main');
+  main.replaceChildren(h(`<h1>${p.title}</h1><div id="page"></div>`));
+  const tick = async (first) => { try { await p.render($('#page'), first); } catch (e) { if (e.message !== 'signed out') console.warn(e); } };
+  await tick(true);
+  if (p.every) timer = setInterval(() => tick(false), p.every);
+}
+
+function setBadge(n) { const b = $('#badge-pair'); if (b) { b.hidden = !n; b.textContent = n; } }
+
+// What holds an agent's keyboard and mouse (control::agent_state bits).
+const agentHolds = [[1, 'paused'], [16, 'a person took over'], [2, 'someone is using this computer'], [4, 'a secure screen is up'], [8, 'view only']];
+function agentLine(a) {
+  const held = agentHolds.filter(([bit]) => a.flags & bit).map(([, t]) => t);
+  const who = a.watchers.length ? ` · watched by ${a.watchers.map(esc).join(', ')}` : '';
+  return (held.length ? `Held: ${held.join(', ')}` : 'In control of the keyboard and mouse') + who;
+}
+
+async function dashboard(el) {
+  const s = await api('/api/status');
+  const log = await api('/api/agent/log');
+  setBadge(s.pending.length);
+  const sess = s.session;
+  const agent = sess && sess.agent;
+  el.replaceChildren(h(`
+    <p class="sub">${esc(s.name)} · streams to Ping clients over post-quantum WireGuard</p>
+    ${s.pending.length ? `<p class="note" style="margin-bottom:18px"><b>${esc(s.pending[0].client_name)}</b> wants to pair. <a href="#pair">Enter its PIN →</a></p>` : ''}
+    <div class="grid">
+      <div class="card" style="grid-column: 1 / -1">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Session</h2>
+          ${agent ? `<span class="pill agent"><span class="dot"></span>AI agent</span>` : sess ? `<span class="pill ok"><span class="dot"></span>Streaming</span>` : `<span class="pill idle"><span class="dot"></span>Idle</span>`}
+        </div>
+        ${sess ? `
+          <div class="row" style="justify-content:space-between;margin-top:12px">
+            <div><div class="big">${esc(sess.client)}</div>
+              <div class="sub" style="margin:0">${sess.width}×${sess.height} · ${sess.fps} fps · ${esc(sess.codec)} · ${(sess.bitrate_kbps/1000).toFixed(0)} Mbps · for ${ago(sess.started_unix)}</div>
+              ${agent ? `<div style="margin-top:6px">${agentLine(agent)}</div>` : ''}</div>
+            <div class="row">
+              ${agent ? (agent.controller ? `<button class="btn" data-agent="handback">Hand back to the agent</button>` : '')
+                + (agent.flags & 1 ? `<button class="btn" data-agent="resume">Resume agent</button>` : `<button class="btn" data-agent="pause">Pause agent</button>`)
+                + `<button class="btn danger" data-agent="stop">Stop agent</button>` : `<button class="btn danger" id="end">End session</button>`}
+            </div>
+          </div>
+          <div class="stats">
+            <div class="stat"><b>${sess.encoded_fps}</b><span>frames / s</span></div>
+            <div class="stat"><b>${sess.mbps.toFixed(1)}</b><span>Mbit/s sent</span></div>
+            <div class="stat"><b>${sess.host_latency_ms.toFixed(1)} ms</b><span>host latency</span></div>
+            <div class="stat"><b>${sess.rtt_ms ? sess.rtt_ms.toFixed(1) + ' ms' : '—'}</b><span>round trip</span></div>
+            <div class="stat"><b>${sess.client_loss_pct.toFixed(2)}%</b><span>packet loss</span></div>
+            <div class="stat"><b>${sess.recoveries}</b><span>loss recoveries</span></div>
+          </div>` : `<p class="empty">Nobody is streaming. Open Ping on a paired device and pick <b>${esc(s.name)}</b>.</p>`}
+      </div>
+      <div class="card"><h2>Host</h2><dl class="kv">
+        <dt>Name</dt><dd>${esc(s.name)}</dd>
+        <dt>Host ID</dt><dd class="mono">${esc(s.id)}</dd>
+        <dt>Tunnel port</dt><dd>UDP ${s.port}</dd>
+        <dt>Internet</dt><dd>${s.internet ? (s.public.length ? esc(s.public.join(', ')) : 'finding address…') : 'off'}</dd>
+        ${s.internet && s.port_mapping ? `<dt>Router</dt><dd>${esc(s.port_mapping)}</dd>` : ''}
+        <dt>Version</dt><dd>${esc(s.version)}</dd></dl></div>
+      <div class="card"><h2>Devices</h2><dl class="kv">
+        <dt>Paired clients</dt><dd>${s.clients}</dd>
+        <dt>Connected now</dt><dd>${s.tunnels}</dd>
+        <dt>Waiting to pair</dt><dd>${s.pending.length}</dd></dl>
+        <p style="margin:14px 0 0"><a href="#clients">Manage clients →</a></p></div>
+      ${log.length ? `<div class="card" style="grid-column: 1 / -1"><h2>Agent activity</h2>
+        <ul class="activity">${log.slice(-60).reverse().map(e => `<li><time title="${esc(e.client)}">${new Date(e.unix_ms).toLocaleTimeString()}</time><span>${esc(e.text)}</span></li>`).join('')}</ul></div>` : ''}
+    </div>`));
+  const end = $('#end', el);
+  if (end) end.addEventListener('click', async () => { if (confirm('End the current session?')) await api('/api/session', { method: 'DELETE' }); });
+  el.querySelectorAll('[data-agent]').forEach(b => b.addEventListener('click', async () => {
+    if (b.dataset.agent === 'stop' && !confirm('Stop the agent? Its session ends.')) return;
+    await post(`/api/agent/${b.dataset.agent}`, {}); dashboard(el);
+  }));
+}
+
+async function pairPage(el, first) {
+  const pending = await api('/api/pairing');
+  setBadge(pending.length);
+  const active = document.activeElement && document.activeElement.classList.contains('pin');
+  if (!first && active) return; // don't wipe a PIN being typed
+  const keep = el.querySelector('#pairmsg')?.cloneNode(true);
+  el.replaceChildren(h(`
+    <p class="sub">On the device, open Ping, choose <b>${esc(hostName)}</b> and click Pair. Enter the 4-digit PIN it shows.</p>
+    <div id="pairmsg"></div>
+    <div class="card">
+      ${pending.length ? pending.map(p => `
+        <form class="req" data-id="${p.id}">
+          <div class="who"><b>${esc(p.client_name)}</b> ${p.agent ? '<span class="pill agent">AI agent</span>' : ''}<div>${esc(p.peer)} · waiting ${p.waiting_secs}s</div>
+            ${p.agent ? `<div style="max-width:420px">An AI agent asks to use this computer. Paired, it can see the screen and use the keyboard and mouse, but never while a person streams, never on a secure screen, and you can pause, watch or stop it.</div>` : ''}</div>
+          <div class="row">
+            <input class="pin" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="····" required>
+            <button class="btn primary">Pair</button>
+            <button class="btn" type="button" data-decline="${p.id}">Decline</button>
+          </div>
+        </form>`).join('') : `<p class="empty">No device is waiting to pair.</p>`}
+    </div>`));
+  if (keep) el.querySelector('#pairmsg').replaceWith(keep);
+  el.querySelectorAll('form.req').forEach(f => f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = f.querySelector('button.primary'); btn.disabled = true; btn.textContent = 'Pairing…';
+    try {
+      const r = await post(`/api/pairing/${f.dataset.id}`, { pin: f.querySelector('.pin').value });
+      $('#pairmsg').replaceChildren(h(`<p class="note ok" style="margin-bottom:18px">Paired with <b>${esc(r.client)}</b>. It can connect now.</p>`));
+    } catch (err) {
+      $('#pairmsg').replaceChildren(h(`<p class="note bad" style="margin-bottom:18px">${esc(err.message)}</p>`));
+    }
+    pairPage(el, true);
+  }));
+  el.querySelectorAll('[data-decline]').forEach(b => b.addEventListener('click', async () => {
+    await api(`/api/pairing/${b.dataset.decline}`, { method: 'DELETE' }); pairPage(el, true);
+  }));
+  if (first || !active) { const pin = el.querySelector('.pin'); if (pin && first) pin.focus(); }
+}
+
+async function clientsPage(el) {
+  const list = await api('/api/clients');
+  el.replaceChildren(h(`
+    <p class="sub">Devices that may connect. Unpairing one revokes its key immediately.</p>
+    <div class="card">${list.length ? `
+      <table><thead><tr><th>Name</th><th class="wide">Key</th><th class="wide">Paired</th><th>Status</th><th>Access</th><th></th></tr></thead><tbody>
+      ${list.map(c => `<tr>
+        <td><b>${esc(c.name)}</b>${c.agent ? ' <span class="pill agent">AI agent</span>' : ''}</td>
+        <td class="mono wide">${esc(c.id)}</td>
+        <td class="wide">${c.paired_at ? new Date(c.paired_at * 1000).toLocaleDateString() : '—'}</td>
+        <td>${c.online ? '<span class="pill ok"><span class="dot"></span>Connected</span>' : '<span class="pill idle">Offline</span>'}</td>
+        <td>${c.agent ? `<select class="access" data-access="${esc(c.key)}">${[['control', 'See and control'], ['view', 'See only'], ['off', 'Off']].map(([v, t]) => `<option value="${v}" ${c.access === v ? 'selected' : ''}>${t}</option>`).join('')}</select>` : 'Full'}</td>
+        <td style="text-align:right"><button class="btn danger" data-key="${esc(c.key)}" data-name="${esc(c.name)}">Unpair</button></td>
+      </tr>`).join('')}</tbody></table>` : `<p class="empty">No paired devices yet. <a href="#pair">Pair one →</a></p>`}
+    </div>`));
+  el.querySelectorAll('[data-key]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm(`Unpair ${b.dataset.name}? It will need to pair again to connect.`)) return;
+    await post('/api/clients/remove', { key: b.dataset.key }); clientsPage(el);
+  }));
+  el.querySelectorAll('[data-access]').forEach(s => s.addEventListener('change', async () => {
+    await post('/api/clients/access', { key: s.dataset.access, access: s.value }); clientsPage(el);
+  }));
+}
+
+const settingSections = [
+  ['Host', [
+    ['name', 'Host name', 'text', 'Shown to clients.'],
+    ['allow_takeover', 'Let a client take over a running session', 'check', 'Otherwise a second client is refused while one is streaming.'],
+    ['keep_host_displays', "Keep this PC's monitors on while streaming", 'check', 'Off: the virtual display becomes the whole desktop, as in Apollo.'],
+    ['clipboard', 'Share the clipboard with clients', 'check', "Text, images and files copied on either side can be pasted on the other, when the client asks for it too. Password managers' copies are never shared."],
+  ]],
+  ['Encoder', [
+    ['nvenc_preset', 'Preset', 'select:1=P1 (fastest)|2=P2|3=P3|4=P4|5=P5|6=P6|7=P7 (best quality)', 'Lower is faster. Apollo uses P1.'],
+    ['nvenc_two_pass', 'Two-pass encoding', 'check', 'Quarter-resolution first pass: better bit allocation at no extra latency.'],
+    ['allow_hevc', 'Allow HEVC', 'check', 'Better quality per bit than H.264 when the client supports it.'],
+    ['allow_av1', 'Allow AV1', 'check', 'Used when both this GPU and the client support it.'],
+  ]],
+  ['Limits', [
+    ['max_bitrate_kbps', 'Maximum bitrate (kbit/s)', 'number', '0 lets the client decide.'],
+    ['max_fps', 'Maximum frame rate', 'number', '0 lets the client decide.'],
+    ['pace_mbps', 'Send pacing (Mbit/s)', 'number', 'Frames leave spread at this rate instead of in one burst. Lower it for Wi-Fi or slow uplinks.'],
+    ['adaptive_bitrate', 'Adapt the bitrate to the network', 'check', 'Lower it when the network congests, climb back when it clears. Random loss is left to FEC.'],
+  ]],
+  ['AI agents', [
+    ['agents', 'Allow paired AI agents', 'check', 'Agents pair like devices (they are marked AI agent on the Devices page, where each one can be cut to see-only or off). They never take over a person, and a person always takes over from them.'],
+    ['agent_local_input_hold_secs', "Hold an agent after someone uses this computer (seconds)", 'number', "Using this computer's own keyboard or mouse holds an agent's input for this long. 0: never hold."],
+  ]],
+  ['Network', [
+    ['internet_access', 'Allow streaming over the internet', 'check', "Paired devices can connect from anywhere, with no port forwarding: this PC's public address is published sealed, readable only by them."],
+    ['port_mapping', 'Ask the router to forward the port', 'check', 'UPnP or NAT-PMP, as Apollo does. Helps where hole punching cannot; a router behind another NAT (the ISP\'s box) cannot help, and is left alone.'],
+    ['port', 'Tunnel port (UDP)', 'number', 'Restart required.'],
+    ['pairing_port', 'Pairing port (TCP)', 'number', 'Restart required.'],
+    ['web_port', 'Web UI port (TCP)', 'number', 'Restart required.'],
+  ]],
+];
+// NVENC's settings mean nothing to a Mac host (VideoToolbox, no AV1 encoder).
+const macOnlyHidden = ['nvenc_preset', 'nvenc_two_pass', 'allow_av1'];
+const visibleFields = fields => fields.filter(([k]) => hostOs !== 'macos' || !macOnlyHidden.includes(k));
+const settingFields = settingSections.flatMap(([, fields]) => fields);
+
+async function settingsPage(el) {
+  const cfg = await api('/api/config');
+  const field = ([k, label, type, help]) => {
+    if (type === 'check') return `<div class="field check"><input type="checkbox" id="${k}" ${cfg[k] ? 'checked' : ''}><div><label for="${k}">${label}</label><small>${help}</small></div></div>`;
+    if (type.startsWith('select:')) {
+      const opts = type.slice(7).split('|').map(o => o.split('='));
+      return `<div class="field"><label for="${k}">${label}</label><select id="${k}">${opts.map(([v, t]) => `<option value="${v}" ${String(cfg[k]) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><small>${help}</small></div>`;
+    }
+    return `<div class="field"><label for="${k}">${label}</label><input type="${type}" id="${k}" value="${esc(cfg[k])}"><small>${help}</small></div>`;
+  };
+  el.replaceChildren(h(`
+    <p class="sub">Stored in config.toml. Encoder settings apply to the next session.</p>
+    <form>
+      ${settingSections.map(([title, fields]) => `<div class="card section"><h2>${title}</h2><div class="form">${visibleFields(fields).map(field).join('')}</div></div>`).join('')}
+      <div id="saved" style="margin-top:18px"></div>
+      <div class="row" style="margin-top:12px"><button class="btn primary">Save</button></div>
+    </form>`));
+  $('form', el).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const next = { ...cfg };
+    for (const [k, , type] of visibleFields(settingFields)) {
+      const input = $('#' + k, el);
+      next[k] = type === 'check' ? input.checked : (type === 'text' ? input.value : Number(input.value));
+    }
+    try {
+      const r = await put('/api/config', next);
+      const restart = hostOs === 'macos' ? 'Restart Pong' : 'Restart PongService';
+      $('#saved', el).replaceChildren(h(`<p class="note ok">Saved.${r.restart_needed ? ` ${restart} for port or name changes to apply.` : ''}</p>`));
+    } catch (err) { $('#saved', el).replaceChildren(h(`<p class="note bad">${esc(err.message)}</p>`)); }
+  });
+}
+
+async function logsPage(el, first) {
+  const text = await api('/api/logs');
+  if (first) el.replaceChildren(h(`<p class="sub">The last 400 lines of pong.log.</p><pre class="logs"></pre>`));
+  const pre = $('pre', el);
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+  pre.textContent = text;
+  if (first || atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+boot();
+</script>
+</body>
+</html>

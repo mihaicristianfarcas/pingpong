@@ -1,0 +1,32 @@
+[package]
+name = "pingpong-proto-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+pingpong-proto = { path = ".." }
+
+[[bin]]
+name = "depacketize"
+path = "fuzz_targets/depacketize.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "control"
+path = "fuzz_targets/control.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "input"
+path = "fuzz_targets/input.rs"
+test = false
+doc = false
+
+[workspace]

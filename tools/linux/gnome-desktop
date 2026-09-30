@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# A GNOME desktop for testing the Wayland host: mutter, nested in X screen
+# :1 (so the screen can be looked at and clicked with the x11-poke example),
+# with the desktop portal and PipeWire on a session bus of its own. Runs
+# until stopped; other commands join it through `docker exec` after
+# `source /tmp/session.env`. Logs in target/linux-out/gnome.
+#
+#   PINGPONG_DOCKER_ARGS="-d --name pp-gnome" tools/linux-dev tools/linux/gnome-desktop
+#   docker exec pp-gnome bash -c 'source /tmp/session.env; ...'
+set -euo pipefail
+if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+    exec dbus-run-session -- "$0" "$@"
+fi
+OUT=/src/target/linux-out/gnome
+rm -rf "$OUT"
+mkdir -p "$OUT"
+export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+
+Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 &
+sleep 1
+pipewire >"$OUT/pipewire.log" 2>&1 &
+wireplumber >"$OUT/wireplumber.log" 2>&1 &
+MUTTER_DEBUG_DUMMY_MODE_SPECS=1920x1080 DISPLAY=:1 mutter --nested --wayland >"$OUT/mutter.log" 2>&1 &
+for _ in $(seq 100); do [[ -S $XDG_RUNTIME_DIR/wayland-0 ]] && break; sleep 0.1; done
+export WAYLAND_DISPLAY=wayland-0 XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_TYPE=wayland
+dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_RUNTIME_DIR
+/usr/libexec/xdg-desktop-portal-gnome --verbose >"$OUT/portal-gnome.log" 2>&1 &
+sleep 0.5
+/usr/libexec/xdg-desktop-portal --verbose >"$OUT/portal.log" 2>&1 &
+sleep 0.5
+env | grep -E '^(DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|XDG_CURRENT_DESKTOP|XDG_SESSION_TYPE|WAYLAND_DISPLAY)=' |
+    sed "s/^\([^=]*\)=\(.*\)$/export \1='\2'/" >/tmp/session.env
+echo ready >"$OUT/ready"
+exec sleep infinity

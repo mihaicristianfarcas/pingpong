@@ -1,0 +1,86 @@
+[package]
+name = "pingpong-decode"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Hardware video decoding for the pingpong client: VideoToolbox (macOS), FFmpeg with D3D11VA (Windows) or VA-API (Linux)"
+
+# The objc2-* crates gate one feature per framework header (there is no
+# "all" feature in the 0.3 line), so each lists exactly the headers used.
+[dependencies]
+# Only for the shared microsecond clock, so decoded_at_us is comparable with
+# every other client-side timestamp.
+pingpong-proto = { path = "../pingpong-proto" }
+tracing = "0.1"
+# SIMD start-code search over every frame (annexb.rs).
+memchr = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3", features = [
+    "std",
+    "CFBase",
+    "CFNumber",
+    "CFString",
+    "CFDictionary",
+    "CFArray",
+] }
+objc2-core-media = { version = "0.3", features = [
+    "std",
+    "CMBase",
+    "CMTime",
+    "CMBlockBuffer",
+    "CMSampleBuffer",
+    "CMFormatDescription",
+    "objc2-core-video",
+] }
+objc2-core-video = { version = "0.3", features = [
+    "std",
+    "CVBase",
+    "CVBuffer",
+    "CVImageBuffer",
+    "CVPixelBuffer",
+    "CVReturn",
+] }
+objc2-video-toolbox = { version = "0.3", features = [
+    "std",
+    "VTBase",
+    "VTErrors",
+    "VTSession",
+    "VTDecompressionSession",
+    "VTDecompressionProperties",
+] }
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "annexb"
+harness = false
+
+# The integration test inspects the decoded pixel buffer's plane layout, which
+# the client's Metal renderer relies on.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2-core-video = { version = "0.3", features = [
+    "std",
+    "CVBase",
+    "CVBuffer",
+    "CVImageBuffer",
+    "CVPixelBuffer",
+    "CVReturn",
+] }
+
+# Windows: FFmpeg's decoders with the D3D11VA hwaccel (as Moonlight). Build
+# with FFMPEG_DIR set to an FFmpeg 8 shared build (include/ and lib/), and
+# LLVM's libclang for the bindings.
+[target.'cfg(windows)'.dependencies]
+ffmpeg-sys-next = { version = "8.0", default-features = false, features = ["avcodec"] }
+parking_lot = "0.12"
+windows = { version = "0.61", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common"] }
+
+# Linux: FFmpeg's decoders, VA-API when there is one (system FFmpeg, found
+# with pkg-config; libclang for the bindings).
+[target.'cfg(target_os = "linux")'.dependencies]
+ffmpeg-sys-next = { version = "8.0", default-features = false, features = ["avcodec"] }

@@ -1,0 +1,187 @@
+# Installing
+
+pingpong has two programs: **Ping**, the client, on the computer you sit at,
+and **Pong**, the host, on the computer you stream. There are no prebuilt
+packages yet: both are built from this repository with Rust. Pick the
+sections for your systems:
+
+| | macOS 14+ | Windows 10/11 | Linux |
+|---|---|---|---|
+| Ping (client) | [Ping.app](#ping-on-macos) | [Ping.exe](#ping-on-windows) | [ping-app](#ping-on-linux) |
+| Pong (host) | [Pong.app](#pong-on-macos) | [PongService](#pong-on-windows) | [a user service](#pong-on-linux) |
+
+Then [pair them](#pairing).
+
+## Building from source
+
+Every system needs **Rust 1.96 or newer** (`rustup` from
+[rustup.rs](https://rustup.rs) is the easy way) and git. The first build
+downloads and compiles GPUI (Zed's UI framework) and a few hundred other
+crates; expect several minutes.
+
+```sh
+git clone https://github.com/mihaicristianfarcas/pingpong
+cd pingpong
+```
+
+What else each system needs:
+
+- **macOS**: the Xcode Command Line Tools (`xcode-select --install`). Full
+  Xcode is optional: with its Metal toolchain the app bundles carry their
+  shaders compiled.
+- **Windows**: the MSVC toolchain (Visual Studio Build Tools with "Desktop
+  development with C++") and the Rust `x86_64-pc-windows-msvc` target, which
+  `rustup` installs by default. The client also needs FFmpeg and LLVM (see
+  [Ping on Windows](#ping-on-windows)).
+- **Linux** (Ubuntu 24.04 package names; other distributions have
+  equivalents):
+
+  ```sh
+  sudo apt install build-essential pkg-config clang libclang-dev \
+      libavcodec-dev libavutil-dev libswscale-dev libva-dev \
+      libasound2-dev libpulse-dev libudev-dev \
+      libx11-dev libx11-xcb-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+      libxcursor-dev libxrandr-dev libxi-dev libfontconfig-dev libfreetype-dev libxcb1-dev \
+      libpipewire-0.3-dev libspa-0.2-dev libdbus-1-dev
+  ```
+
+  (`tools/linux/Dockerfile` is the authoritative list; it is what the
+  project is built and tested with.)
+
+## Ping on macOS
+
+```sh
+tools/build-ping-app              # builds target/Ping.app
+tools/build-ping-app --install    # and copies it to /Applications
+```
+
+The first time Ping starts, macOS asks whether it may find devices on the
+local network: allow it, or Ping cannot see or reach hosts on your LAN.
+
+The build is signed ad hoc, or with a local development identity if you
+created one (`tools/dev-signing-identity`, see
+[development.md](development.md#macos-signing)).
+
+## Pong on macOS
+
+```sh
+tools/build-pong-app --install
+```
+
+This installs **Pong.app** (the host) and **Pong Control.app** (its window)
+in `/Applications`, and a LaunchAgent that starts the host at login
+(`~/Library/LaunchAgents/dev.pingpong.Pong.plist`). On first start Pong asks
+for **Screen Recording** (to capture) and **Accessibility** (to use the
+keyboard and mouse); grant both in System Settings > Privacy & Security.
+Without Accessibility, clients can watch but not control.
+
+Without `--install`, the apps are left in `target/`. To run the host from a
+terminal instead: `cargo run --release -p pong -- host` (the terminal then
+needs those permissions). Details and limits: [platforms/macos.md](platforms/macos.md).
+
+## Pong on Windows
+
+First, on the host PC:
+
+1. An **NVIDIA GPU** and a current driver (Pong encodes with NVENC).
+2. **SudoVDA**, the virtual display driver: installed by
+   [Apollo](https://github.com/ClassicOldSong/Apollo), or from
+   [SudoMaker/SudoVDA](https://github.com/SudoMaker/SudoVDA). If Apollo is
+   installed, stop its service while Pong runs (they share the driver).
+3. Optional: **[ViGEmBus](https://github.com/nefarius/ViGEmBus)**, for
+   controllers; **Steam** (its *Steam Streaming Speakers* device keeps the
+   sound on the client only, as Apollo does).
+
+Then, from the repository, in an **administrator** PowerShell:
+
+```powershell
+cargo build --release -p pong -p pong-app
+powershell -ExecutionPolicy Bypass -File tools\host-deploy.ps1
+```
+
+`host-deploy.ps1` copies the host to `C:\Program Files\Pong`, installs and
+starts **PongService** (it starts at boot, before anyone signs in, and adds
+Windows Firewall rules for Pong), and puts Pong's window in the Start menu as
+**Pong**. Run it again after each build to update. `pong uninstall` (as
+administrator, from `C:\Program Files\Pong`) removes the service and its
+firewall rules.
+
+Pong's settings and state are in `C:\ProgramData\Pong`. Details:
+[platforms/windows.md](platforms/windows.md).
+
+## Ping on Windows
+
+Ping's Windows build decodes with FFmpeg, so it needs:
+
+- an **FFmpeg 8 shared build** with `include\`, `lib\` and `bin\` — for
+  example BtbN's `ffmpeg-n8.1-latest-win64-lgpl-shared` from
+  [github.com/BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases);
+- **LLVM** (for `libclang`, which generates the FFmpeg bindings), in
+  `C:\Program Files\LLVM` or wherever `LIBCLANG_PATH` points.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build-ping-win.ps1 -FFmpeg C:\path\to\ffmpeg
+powershell -ExecutionPolicy Bypass -File tools\build-ping-win.ps1 -FFmpeg C:\path\to\ffmpeg -Install
+```
+
+(`-FFmpeg` can be left out when `FFMPEG_DIR` is set.) The first leaves
+`target\Ping\Ping.exe` beside FFmpeg's DLLs; `-Install` copies them to
+`%LOCALAPPDATA%\Programs\Ping` and adds **Ping** to the Start menu. Windows
+Firewall may ask to let Ping on the network the first time: allow private
+networks.
+
+## Ping on Linux
+
+```sh
+cargo build --release -p ping-app          # the app: target/release/ping-app
+cargo build --release -p ping-core --bin ping   # the CLI, if you want it
+```
+
+Run `target/release/ping-app`. There is no desktop entry or package yet.
+Details: [platforms/linux.md](platforms/linux.md).
+
+## Pong on Linux
+
+Build the host **on its own** — not in one `cargo` invocation with the GPUI
+apps: GPUI and Pong's desktop-portal code ask one dependency for different
+async runtimes, and one build cannot have both.
+
+```sh
+cargo build --release -p pong
+install -Dm755 target/release/pong ~/.local/bin/pong
+install -Dm644 tools/linux/pong.service ~/.config/systemd/user/pong.service
+systemctl --user enable --now pong
+```
+
+Pong runs in your desktop session, as you. Under Wayland, the desktop asks
+once whether Pong may share the screen (on GNOME, switch on **Allow Remote
+Interaction** for the keyboard and mouse). Pong's window is
+`cargo build --release -p pong-app`, then `target/release/pong-app`. Data
+and logs are in `~/.config/pong`. Details: [platforms/linux.md](platforms/linux.md).
+
+## Pairing
+
+1. Open Ping. Hosts on your local network appear on the **Hosts** page;
+   others can be added by address (**Add Host**, or ⌘N / Ctrl+N).
+2. Click the host: Ping shows a four-digit PIN.
+3. On the host, open Pong's window (**Devices**) or its web UI
+   (`https://HOST:47802`, whose certificate is self-signed) and type the
+   PIN.
+
+The first time you open the web UI it asks you to create its admin account.
+Pairing is done once, on the local network; afterwards Ping connects from
+anywhere ([networking.md](networking.md)). Next: [usage.md](usage.md).
+
+## Uninstalling
+
+| | |
+|---|---|
+| Ping, macOS | Delete `/Applications/Ping.app` and `~/Library/Application Support/Ping` |
+| Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist`, delete that file, the two apps, and `~/Library/Application Support/Pong` |
+| Ping, Windows | Delete `%LOCALAPPDATA%\Programs\Ping`, its Start menu entry and `%APPDATA%\Ping` |
+| Pong, Windows | `pong uninstall` as administrator, then delete `C:\Program Files\Pong`, `C:\ProgramData\Pong` and the Start menu entry |
+| Ping, Linux | Delete the binary and `~/.config/ping` |
+| Pong, Linux | `systemctl --user disable --now pong`, then delete the unit, the binary and `~/.config/pong` |
+
+Unpair a device on the other side too (Ping: the host's menu > Unpair; Pong:
+**Devices**).

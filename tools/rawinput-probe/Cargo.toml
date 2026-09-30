@@ -1,0 +1,18 @@
+[package]
+name = "rawinput-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    # WNDCLASSW carries HBRUSH and HICON, so windows 0.61 gates it -- and
+    # RegisterClassW with it -- behind the GDI feature.
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[workspace]

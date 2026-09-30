@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Pong</string>
+	<key>CFBundleDisplayName</key>
+	<string>Pong</string>
+	<!-- Screen Recording and Accessibility are granted to this identity, so
+	     they follow the app rather than whichever terminal started it. -->
+	<key>CFBundleIdentifier</key>
+	<string>dev.pingpong.Pong</string>
+	<key>CFBundleExecutable</key>
+	<string>pong</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.3.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<!-- A background host: no Dock icon, no menu bar. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pong streams this Mac to the devices you pair with it on your network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pingpong._udp</string>
+	</array>
+</dict>
+</plist>

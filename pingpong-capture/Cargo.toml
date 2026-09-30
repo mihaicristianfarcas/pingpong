@@ -1,0 +1,54 @@
+[package]
+name = "pingpong-capture"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Screen capture for the pingpong host: Desktop Duplication (Windows), ScreenCaptureKit (macOS), X11 and PipeWire (Linux)"
+
+[dependencies]
+tracing = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["std", "NSArray", "NSError", "NSString", "NSObject"] }
+objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFCGTypes"] }
+objc2-core-media = { version = "0.3", features = ["std", "CMBase", "CMTime", "CMSampleBuffer", "CMFormatDescription", "CMBlockBuffer", "objc2-core-video", "objc2-core-audio-types"] }
+objc2-core-audio-types = { version = "0.3", features = ["std", "CoreAudioBaseTypes"] }
+objc2-core-video = { version = "0.3", features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
+objc2-core-graphics = { version = "0.3", features = ["std", "CGDirectDisplay", "CGDisplayStream"] }
+objc2-screen-capture-kit = { version = "0.3", features = ["std", "SCStream", "SCShareableContent", "block2", "objc2-core-media", "objc2-core-graphics", "dispatch2"] }
+
+# Linux: the X11 screen (x11rb speaks the protocol itself: no libxcb), and
+# the sound through libpulse-simple.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+libpulse-binding = "2"
+libpulse-simple-binding = "2"
+parking_lot = "0.12"
+pipewire = "0.10"
+x11rb = { version = "0.13", features = ["shm", "damage", "xfixes"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+png = "0.18"
+x11rb = { version = "0.13", features = ["xtest"] }

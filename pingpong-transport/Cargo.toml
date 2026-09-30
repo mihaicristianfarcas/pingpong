@@ -1,0 +1,38 @@
+[package]
+name = "pingpong-transport"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The pingpong tunnel: post-quantum WireGuard (pq-boringtun) over one UDP socket"
+
+[dependencies]
+# pq-boringtun: static ML-KEM authentication (handshake types 8/9) and the
+# byte-perfect IPv6 MTU segmentation. Pinned so host and client always speak the
+# same handshake; `master` and `demo` lack both features.
+boringtun = { git = "https://github.com/mihaicristianfarcas/pq-boringtun", rev = "ebe161788413ca5c244e5cfd1d2db9753db6a3a0", features = ["pq"] }
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+parking_lot = "0.12"
+socket2 = { version = "0.5", features = ["all"] }
+tracing = "0.1"
+# Batched sends: UDP segmentation offload on Linux (GSO) and Windows (USO),
+# sendmsg_x on macOS -- a keyframe's hundreds of datagrams in a few calls.
+quinn-udp = { version = "0.6", default-features = false, features = ["fast-apple-datapath"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+tempfile = "3"
+parking_lot = "0.12"
+
+[[bench]]
+name = "tunnel"
+harness = false

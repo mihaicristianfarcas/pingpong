@@ -1,0 +1,79 @@
+# pingpong
+
+Stream a computer's desktop — games included — to another computer, with the
+latency of Moonlight and Apollo, inside one post-quantum WireGuard tunnel.
+**Ping** is the client, **Pong** the host; both run on macOS, Windows and
+Linux.
+
+![Pong's window during a session](docs/images/pong-overview.png)
+
+- **Moonlight-class streaming**: up to 4K and 120+ fps, HEVC or H.264,
+  hardware encode and decode, loss repaired by reference invalidation, frame
+  pacing, stereo to 7.1 sound, controllers with rumble. At 3024x1890@120 and
+  100 Mbit/s it matched Moonlight + Apollo on the same machines
+  ([benchmarks](docs/benchmarks.md)).
+- **Post-quantum**: every packet travels in pq-boringtun (WireGuard with
+  ML-KEM-768), and pairing is a hybrid SPAKE2 + ML-KEM PIN exchange.
+- **A virtual display at the client's exact mode** on Windows and macOS
+  hosts, so nothing is scaled or letterboxed.
+- **From anywhere, without port forwarding**: hosts are found through
+  sealed records on the BitTorrent DHT, and NATs are punched from both sides.
+- **The clipboard, both ways**: text, images, files and folders.
+- **AI agents** can use your hosts as clients of their own — from Ping, or
+  from any MCP client — held to rules the host enforces
+  ([docs/ai-agents.md](docs/ai-agents.md)).
+
+![An agent session in Ping](docs/images/ping-agent-session.png)
+
+## Getting started
+
+1. [Install](docs/install.md) Pong on the computer to stream, and Ping on the
+   one you sit at (both are built from source for now).
+2. Open Ping, click the host, and type the PIN it shows into Pong.
+3. Click the host again to stream. Ctrl+Alt+Shift+Q ends the stream
+   ([usage](docs/usage.md)).
+
+## Status
+
+| | Client | Host |
+|---|---|---|
+| macOS 14+ | Ping.app: in daily use | Pong.app: works; stereo sound, no controllers |
+| Windows 10/11 | Ping.exe: works; less tested than macOS | PongService: in daily use (NVIDIA GPU and SudoVDA required) |
+| Linux | works under X11 and Wayland; tested in a container | works under X11 and Wayland (portal); scaled, no virtual display |
+
+What is verified and what is not, per platform:
+[docs/platforms/](docs/platforms/). Feature by feature against Moonlight +
+Apollo: [docs/parity.md](docs/parity.md).
+
+## Documentation
+
+Everything is in [docs/](docs/README.md): installing, using, the command
+line, how it works, each platform, benchmarks, and the design history.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) (the rules
+for code, comments, docs and commits — for people and AI agents alike), and
+[docs/development.md](docs/development.md) for building and testing.
+Security problems: [SECURITY.md](SECURITY.md).
+
+## Acknowledgements
+
+pingpong follows the lead of [Moonlight](https://moonlight-stream.org),
+[Sunshine](https://github.com/LizardByte/Sunshine) and
+[Apollo](https://github.com/ClassicOldSong/Apollo): where it had to choose
+how streaming should behave, it chose what they do, and says so in its
+comments. It is a separate implementation, written from scratch in Rust.
+The tunnel is
+[pq-boringtun](https://github.com/mihaicristianfarcas/pq-boringtun), a
+post-quantum fork of Cloudflare's boringtun; the windows are drawn with
+[GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui).
+
+## License
+
+[MIT](LICENSE). Two pieces of vendored code keep their own licenses: the
+NVENC type bindings in `pingpong-encode/src/nvenc_sys/` (MIT, from NVIDIA's
+header and the `nvidia-video-codec-sdk` crate; see the `LICENSE` there) and
+the no-op profiling shims in `vendor/` (Apache-2.0). The libraries pingpong
+depends on are under their own, permissive licenses (`cargo tree` lists
+them); FFmpeg, where it is used, is linked dynamically.

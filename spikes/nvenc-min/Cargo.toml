@@ -1,0 +1,19 @@
+[package]
+name = "nvenc-min"
+version = "0.1.0"
+edition = "2021"
+
+# cudarc is 0.16, NOT the plan's 0.19: nvidia-video-codec-sdk 0.4.0 depends on
+# `cudarc ^0.16.4` and takes `Arc<CudaContext>`, so the versions must match or
+# the context cannot be handed to the encoder at all. See
+# spikes/cuda-interop/README.md.
+#
+# Requires NVIDIA_VIDEO_CODEC_SDK_PATH to point at a directory containing
+# nvEncodeAPI.lib and nvcuvid.lib -- generate them with
+# tools/gen-nvenc-import-libs.ps1.
+[dependencies]
+cudarc = { version = "0.16.4", features = ["cuda-12060", "driver"] }
+nvidia-video-codec-sdk = "0.4"
+
+# Not a workspace member; a throwaway probe must not gate `cargo test`.
+[workspace]

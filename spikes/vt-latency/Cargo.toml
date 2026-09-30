@@ -1,0 +1,49 @@
+[package]
+name = "vt-latency"
+version = "0.1.0"
+edition = "2021"
+
+# NOTE (deviation from plan Task 1 Step 1): the plan specifies
+# `features = ["all"]` for the objc2-* crates. No such feature exists in the
+# 0.3.x line -- these crates gate one feature per framework header. The
+# per-header lists below are the equivalent.
+[dependencies]
+objc2 = "0.6"
+objc2-core-foundation = { version = "0.3", features = [
+    "std",
+    "CFBase",
+    "CFNumber",
+    "CFString",
+    "CFDictionary",
+    "CFArray",
+] }
+objc2-core-media = { version = "0.3", features = [
+    "std",
+    "CMBase",
+    "CMTime",
+    "CMBlockBuffer",
+    "CMSampleBuffer",
+    "CMFormatDescription",
+    "objc2-core-video",
+] }
+objc2-core-video = { version = "0.3", features = [
+    "std",
+    "CVBase",
+    "CVBuffer",
+    "CVImageBuffer",
+    "CVPixelBuffer",
+    "CVReturn",
+] }
+objc2-video-toolbox = { version = "0.3", features = [
+    "std",
+    "VTBase",
+    "VTErrors",
+    "VTSession",
+    "VTDecompressionSession",
+    "VTDecompressionProperties",
+] }
+
+# Deliberately NOT a member of the root workspace: a broken spike must never
+# gate a workspace-wide `cargo test`. The empty table opts this crate out of
+# the workspace it is nested inside (same trick as pingpong-proto/fuzz).
+[workspace]

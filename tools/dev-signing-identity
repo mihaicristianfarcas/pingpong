@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# A stable code-signing identity for development builds of Ping.app and
+# Pong.app. Ad hoc signatures change with every build, and macOS ties the
+# permissions it grants (Screen Recording, Accessibility) to the signature,
+# so each rebuild lost them. Signed with one self-signed certificate, an app
+# keeps its identity (its bundle id and this certificate) across builds.
+#
+# Prints the identity's SHA-1 for `codesign --sign`, creating it in the login
+# keychain first if there is none. The first signing with it asks to use the
+# key: "Always Allow" makes later builds sign without asking.
+#
+#   tools/dev-signing-identity           create if missing; print the hash
+#   tools/dev-signing-identity --check   print the hash, or nothing
+set -euo pipefail
+NAME="pingpong dev"
+
+hash() {
+    security find-certificate -a -c "$NAME" -Z 2>/dev/null | awk '/SHA-1 hash:/ { print $3; exit }'
+}
+
+if [[ -z "$(hash)" && ${1:-} != --check ]]; then
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    PW=$(openssl rand -hex 16)
+    openssl req -x509 -newkey rsa:2048 -keyout "$TMP/key.pem" -out "$TMP/cert.pem" -days 3650 -nodes \
+        -subj "/CN=$NAME" \
+        -addext "extendedKeyUsage=critical,codeSigning" \
+        -addext "keyUsage=critical,digitalSignature" \
+        -addext "basicConstraints=critical,CA:false" 2>/dev/null
+    openssl pkcs12 -export -legacy -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -name "$NAME" \
+        -out "$TMP/id.p12" -passout "pass:$PW" 2>/dev/null
+    security import "$TMP/id.p12" -k "$HOME/Library/Keychains/login.keychain-db" -P "$PW" -T /usr/bin/codesign >/dev/null
+    echo "created the \"$NAME\" signing identity in the login keychain" >&2
+fi
+hash

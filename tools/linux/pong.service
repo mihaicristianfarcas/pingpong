@@ -1,0 +1,20 @@
+# Pong as a systemd user service, in the desktop session it streams:
+#
+#   install -Dm755 target/release/pong ~/.local/bin/pong
+#   install -Dm644 tools/linux/pong.service ~/.config/systemd/user/pong.service
+#   systemctl --user enable --now pong
+#
+# The desktop hands DISPLAY to user services (GNOME and KDE do). Logs:
+# ~/.config/pong/logs, or `journalctl --user -u pong`.
+[Unit]
+Description=Pong, the pingpong streaming host
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/pong host
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,28 @@
+[package]
+name = "pingpong-clipboard"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Sharing the clipboard between a pingpong client and host"
+
+[dependencies]
+pingpong-proto = { path = "../pingpong-proto" }
+arboard = "3"
+crossbeam-channel = "0.5"
+png = "0.18"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["std", "NSString", "NSArray"] }
+objc2-app-kit = { version = "0.3", features = ["std", "NSPasteboard"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory"] }
+
+[dev-dependencies]
+tempfile = "3"

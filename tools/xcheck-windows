@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Type-check the Windows host and client from a Mac: `cargo check` for
+# x86_64-pc-windows-gnu with a private rustup (it does not replace the
+# system Rust) and MinGW for the crates that compile C (ring).
+#
+#   tools/xcheck-windows [ARGS]          cargo check ARGS (default: -p pong -p ping-app)
+#   tools/xcheck-windows clippy [ARGS]   cargo clippy ARGS, for Windows-only code
+#
+# The client's FFmpeg bindings are generated from FFmpeg's headers: copy an
+# FFmpeg 8 build's include/ (and lib/) to ~/.local/share/pingpong-xcheck/ffmpeg,
+# e.g. from the Windows host's.
+#
+# One-time setup:
+#   RUSTUP_HOME=~/.local/share/pingpong-xcheck/rustup CARGO_HOME=~/.local/share/pingpong-xcheck/cargo \
+#     sh <(curl -sSf https://sh.rustup.rs) -y --no-modify-path --profile minimal --target x86_64-pc-windows-gnu
+#   brew install mingw-w64
+#   (for clippy: add `rustup component add clippy` with the same RUSTUP_HOME)
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.local/share/pingpong-xcheck/rustup}
+export CARGO_HOME=${CARGO_HOME:-$HOME/.local/share/pingpong-xcheck/cargo}
+export CARGO_TARGET_DIR="$REPO/target/xcheck"
+FFMPEG=$HOME/.local/share/pingpong-xcheck/ffmpeg
+MINGW=$(brew --prefix mingw-w64 2>/dev/null)/toolchain-x86_64/x86_64-w64-mingw32
+if [[ -d $FFMPEG/include ]]; then
+    export FFMPEG_DIR=$FFMPEG
+    export LIBCLANG_PATH=${LIBCLANG_PATH:-/Library/Developer/CommandLineTools/usr/lib}
+    export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$MINGW -I$MINGW/include"
+fi
+cmd=check
+[[ ${1:-} == clippy ]] && { cmd=clippy; shift; }
+args=("$@")
+[[ ${#args[@]} -eq 0 ]] && args=(-p pong -p ping-app)
+exec "$CARGO_HOME/bin/cargo" "$cmd" --manifest-path "$REPO/Cargo.toml" --target x86_64-pc-windows-gnu "${args[@]}"

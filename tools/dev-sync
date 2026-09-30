@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Mirror this working tree (tracked + untracked, minus ignored) onto a Windows
+# host over SSH and optionally build there. Development helper, not an install
+# path.
+#
+#   tools/dev-sync            sync only
+#   tools/dev-sync build ARGS sync, then `cargo build --release ARGS` on the host
+#
+# Where to: PINGPONG_SSH (user@host; the host's shell is PowerShell) and
+# PINGPONG_HOST_DIR (default: pingpong, in that user's home). Either can be
+# set in the environment or in tools/dev.env, which is not committed:
+#
+#   PINGPONG_SSH=me@gaming-pc
+#   PINGPONG_HOST_DIR=C:/Users/me/src/pingpong
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=/dev/null
+[[ -f $REPO/tools/dev.env ]] && source "$REPO/tools/dev.env"
+HOST_SSH=${PINGPONG_SSH:?set PINGPONG_SSH=user@host (or put it in tools/dev.env)}
+HOST_DIR=${PINGPONG_HOST_DIR:-pingpong}
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+cd "$REPO"
+git ls-files -co --exclude-standard -z | COPYFILE_DISABLE=1 tar --null -czf "$TMP/src.tgz" -T -
+ssh -o BatchMode=yes "$HOST_SSH" "New-Item -ItemType Directory -Force -Path '$HOST_DIR' | Out-Null"
+scp -q -o BatchMode=yes "$TMP/src.tgz" "$HOST_SSH:$HOST_DIR/src.tgz"
+# Mirror, not overlay: everything but the build cache is replaced, so a file
+# deleted here does not linger (and get compiled) there.
+ssh -o BatchMode=yes "$HOST_SSH" "Set-Location '$HOST_DIR'; Get-ChildItem -Force | Where-Object { \$_.Name -notin @('target','src.tgz') } | Remove-Item -Recurse -Force; tar -xzf src.tgz; Remove-Item src.tgz"
+echo "synced to $HOST_SSH:$HOST_DIR"
+
+if [[ ${1:-} == build ]]; then
+    shift
+    ssh -o BatchMode=yes "$HOST_SSH" "Set-Location '$HOST_DIR'; cargo build --release $* 2>&1 | Select-Object -Last 40"
+fi

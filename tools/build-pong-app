@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Build Pong.app: the macOS host, bundled so that macOS grants Screen
+# Recording and Accessibility to Pong itself (ad-hoc signed); and Pong
+# Control.app, its window (pong-app), which talks to the running host.
+#
+#   tools/build-pong-app            -> target/Pong.app, target/Pong Control.app
+#   tools/build-pong-app --install  -> also copy them to /Applications and
+#                                      start the host at login (a LaunchAgent)
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+APP="$REPO/target/Pong.app"
+AGENT="$HOME/Library/LaunchAgents/dev.pingpong.Pong.plist"
+
+export MACOSX_DEPLOYMENT_TARGET=14.0
+# Xcode's Metal compiler, when it is installed: the bundle then carries GPUI's
+# shaders compiled, not their source to compile at every launch.
+FEATURES=()
+XCODE=/Applications/Xcode.app/Contents/Developer
+if DEVELOPER_DIR=$XCODE xcrun metal --version >/dev/null 2>&1; then
+    export DEVELOPER_DIR=$XCODE
+    FEATURES=(--no-default-features)
+fi
+cargo build --release -p pong -p pong-app ${FEATURES[@]+"${FEATURES[@]}"} --manifest-path "$REPO/Cargo.toml"
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS"
+cp "$REPO/target/release/pong" "$APP/Contents/MacOS/pong"
+cp "$REPO/pong/macos/Info.plist" "$APP/Contents/Info.plist"
+# The dev identity when there is one (see tools/dev-signing-identity), so the
+# Screen Recording and Accessibility permissions survive a rebuild; else ad hoc.
+SIGN=$("$REPO/tools/dev-signing-identity" --check)
+codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Pong "$APP" >/dev/null
+echo "built $APP"
+
+CONTROL="$REPO/target/Pong Control.app"
+rm -rf "$CONTROL"
+mkdir -p "$CONTROL/Contents/MacOS"
+cp "$REPO/target/release/pong-app" "$CONTROL/Contents/MacOS/Pong Control"
+cp "$REPO/pong-app/macos/Info.plist" "$CONTROL/Contents/Info.plist"
+codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.PongControl "$CONTROL" >/dev/null
+echo "built $CONTROL"
+
+if [[ ${1:-} == --install ]]; then
+    rm -rf /Applications/Pong.app "/Applications/Pong Control.app"
+    cp -R "$APP" /Applications/Pong.app
+    cp -R "$CONTROL" "/Applications/Pong Control.app"
+    mkdir -p "$(dirname "$AGENT")"
+    cat > "$AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.pingpong.Pong</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/Pong.app/Contents/MacOS/pong</string>
+		<string>host</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>
+PLIST
+    launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$AGENT"
+    echo "installed /Applications/Pong.app; it starts at login ($AGENT)"
+    echo "macOS will ask for Screen Recording and Accessibility the first time."
+fi

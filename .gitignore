@@ -1,0 +1,40 @@
+/target
+**/target
+**/*.rs.bk
+.DS_Store
+
+# Spike artifacts: regenerate with the commands in each spike's README.
+spikes/**/*.h264
+spikes/**/*.png
+spikes/**/Cargo.lock
+
+# cargo-fuzz working data; the target and corpus are regenerable.
+pingpong-proto/fuzz/target
+pingpong-proto/fuzz/corpus
+pingpong-proto/fuzz/artifacts
+pingpong-proto/fuzz/Cargo.lock
+spikes/**/interactive-run.log
+
+# Output of the example runs, regenerable per each example's doc comment.
+*.h264
+*.png
+interactive-run.log
+
+# ...but test fixtures are inputs, not output, and must be committed.
+!pingpong-decode/tests/fixtures/*.h264
+# ...and so is the app's icon (drawn by ping-app/examples/make-icon.rs).
+!ping-app/assets/*.png
+# ...and the documentation's screenshots.
+!docs/images/*.png
+
+# Local endpoint configs: these contain private keys.
+pingpong-client.toml
+pingpong-server.toml
+# Superseded keys are still keys -- rekeying leaves these behind.
+*.toml.bak-*
+
+# Local secrets (API keys).
+.env
+
+# Local settings for the dev tools (tools/dev-sync).
+tools/dev.env

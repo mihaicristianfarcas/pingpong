@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Build Ping.app: the Rust app (ping-app) in a bundle with its icon, signed
+# with the dev identity when there is one (else ad hoc).
+#
+#   tools/build-ping-app            -> target/Ping.app
+#   tools/build-ping-app --install  -> also copy it to /Applications
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+APP="$REPO/target/Ping.app"
+
+export MACOSX_DEPLOYMENT_TARGET=14.0
+# Xcode's Metal compiler, when it is installed: the bundle then carries GPUI's
+# shaders compiled, not their source to compile at every launch.
+FEATURES=()
+XCODE=/Applications/Xcode.app/Contents/Developer
+if DEVELOPER_DIR=$XCODE xcrun metal --version >/dev/null 2>&1; then
+    export DEVELOPER_DIR=$XCODE
+    FEATURES=(--no-default-features)
+fi
+cargo build --release -p ping-app ${FEATURES[@]+"${FEATURES[@]}"} --manifest-path "$REPO/Cargo.toml"
+
+ICNS="$REPO/target/AppIcon.icns"
+MAKE_ICON="$REPO/ping-app/examples/make-icon.rs"
+if [[ ! -f $ICNS || $MAKE_ICON -nt $ICNS ]]; then
+    cargo run --release -q -p ping-app --example make-icon --manifest-path "$REPO/Cargo.toml" -- "$REPO/target/icon"
+    iconutil -c icns "$REPO/target/icon/AppIcon.iconset" -o "$ICNS"
+fi
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$REPO/target/release/ping-app" "$APP/Contents/MacOS/Ping"
+cp "$REPO/ping-app/macos/Info.plist" "$APP/Contents/Info.plist"
+cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
+# The dev identity when there is one (see tools/dev-signing-identity), so the
+# permissions macOS grants survive a rebuild; else ad hoc.
+SIGN=$("$REPO/tools/dev-signing-identity" --check)
+codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Ping "$APP" >/dev/null
+echo "built $APP"
+
+if [[ ${1:-} == --install ]]; then
+    rm -rf /Applications/Ping.app
+    cp -R "$APP" /Applications/Ping.app
+    echo "installed /Applications/Ping.app"
+fi

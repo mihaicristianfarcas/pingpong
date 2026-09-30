@@ -1,0 +1,29 @@
+[package]
+name = "vdd-mode"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# NOTE (deviation from plan Task 1 Step 2): the plan pins `windows = "0.58"`.
+# The rest of the workspace is on 0.61 because windows-capture 1.5 depends on
+# `windows ^0.61.3` (see pingpong-capture/Cargo.toml). This spike's findings
+# become pingpong-display/src/windows.rs, which links into pingpong-server
+# ALONGSIDE pingpong-capture -- two `windows` majors there would mean two
+# different `LUID`/`HANDLE` types. Probe on the version the real code must use.
+[dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    # CreateFileW takes a SECURITY_ATTRIBUTES, so it is gated behind
+    # Win32_Security as well as Win32_Storage_FileSystem.
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    # QueryDisplayConfig/SetDisplayConfig -- the CCD path, which is what
+    # Settings and Apollo drive. Spec 6.3 marks this [P]; this spike settles it.
+    "Win32_Devices_Display",
+] }
+
+# Not a workspace member; a throwaway probe must not gate `cargo test`.
+[workspace]
