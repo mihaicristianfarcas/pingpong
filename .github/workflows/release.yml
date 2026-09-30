@@ -1,0 +1,88 @@
+# A release, from a version tag: the macOS apps built on an Apple silicon and
+# an Intel Mac, published as the release's downloads, and a pull request that
+# brings the Homebrew casks (Casks/) to the new version (main takes changes
+# only through pull requests).
+#
+#   git tag v0.7.0 && git push origin v0.7.0
+#
+# The tag must name the workspace's version (Cargo.toml's
+# [workspace.package]). Windows and Linux build from source for now
+# (docs/install.md); the release page carries the source archives.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  pull-requests: write
+  # To start CI on the casks' branch (see ci.yml).
+  actions: write
+
+jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag names the workspace's version
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::the tag is $GITHUB_REF_NAME, the workspace's version $version"
+            exit 1
+          fi
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Build and package
+        run: tools/package-macos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: target/dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish
+    needs: macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: The release, with the apps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --verify-tag --title "pingpong ${GITHUB_REF_NAME#v}" --generate-notes
+      - name: The casks, at the new version, as a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          branch="casks-$version"
+          tools/update-casks "$version" dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add Casks
+          git commit -m "Casks: Ping and Pong $version" \
+            -m "The release's archives and their checksums, from the release workflow."
+          git push origin "$branch"
+          # A pull request opened with this token starts no CI run of its own.
+          gh workflow run ci.yml --ref "$branch"
+          gh pr create --base main --head "$branch" --title "Casks: Ping and Pong $version" \
+            --body "The Homebrew casks at release $GITHUB_REF_NAME: its archives and their checksums. Merging this is what makes \`brew upgrade\` see the release."

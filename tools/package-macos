@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Package Ping and Pong for macOS as a release: the app bundles built as one
+# (PINGPONG_RELEASE=1: the apps then follow releases, not the main branch),
+# in zip archives for a GitHub release and the Homebrew casks.
+#
+#   tools/package-macos
+#     -> target/dist/Ping-VERSION-macos-ARCH.zip   (Ping.app)
+#        target/dist/Pong-VERSION-macos-ARCH.zip   (Pong.app, Pong Control.app)
+#
+# ARCH is this Mac's (arm64 or x86_64); VERSION the workspace's. The release
+# workflow (.github/workflows/release.yml) runs this on one Mac of each, then
+# tools/update-casks. The bundles are signed as tools/build-ping-app signs
+# them (the dev identity, else ad hoc), not notarized.
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' "$REPO/Cargo.toml")
+ARCH=$(uname -m)
+DIST="$REPO/target/dist"
+
+export PINGPONG_RELEASE=1
+"$REPO/tools/build-ping-app"
+"$REPO/tools/build-pong-app"
+
+mkdir -p "$DIST"
+# ditto keeps what a zip from the Finder keeps (extended attributes, the
+# signature's resources) so the bundles unpack signed as they were.
+PING="$DIST/Ping-$VERSION-macos-$ARCH.zip"
+rm -f "$PING"
+ditto -c -k --keepParent "$REPO/target/Ping.app" "$PING"
+# Both of Pong's apps at the archive's root, where the cask finds them.
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+cp -R "$REPO/target/Pong.app" "$REPO/target/Pong Control.app" "$STAGE/"
+PONG="$DIST/Pong-$VERSION-macos-$ARCH.zip"
+rm -f "$PONG"
+ditto -c -k "$STAGE" "$PONG"
+for zip in "$PING" "$PONG"; do
+    echo "$(shasum -a 256 "$zip" | cut -d' ' -f1)  $(basename "$zip")"
+done

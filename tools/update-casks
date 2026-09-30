@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Write the Homebrew casks (Casks/ping.rb, Casks/pong.rb) for a release, from
+# the archives tools/package-macos made: the version, and each archive's
+# SHA-256. This repository is its own tap:
+#
+#   brew tap mihaicristianfarcas/pingpong https://github.com/mihaicristianfarcas/pingpong
+#   brew install --cask ping pong
+#
+#   tools/update-casks VERSION DIST_DIR [BASE_URL]
+#
+# DIST_DIR holds Ping-VERSION-macos-ARCH.zip and Pong-VERSION-macos-ARCH.zip
+# for arm64, x86_64 or both. BASE_URL is where the archives are downloaded
+# from (the release's, by default; a file:// one to try the casks locally).
+# The release workflow runs this after publishing the release, and opens a
+# pull request with the result.
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+VERSION=${1:?usage: update-casks VERSION DIST_DIR [BASE_URL]}
+DIST=${2:?usage: update-casks VERSION DIST_DIR [BASE_URL]}
+HOMEPAGE=https://github.com/mihaicristianfarcas/pingpong
+BASE=${3:-"$HOMEPAGE/releases/download/v#{version}"}
+OUT=${CASKS_DIR:-$REPO/Casks}
+
+sha() {
+    local zip="$DIST/$1-$VERSION-macos-$2.zip"
+    [[ -f $zip ]] && shasum -a 256 "$zip" | cut -d' ' -f1
+}
+
+# The version, checksums and download for NAME: one archive per
+# architecture when both are there, else the one there is and a Mac of its
+# kind required.
+download() {
+    local name=$1 arm intel
+    arm=$(sha "$name" arm64 || true)
+    intel=$(sha "$name" x86_64 || true)
+    if [[ -n $arm && -n $intel ]]; then
+        cat <<CASK
+  arch arm: "arm64", intel: "x86_64"
+
+  version "$VERSION"
+  sha256 arm:   "$arm",
+         intel: "$intel"
+
+  url "$BASE/$name-#{version}-macos-#{arch}.zip"
+CASK
+    elif [[ -n $arm || -n $intel ]]; then
+        local only=arm64 sum=$arm
+        [[ -z $arm ]] && only=x86_64 sum=$intel
+        cat <<CASK
+  version "$VERSION"
+  sha256 "$sum"
+
+  url "$BASE/$name-#{version}-macos-$only.zip"
+CASK
+    else
+        echo "no $name archive for $VERSION in $DIST" >&2
+        return 1
+    fi
+}
+
+# Only the architecture there is an archive for.
+arch_limit() {
+    local name=$1
+    if [[ -z $(sha "$name" x86_64 || true) ]]; then
+        echo '  depends_on arch: :arm64'
+    elif [[ -z $(sha "$name" arm64 || true) ]]; then
+        echo '  depends_on arch: :x86_64'
+    fi
+}
+
+mkdir -p "$OUT"
+
+cat > "$OUT/ping.rb" <<CASK
+# Written by tools/update-casks for each release: change that script, not
+# this file.
+cask "ping" do
+$(download Ping)
+  name "Ping"
+  desc "Desktop and game streaming client for Pong hosts, post-quantum encrypted"
+  homepage "$HOMEPAGE"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+$(arch_limit Ping)
+  depends_on macos: :sonoma
+
+  app "Ping.app"
+
+  # The apps are signed but not notarized: without this, macOS refuses to
+  # open them until they are allowed in System Settings.
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/Ping.app"]
+  end
+
+  zap trash: [
+    "~/Library/Application Support/Ping",
+    "~/Library/Logs/Ping",
+  ]
+end
+CASK
+
+cat > "$OUT/pong.rb" <<CASK
+# Written by tools/update-casks for each release: change that script, not
+# this file.
+cask "pong" do
+$(download Pong)
+  name "Pong"
+  desc "Desktop and game streaming host for Ping clients, post-quantum encrypted"
+  homepage "$HOMEPAGE"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+$(arch_limit Pong)
+  depends_on macos: :sonoma
+
+  app "Pong.app"
+  app "Pong Control.app"
+
+  # The apps are signed but not notarized: without this, macOS refuses to
+  # open them until they are allowed in System Settings.
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{appdir}}/Pong.app", "{{appdir}}/Pong Control.app"]
+  end
+
+  uninstall launchctl: [
+              "dev.pingpong.Pong",
+              "dev.pingpong.PongControl",
+            ],
+            quit:      "dev.pingpong.PongControl"
+
+  zap trash: [
+    "~/Library/Application Support/Pong",
+    "~/Library/Logs/Pong",
+  ]
+
+  caveats <<~EOS
+    Open Pong Control and choose Start Pong: the host then runs whenever you
+    are logged in, and Pong's icon is in the menu bar. macOS asks for Screen
+    Recording and Accessibility the first time.
+  EOS
+end
+CASK
+
+# An empty line where no architecture limit applies is one too many.
+for cask in "$OUT/ping.rb" "$OUT/pong.rb"; do
+    awk 'NF || !blank { print } { blank = !NF }' "$cask" > "$cask.tmp" && mv "$cask.tmp" "$cask"
+done
+echo "wrote $OUT/ping.rb and $OUT/pong.rb for $VERSION"

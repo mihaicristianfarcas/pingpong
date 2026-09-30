@@ -28,7 +28,9 @@ Linux.
 ## Getting started
 
 1. [Install](docs/install.md) Pong on the computer to stream, and Ping on the
-   one you sit at (both are built from source for now).
+   one you sit at: on a Mac with Homebrew
+   (`brew tap mihaicristianfarcas/pingpong https://github.com/mihaicristianfarcas/pingpong`,
+   then `brew install --cask ping` or `pong`), elsewhere from source.
 2. Open Ping, click the host, and type the PIN it shows into Pong.
 3. Click the host again to stream. Ctrl+Alt+Shift+Q ends the stream
    ([usage](docs/usage.md)). Pong's icon in the menu bar or the taskbar's

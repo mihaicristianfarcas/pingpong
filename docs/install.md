@@ -1,16 +1,38 @@
 # Installing
 
 pingpong has two programs: **Ping**, the client, on the computer you sit at,
-and **Pong**, the host, on the computer you stream. There are no prebuilt
-packages yet: both are built from this repository with Rust. Pick the
-sections for your systems:
+and **Pong**, the host, on the computer you stream. On a Mac both install
+with [Homebrew](#with-homebrew-macos) from a release; everywhere they can be
+built from this repository with Rust. Pick the sections for your systems:
 
 | | macOS 14+ | Windows 10/11 | Linux |
 |---|---|---|---|
-| Ping (client) | [Ping.app](#ping-on-macos) | [Ping.exe](#ping-on-windows) | [ping-app](#ping-on-linux) |
-| Pong (host) | [Pong.app](#pong-on-macos) | [PongService](#pong-on-windows) | [a user service](#pong-on-linux) |
+| Ping (client) | [Homebrew](#with-homebrew-macos) or [Ping.app](#ping-on-macos) | [Ping.exe](#ping-on-windows) | [ping-app](#ping-on-linux) |
+| Pong (host) | [Homebrew](#with-homebrew-macos) or [Pong.app](#pong-on-macos) | [PongService](#pong-on-windows) | [a user service](#pong-on-linux) |
 
 Then [pair them](#pairing).
+
+## With Homebrew (macOS)
+
+This repository is a Homebrew tap: its casks install the apps from the
+latest release (Apple silicon and Intel).
+
+```sh
+brew tap mihaicristianfarcas/pingpong https://github.com/mihaicristianfarcas/pingpong
+brew install --cask ping          # the client
+brew install --cask pong          # the host: Pong.app and Pong Control.app
+```
+
+For the host, open **Pong Control** and choose **Start Pong**: the host
+then runs whenever you are logged in, and Pong's icon is in the menu bar.
+macOS asks for Screen Recording and Accessibility the first time (see
+[Pong on macOS](#pong-on-macos)).
+
+`brew upgrade --cask ping pong` updates them; the apps say when there is an
+update ([usage.md](usage.md#updates)). The releases are signed but not
+notarized, so the casks clear the download's quarantine flag for macOS to
+open them. An update is a new signature: macOS then asks Pong for Screen
+Recording and Accessibility again.
 
 ## Building from source
 
@@ -181,6 +203,7 @@ anywhere ([networking.md](networking.md)). Next: [usage.md](usage.md).
 
 | | |
 |---|---|
+| Homebrew | `brew uninstall --cask ping pong` (the host's LaunchAgents go too); `--zap` also deletes the data folders |
 | Ping, macOS | Delete `/Applications/Ping.app` and `~/Library/Application Support/Ping` |
 | Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist` and the same for `dev.pingpong.PongControl.plist`, delete those files, the two apps, and `~/Library/Application Support/Pong` |
 | Ping, Windows | Delete `%LOCALAPPDATA%\Programs\Ping`, its Start menu entry and `%APPDATA%\Ping` |

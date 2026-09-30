@@ -15,6 +15,7 @@ ping-agent/           AI agents: MCP server, runners           ─┘
 pong/                 the host: sessions, pipelines, web UI    ─┐ the host
 pong-app/             Pong's window and tray icon (GPUI)       ─┘
 pingpong-*/           the libraries both share (see docs/architecture.md)
+Casks/                the Homebrew casks, written at each release (see below)
 docs/                 documentation; docs/design/ is the design history
 tools/                build, deploy and test scripts (below)
 spikes/               early experiments, not built with the workspace
@@ -159,6 +160,34 @@ normal use.
 Per-second statistics: `RUST_LOG=info,ping_core::stats=debug` on the client
 (`lost_frames` and `recoveries` in that line are cumulative), and the host's
 `pong.log`.
+
+## Releases
+
+A release is a version tag: the workspace's version in `Cargo.toml`
+(`[workspace.package]`), which every program has, tagged as `vVERSION`.
+
+```sh
+git tag v0.7.0 && git push origin v0.7.0
+```
+
+`.github/workflows/release.yml` then builds the macOS apps on an Apple
+silicon and an Intel runner (`tools/package-macos`: release bundles, zipped
+as `Ping-VERSION-macos-ARCH.zip` and `Pong-VERSION-macos-ARCH.zip`),
+publishes the release with them, and opens a pull request that brings the
+Homebrew casks in `Casks/` to the new version (`tools/update-casks`); `brew
+upgrade` sees the release once it is merged. The same can be done by hand
+from a Mac: `tools/package-macos`, `gh release create`, then
+`tools/update-casks VERSION target/dist` on a branch of its own. To try
+the casks before a release, write them against the local archives
+(`CASKS_DIR=DIR tools/update-casks VERSION target/dist file://$PWD/target/dist`),
+put them in a local tap (`brew tap-new`), and `brew install --cask
+--appdir=DIR` from it.
+
+The apps are signed (the dev identity, or ad hoc on the runners) but not
+notarized: the casks clear the quarantine flag after installing.
+
+`main` takes changes only through pull requests: work on a branch, push it,
+and open one (`gh pr create`).
 
 ## Benchmarks and fuzzing
 
