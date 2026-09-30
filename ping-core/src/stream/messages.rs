@@ -58,7 +58,9 @@ pub(super) fn refusal(status: AckStatus) -> String {
                 .into()
         }
         AckStatus::Busy => "The host is streaming to another device.".into(),
-        AckStatus::NoCodec => "The host cannot encode video in a format this Mac can play.".into(),
+        AckStatus::NoCodec => {
+            "The host cannot encode video in a format this computer can play.".into()
+        }
         AckStatus::VddUnavailable => {
             "The host could not create its virtual display. Try again; if it keeps \
                 failing, restart Pong on the host."
