@@ -104,6 +104,9 @@ run started by Ping.
 - `Ping mcp` (or `ping-app mcp`) runs the MCP server, as `ping-agent mcp`.
 - On Linux, `ping-app --ping-stream` is the stream's own process, started by
   the app.
+- Starting either app while it runs shows the copy that runs, and adds none
+  (one copy per data folder: a `PING_DATA_DIR` or `PONG_DATA_DIR` elsewhere
+  is another app).
 
 ## Environment variables
 

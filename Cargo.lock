@@ -5815,6 +5815,7 @@ dependencies = [
  "pingpong-pairing",
  "pingpong-proto",
  "pingpong-ui",
+ "pingpong-update",
  "serde",
  "serde_json",
  "tiny-skia 0.12.0",

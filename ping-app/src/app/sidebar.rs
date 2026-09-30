@@ -141,6 +141,14 @@ impl PingApp {
                     .children(self.session_rows(t, cx))
                     .child(header("Settings"))
                     .child(nav(
+                        "nav-general",
+                        "General",
+                        IconName::Settings,
+                        Page::Settings(Tab::General),
+                        None,
+                        cx,
+                    ))
+                    .child(nav(
                         "nav-video",
                         "Video",
                         IconName::Display,
@@ -172,6 +180,13 @@ impl PingApp {
                         None,
                         cx,
                     )),
+            )
+            .children(
+                pingpong_ui::updates::notice(&super::UPDATE_APP, &self.update_status, t).map(
+                    |notice| {
+                        notice.on_click(cx.listener(|this, _, _, cx| this.show_updates(false, cx)))
+                    },
+                ),
             )
             .child(
                 div()

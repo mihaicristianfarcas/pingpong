@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use ping_core::session::{NativeMode, StreamRequest};
 use pingpong_proto::control::{app, codec};
+use pingpong_update::{Build, Channel};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -34,6 +35,10 @@ pub struct Prefs {
     pub gamepad_mouse: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub share_clipboard: bool,
+    /// What the update check follows, once the user has chosen (until
+    /// then, what suits the build that runs: see [`Prefs::update_channel`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updates: Option<Channel>,
 }
 
 impl Default for Prefs {
@@ -56,6 +61,7 @@ impl Default for Prefs {
             connection_warnings: true,
             gamepad_mouse: true,
             share_clipboard: true,
+            updates: None,
         }
     }
 }
@@ -100,6 +106,14 @@ impl Prefs {
             }
             Err(e) => tracing::warn!(error = %e, "settings not saved"),
         }
+    }
+
+    /// What the update check follows: the user's choice, else this build's
+    /// default. The default is not saved, so a checkout's (main) does not
+    /// follow the settings to a packaged release, whose default is releases.
+    pub fn update_channel(&self) -> Channel {
+        self.updates
+            .unwrap_or_else(|| Channel::default_for(&Build::this()))
     }
 
     pub fn is_listed_resolution(&self) -> bool {

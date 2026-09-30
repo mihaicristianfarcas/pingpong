@@ -55,10 +55,13 @@ losing frames or lagging (**Connection warnings**).
 
 ## Ping's settings
 
-Changes apply to the next stream.
+Changes to the streaming settings apply to the next stream. ⌘, (Ctrl+, on
+Windows and Linux) opens them.
 
 | Page | Setting | What it does |
 |---|---|---|
+| General | Look for updates | New releases (the default for a packaged release), releases and main (the default for a build from a checkout: also commits on `main` newer than the build's), or off. See [Updates](#updates) |
+| | Check for Updates | Asks GitHub now, whatever the setting |
 | Video | Resolution | This display's native size (the default), the scaled desktop size (Mac), or a custom size |
 | | Frame rate | Frames per second the host sends; up to this display's maximum |
 | | Video codec | Automatic (HEVC when both ends can), HEVC, or H.264 |
@@ -125,6 +128,22 @@ the web UI's certificate and account, and `logs/`:
 | Linux | `~/.config/pong` |
 
 `PONG_DATA_DIR` points Pong elsewhere.
+
+## Updates
+
+Ping says when there is something newer than the copy that runs: a line
+at the foot of the sidebar ("Ping 0.7.0 is available"). Clicking it says what it is and how to get
+it: the release's page, or `brew upgrade --cask ping` for a copy Homebrew
+installed, or, for a build from a checkout, the commits on `main` it does
+not have. Nothing is downloaded or installed by the app.
+
+It asks GitHub's public API, without an account: a few seconds after
+starting when the last answer is more than a day old, and once a day while
+it runs. What it sends is what any HTTPS request shows (this computer's
+address) and the version in the `User-Agent`. **Look for updates: Off**
+stops it; **Check for Updates** (in the app's menu, and in General) still
+asks once. The last answer is kept in `update.toml` in the app's data
+folder.
 
 ## Sharing the clipboard
 

@@ -29,6 +29,11 @@ measurements here are from an M4 Pro).
   LAN connections fail.
 - **Notifications** for agent sessions (when a session needs you and is not
   on screen) are asked for the first time a session opens.
+- **The menu bar** is a Mac app's: Ping (About, Check for Updates,
+  Settings, Services, Hide, Quit), File (Add Host, Look for Hosts Again,
+  Close Window), Edit, View (the pages), Window and Help (the docs, the
+  logs in Finder, reporting an issue).
+- **One copy.** Opening Ping again brings the running one forward.
 
 ## Pong, the host
 

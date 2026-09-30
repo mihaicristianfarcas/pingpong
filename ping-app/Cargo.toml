@@ -28,6 +28,7 @@ futures = "0.3"
 gpui.workspace = true
 gpui_platform.workspace = true
 pingpong-ui = { path = "../pingpong-ui", default-features = false }
+pingpong-update = { path = "../pingpong-update" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 tracing = "0.1"

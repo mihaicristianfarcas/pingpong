@@ -51,6 +51,19 @@ capture and control the secure desktop (UAC prompts, the lock screen), as
 Sunshine and Apollo do. Clipboard files are read and written as the
 signed-in user, not as SYSTEM.
 
+**The update check** asks GitHub's public API, over HTTPS (Mozilla's root
+certificates, as `webpki-roots` carries them), once a day, without an
+account, sending nothing but the request and the version in its
+`User-Agent`. Its answers are read as untrusted input, and the only
+links it passes on for opening are pages of this repository. Nothing is
+downloaded or installed. It can be turned off
+([docs/usage.md](docs/usage.md#updates)).
+
+**The window's local socket.** On macOS and Linux each app listens on a
+Unix socket in its own data folder, so a second start can ask the running
+copy to show its window; it takes that one word and nothing else. On
+Windows the same is a named event in the signed-in session.
+
 **AI agents** are clients of their own, held to rules the host enforces:
 never over a person, never on a secure screen, only with the access the
 host granted. [docs/ai-agents.md](docs/ai-agents.md#threat-model) has their

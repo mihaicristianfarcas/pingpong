@@ -7,6 +7,7 @@
 //! or its hotkey) and agent sessions (until you end them). Neither outlives
 //! the app.
 
+mod actions;
 mod demo;
 mod desktop;
 mod sheets;
@@ -23,13 +24,22 @@ use gpui::{
     SharedString, Window,
 };
 use ping_core::session::{self, NativeMode, Session};
+use pingpong_ui::updates::UpdateApp;
 use pingpong_ui::{FieldEvent, TextField, Theme, Type};
+use pingpong_update::{Build, Channel, Checker};
 
 use crate::agents::AgentsState;
 use crate::model::{Item, Model, Pairing};
 use crate::prefs::Prefs;
 use crate::settings::Tab;
 use demo::Demo;
+
+/// Ping, to the update check: its name and the cask that installs it.
+pub const UPDATE_APP: UpdateApp = UpdateApp {
+    name: "Ping",
+    cask: "ping",
+    build: Build::this(),
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -95,6 +105,11 @@ pub struct PingApp {
     pub agents: AgentsState,
     /// Notifications about agent sessions not on screen.
     pub notifier: crate::notify::Notifier,
+    /// The update check, and what it said when last looked at.
+    pub updates: Checker,
+    pub update_status: pingpong_update::Status,
+    /// The sheet that says what the update check found.
+    update_sheet: bool,
     focus: FocusHandle,
 }
 
@@ -139,6 +154,17 @@ impl PingApp {
         let (ended_tx, ended_rx) = crossbeam_channel::unbounded();
         let demo = Demo::from_env();
         let prefs = Prefs::load(&dir);
+        // A check asks GitHub nothing on its own: what it shows is made up
+        // (PING_UI_DEMO's `update`), or asked for by hand.
+        let channel = if std::env::var_os("PING_UI_DEMO").is_some() {
+            Channel::Off
+        } else {
+            prefs.update_channel()
+        };
+        let updates = {
+            let waker = waker.clone();
+            Checker::start(Build::this(), dir.clone(), channel, move || waker.wake())
+        };
         let agents = AgentsState::new(dir.clone(), window, cx);
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
@@ -162,6 +188,9 @@ impl PingApp {
             notifier: crate::notify::Notifier::new(waker.clone()),
             waker,
             agents,
+            updates,
+            update_status: pingpong_update::Status::default(),
+            update_sheet: false,
             focus,
         }
     }
@@ -204,6 +233,11 @@ impl PingApp {
         }
         changed |= self.agents.update();
         changed |= self.notifications(window, cx);
+        let updates = self.updates.status();
+        if updates != self.update_status {
+            self.update_status = updates;
+            changed = true;
+        }
         // Logging in to an agent session that was connecting.
         let ready: Vec<u64> = self
             .agents
@@ -617,6 +651,9 @@ impl PingApp {
                 }
             }
         }
+        if before.update_channel() != self.prefs.update_channel() {
+            self.updates.set_channel(self.prefs.update_channel());
+        }
         self.prefs.save(&self.dir);
         cx.notify();
     }
@@ -626,7 +663,8 @@ impl PingApp {
         let closed = self.menu.take().is_some()
             || self.add_host.take().is_some()
             || self.confirm_unpair.take().is_some()
-            || self.alert.take().is_some();
+            || self.alert.take().is_some()
+            || std::mem::take(&mut self.update_sheet);
         if !closed {
             if let Some(p) = self.pairing.take() {
                 p.cancel();
@@ -645,6 +683,7 @@ impl PingApp {
             || self.add_host.is_some()
             || self.confirm_unpair.is_some()
             || self.alert.is_some()
+            || self.update_sheet
     }
 
     // -----------------------------------------------------------------------
@@ -666,27 +705,7 @@ impl Render for PingApp {
         };
         let sheet = self.sheets(t, window, cx);
         let menu = self.host_menu(t, cx);
-        div()
-            .key_context("PingApp")
-            .track_focus(&self.focus)
-            .on_action(cx.listener(|this, _: &crate::OpenSettings, _, cx| {
-                if !this.sheet_open() {
-                    this.set_page(Page::Settings(Tab::Video), cx)
-                }
-            }))
-            .on_action(
-                cx.listener(|this, _: &crate::ShowHosts, _, cx| this.set_page(Page::Hosts, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &crate::ShowAgents, _, cx| this.set_page(Page::Agents, cx)),
-            )
-            .on_action(cx.listener(|this, _: &crate::Refresh, _, cx| this.refresh(cx)))
-            .on_action(cx.listener(|this, _: &crate::AddHost, window, cx| {
-                if !this.sheet_open() {
-                    this.show_add_host(window, cx)
-                }
-            }))
-            .on_action(cx.listener(|this, _: &crate::Dismiss, _, cx| this.dismiss(cx)))
+        self.on_actions(div().key_context("PingApp").track_focus(&self.focus), cx)
             .size_full()
             .relative()
             .flex()

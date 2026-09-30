@@ -27,9 +27,16 @@ overrides it).
 ## Ping
 
 A sidebar: **Hosts**, **Agents**, the open **Sessions** (when there are
-any), then the settings pages (**Video**, **Audio**, **Input**, **Agent
-setup**); at its foot, the app's version or "Looking for hosts…". ⌘1, ⌘2 and
-⌘, go to Hosts, Agents and Video (Ctrl on Windows and Linux).
+any), then the settings pages (**General**, **Video**, **Audio**, **Input**,
+**Agent setup**); at its foot, the app's version or "Looking for hosts…",
+and above it a line when a newer Ping exists. ⌘1, ⌘2 and ⌘, go to Hosts,
+Agents and General (Ctrl on Windows and Linux).
+
+On a Mac the menu bar is a Mac app's: **Ping** (About, Check for Updates,
+Settings, Services, Hide, Quit), **File** (Add Host ⌘N, Look for Hosts
+Again ⌘R, Close Window ⌘W), **Edit** (cut, copy and paste in the text
+fields), **View** (the pages), **Window** (Minimize ⌘M, Zoom, the window
+list) and **Help** (the documentation, the logs, reporting an issue).
 
 - **Hosts**: a card per host with its status. Hovering says what a click
   does (Stream, Wake, Pair); the card's "…" or a right click has the rest
@@ -37,8 +44,10 @@ setup**); at its foot, the app's version or "Looking for hosts…". ⌘1, ⌘2 a
   click streams at, and how to change it.
 - **Settings**: each row names a setting and says in a line what it does.
 - **Agents** starts agent sessions; **Sessions** lists them and your own
-  desktop streams. A session's page and its side panel are described in
-  [ai-agents.md](ai-agents.md#2-work-with-it-sessions).
+  desktop streams. A session's page has only the session's title and its
+  buttons along the top: its state is in the sidebar, the rest in the side
+  panel ([ai-agents.md](ai-agents.md#2-work-with-it-sessions)).
+- **General**: the update check ([usage.md](usage.md#updates)).
 - **A stream** opens in a window of its own (see [usage.md](usage.md)).
   A stream window that goes away without ending its stream is noticed
   within a quarter of a second, and the stream ends with it.
@@ -127,14 +136,16 @@ PING_UI_DEMO=agents=sample,snapshot=/tmp/session.png,quit target/debug/ping-app
 PONG_UI_DEMO=sample,devices,snapshot=/tmp/devices.png,quit target/debug/pong-app
 ```
 
-Ping's steps: `settings[=video|audio|input|agents]`,
+Ping's steps: `settings[=general|video|audio|input|agents]`,
 `agents[=setup|sample|sample-live|sample-ask]`, `chat=MESSAGE` (to the open
 session, or a new one on the first host the agent may use), `login`,
 `pair=HOST:PORT`, `add`, `menu=NAME`, `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
 `wait=SECS`, `close-login`, `vanish-login`, `step=N`, `panel-end`,
-`snapshot=PATH`, `quit`. `PING_UI_DEMO_SCREEN=PATH` gives the sample
-sessions a screenshot to show.
+`update` and `update-main` (the update check says there is a newer release,
+or newer commits on main), `updates` (its sheet), `menus` (the menu bar, to
+the log), `snapshot=PATH`, `quit`. `PING_UI_DEMO_SCREEN=PATH` gives the
+sample sessions a screenshot to show.
 
 Pong's steps: a page's name (`overview`, `devices`, `general`, `video`,
 `network`, `agents`, `logs`), `sample` (a made-up session, request and

@@ -1,4 +1,5 @@
-//! The sheets over the window (pairing, adding a host, unpairing, alerts) and a host's menu.
+//! The sheets over the window (pairing, adding a host, unpairing, alerts, what the update
+//! check found) and a host's menu.
 
 use gpui::{
     anchored, deferred, div, prelude::*, px, AnyElement, App, ClickEvent, Context, FontWeight,
@@ -266,6 +267,24 @@ impl PingApp {
                         ),
                     );
             return Some(pingpong_ui::sheet("alert", 340.0, t, body).into_any_element());
+        }
+        if self.update_sheet {
+            let (check, close) = (cx.weak_entity(), cx.weak_entity());
+            let body = pingpong_ui::updates::sheet_body(
+                &super::UPDATE_APP,
+                &self.update_status,
+                t,
+                move |_, cx| {
+                    let _ = check.update(cx, |this, _| this.updates.check_now());
+                },
+                move |_, cx| {
+                    let _ = close.update(cx, |this, cx| {
+                        this.update_sheet = false;
+                        cx.notify();
+                    });
+                },
+            );
+            return Some(pingpong_ui::sheet("updates", 380.0, t, body).into_any_element());
         }
         let _ = window;
         None

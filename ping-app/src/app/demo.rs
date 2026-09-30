@@ -17,7 +17,10 @@ use super::{Page, PingApp};
 /// sample session), `chat=MESSAGE` a message to the agent session (a new one
 /// on the first agent host; each waits for the turn before it), `stream=NAME` streams from that host,
 /// `stop-after=SECS` ends a stream after that long as the user would,
-/// `snapshot=PATH` saves the window as a PNG, `quit` quits after it.
+/// `update` and `update-main` make the update check say there is a newer
+/// release, or newer commits on main, `updates` opens its sheet, `menus`
+/// writes the menu bar to the log, `snapshot=PATH` saves the window as a
+/// PNG, `quit` quits after it.
 #[derive(Default)]
 pub(super) struct Demo {
     actions: Vec<String>,
@@ -164,7 +167,24 @@ impl PingApp {
                 }
                 continue;
             }
-            if let Some(address) = action.strip_prefix("pair=") {
+            if action == "update" {
+                self.updates.pretend(Some(pingpong_update::Update::Release {
+                    version: "0.7.0".into(),
+                    url: format!("{}/releases", pingpong_update::REPOSITORY),
+                }));
+            } else if action == "update-main" {
+                self.updates.pretend(Some(pingpong_update::Update::Commits {
+                    ahead: 4,
+                    url: format!("{}/commits/main", pingpong_update::REPOSITORY),
+                }));
+            } else if action == "updates" {
+                // The sheet as it is, without asking GitHub.
+                self.update_sheet = true;
+            } else if action == "menus" {
+                for line in pingpong_ui::desktop::menu_bar() {
+                    tracing::info!(target: "menu_bar", "{line}");
+                }
+            } else if let Some(address) = action.strip_prefix("pair=") {
                 self.pair_with(address.to_string(), address.to_string(), None, false, cx);
             } else if action == "add" {
                 self.show_add_host(window, cx);

@@ -1,5 +1,6 @@
-//! Moonlight's settings (video, audio, input) and the agents' setup, one page
-//! each: cards of labelled rows, each saying what it does.
+//! The app's own settings (General), Moonlight's (video, audio, input) and
+//! the agents' setup, one page each: cards of labelled rows, each saying
+//! what it does.
 
 use gpui::{div, prelude::*, px, AnyElement, App, Context, SharedString, Window};
 use pingpong_ui::{button, rows, section, select, setting, slider, switch, Choice, Theme, Type};
@@ -9,6 +10,7 @@ use crate::prefs::{parse_size, Prefs, FRAME_RATES, RESOLUTIONS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
+    General,
     Video,
     Audio,
     Input,
@@ -18,6 +20,7 @@ pub enum Tab {
 impl Tab {
     pub fn parse(s: &str) -> Tab {
         match s {
+            "general" => Tab::General,
             "audio" => Tab::Audio,
             "input" => Tab::Input,
             "agents" => Tab::Agents,
@@ -54,6 +57,11 @@ impl PingApp {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (title, subtitle, body): (&str, &str, AnyElement) = match tab {
+            Tab::General => (
+                "General",
+                "Ping itself: its version, and how it hears of a newer one.",
+                self.general(t, cx),
+            ),
             Tab::Video => (
                 "Video",
                 "How streams look. Changes apply to the next stream.",
@@ -138,6 +146,34 @@ impl PingApp {
                 app.save_prefs(cx);
             });
         }
+    }
+
+    fn general(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        let check = cx.weak_entity();
+        section("Updates", t)
+            .child(rows(
+                [
+                    pingpong_ui::updates::channel_setting(
+                        "update-channel",
+                        &crate::app::UPDATE_APP,
+                        self.prefs.update_channel(),
+                        t,
+                        self.prefs_setter(cx, |p, channel| p.updates = Some(channel)),
+                    )
+                    .into_any_element(),
+                    pingpong_ui::updates::version_setting(
+                        &crate::app::UPDATE_APP,
+                        &self.update_status,
+                        t,
+                        move |_, cx| {
+                            let _ = check.update(cx, |app, cx| app.show_updates(true, cx));
+                        },
+                    )
+                    .into_any_element(),
+                ],
+                t,
+            ))
+            .into_any_element()
     }
 
     fn video(&mut self, t: Theme, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
