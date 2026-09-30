@@ -6052,11 +6052,16 @@ dependencies = [
 name = "pingpong-ui"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "gpui",
  "gpui_platform",
  "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "pingpong-update",
  "pulldown-cmark",
  "raw-window-handle",
+ "tracing",
  "unicode-segmentation",
  "windows 0.61.3",
 ]

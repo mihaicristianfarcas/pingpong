@@ -4,10 +4,16 @@
 //! docs/ui.md.
 
 pub mod controls;
+pub mod desktop;
 pub mod icon;
+pub mod instance;
+pub mod login;
 pub mod markdown;
+pub mod menus;
 pub mod text_field;
 pub mod theme;
+pub mod tray;
+pub mod updates;
 
 use std::sync::OnceLock;
 

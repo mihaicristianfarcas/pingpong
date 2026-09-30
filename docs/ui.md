@@ -13,7 +13,12 @@ overrides it).
   controls (buttons, icon buttons, switch, segmented control, select menu,
   slider, stepper, text field with IME, menus, sheets, cards and setting
   rows, chips, status dots, spinner, keycaps, stats, notices), and Markdown
-  rendering for the agents' words.
+  rendering for the agents' words. Also what both apps need of the desktop:
+  the menu bar a Mac app has (`menus`), the tray icon (`tray`: the menu
+  bar's status item, the taskbar's notification area), one running copy
+  per data folder (`instance`), starting at login (`login`), the About
+  panel and staying out of the Dock (`desktop`), and the update check's
+  notice, sheet and settings (`updates`, over `pingpong-update`).
 - **`ping-app`**: Ping, the client.
 - **`pong-app`**: Pong's own window. The host runs without it (the service
   on Windows, Pong.app or a user unit elsewhere); the web UI stays, for
