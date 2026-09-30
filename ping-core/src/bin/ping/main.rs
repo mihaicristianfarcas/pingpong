@@ -33,7 +33,8 @@ fn usage() -> ExitCode {
             \x20      ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc]\n\
             \x20                       [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]\n\
             \x20                       [--mute-in-background] [--audio-channels 2|6|8] [--steam]\n\
-            \x20                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]"
+            \x20                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
+            \x20                       [--no-clipboard]"
     );
     ExitCode::FAILURE
 }

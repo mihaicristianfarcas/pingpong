@@ -151,7 +151,12 @@ fn main() -> ExitCode {
         other => {
             eprintln!(
                 "unknown command {other}\n\nusage: pong \
-                    [host|identity|clients|add-client|remove-client|agent-access]"
+                    [host|identity|clients|add-client|remove-client|agent-access{}]",
+                if cfg!(windows) {
+                    "|install|uninstall"
+                } else {
+                    ""
+                }
             );
             ExitCode::FAILURE
         }
