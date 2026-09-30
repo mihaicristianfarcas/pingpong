@@ -22,6 +22,15 @@ line of its standard output. That process is `ping_core::linux`:
   with the same colour maths as the Windows renderer.
 - **Controllers.** gilrs (evdev), rumble included.
 - **Sound.** cpal (ALSA; PipeWire and PulseAudio through it).
+- **In the launcher.** `tools/linux/install-apps` installs Ping's and Pong's
+  windows for the user with a desktop entry and an icon each. The entries
+  are named after the windows' app ids (`dev.pingpong.Ping`,
+  `dev.pingpong.PongApp`), so the dock and the task switcher show each
+  window under its own icon, under Wayland and X11.
+- **No tray icon for Pong's window.** There is no one tray on Linux (the
+  StatusNotifier protocol needs a D-Bus service and a menu protocol of its
+  own, and GNOME shows it only with an extension), so Pong's window is an
+  ordinary app there: closing it quits, and it does not start at login.
 
 ## Pong, the host
 
@@ -105,4 +114,5 @@ Data and logs are in `~/.config/pong`.
 - The host at the client's resolution under X11 (RandR modes) rather than
   scaled.
 - Controllers on a Linux host (uinput gamepads).
-- Packages: there is a systemd unit, but no `.deb` or install script.
+- Packages: there is a systemd unit and a per-user install script for the
+  windows, but no `.deb`, Flatpak or release archive.

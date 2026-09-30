@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Ping
+GenericName=Remote Desktop Client
+Comment=Stream a computer running Pong, games included
+Exec=ping-app
+Icon=dev.pingpong.Ping
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=stream;remote;desktop;moonlight;
+StartupNotify=true
+StartupWMClass=dev.pingpong.Ping

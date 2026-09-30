@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Pong
+GenericName=Streaming Host
+Comment=This computer's streaming host: its session, devices and settings
+Exec=pong-app
+Icon=dev.pingpong.PongApp
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=stream;host;remote;desktop;sunshine;apollo;
+StartupNotify=true
+StartupWMClass=dev.pingpong.PongApp

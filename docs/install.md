@@ -164,7 +164,13 @@ cargo build --release -p ping-app          # the app: target/release/ping-app
 cargo build --release -p ping-core --bin ping   # the CLI, if you want it
 ```
 
-Run `target/release/ping-app`. There is no desktop entry or package yet.
+Run `target/release/ping-app`, or install it as a desktop app for your
+user, with a launcher entry and its icon:
+
+```sh
+tools/linux/install-apps          # ping-app and pong-app, whichever are built
+```
+
 Details: [platforms/linux.md](platforms/linux.md).
 
 ## Pong on Linux
@@ -183,8 +189,9 @@ systemctl --user enable --now pong
 Pong runs in your desktop session, as you. Under Wayland, the desktop asks
 once whether Pong may share the screen (on GNOME, switch on **Allow Remote
 Interaction** for the keyboard and mouse). Pong's window is
-`cargo build --release -p pong-app`, then `target/release/pong-app`. Data
-and logs are in `~/.config/pong`. Details: [platforms/linux.md](platforms/linux.md).
+`cargo build --release -p pong-app`, then `target/release/pong-app` (or
+`tools/linux/install-apps` for a launcher entry). Data and logs are in
+`~/.config/pong`. Details: [platforms/linux.md](platforms/linux.md).
 
 ## Pairing
 
@@ -208,7 +215,7 @@ anywhere ([networking.md](networking.md)). Next: [usage.md](usage.md).
 | Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist` and the same for `dev.pingpong.PongControl.plist`, delete those files, the two apps, and `~/Library/Application Support/Pong` |
 | Ping, Windows | Delete `%LOCALAPPDATA%\Programs\Ping`, its Start menu entry and `%APPDATA%\Ping` |
 | Pong, Windows | `pong uninstall` as administrator, then delete `C:\Program Files\Pong`, `C:\ProgramData\Pong`, `%APPDATA%\Pong`, the Start menu entry, and the `Pong` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
-| Ping, Linux | Delete the binary and `~/.config/ping` |
+| Ping, Linux | `tools/linux/install-apps --uninstall` (or delete the binary), and `~/.config/ping` |
 | Pong, Linux | `systemctl --user disable --now pong`, then delete the unit, the binary and `~/.config/pong` |
 
 Unpair a device on the other side too (Ping: the host's menu > Unpair; Pong:

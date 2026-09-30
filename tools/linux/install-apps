@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Install Ping's and Pong's windows for this user, as desktop apps: the
+# programs in ~/.local/bin, a launcher entry each with its icon. The entries
+# are named after the windows' app ids, so the desktop groups each window
+# under its entry (Wayland's app_id, X11's WM_CLASS).
+#
+#   cargo build --release -p ping-app          # and/or -p pong-app
+#   tools/linux/install-apps                   # installs what was built
+#   tools/linux/install-apps --uninstall
+#
+# The host itself is a user service: see tools/linux/pong.service.
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+BIN=${XDG_BIN_HOME:-$HOME/.local/bin}
+DATA=${XDG_DATA_HOME:-$HOME/.local/share}
+TARGET=${CARGO_TARGET_DIR:-$REPO/target}/release
+
+# app PROGRAM ID ICON
+apps=(
+    "ping-app dev.pingpong.Ping $REPO/ping-app/assets/icon-256.png"
+    "pong-app dev.pingpong.PongApp $REPO/pong-app/assets/icon-256.png"
+)
+
+for app in "${apps[@]}"; do
+    read -r program id icon <<< "$app"
+    if [[ ${1:-} == --uninstall ]]; then
+        rm -f "$BIN/$program" "$DATA/applications/$id.desktop" \
+            "$DATA/icons/hicolor/256x256/apps/$id.png"
+        echo "removed $program"
+        continue
+    fi
+    if [[ ! -x $TARGET/$program ]]; then
+        echo "skipping $program: build it first (cargo build --release -p $program)"
+        continue
+    fi
+    install -Dm755 "$TARGET/$program" "$BIN/$program"
+    install -Dm644 "$REPO/tools/linux/$id.desktop" "$DATA/applications/$id.desktop"
+    install -Dm644 "$icon" "$DATA/icons/hicolor/256x256/apps/$id.png"
+    echo "installed $program ($DATA/applications/$id.desktop)"
+done
+# Menus and docks pick the entries up without logging out.
+command -v update-desktop-database >/dev/null && update-desktop-database -q "$DATA/applications" || true
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true
+if [[ ${1:-} != --uninstall ]]; then
+    case ":$PATH:" in
+        *":$BIN:"*) ;;
+        *) echo "note: $BIN is not in PATH: add it, or the launcher entries cannot start the programs" ;;
+    esac
+fi
