@@ -219,7 +219,14 @@ fn a_batch_goes_out_in_runs_byte_exact() {
                 .send_batch(&to_host, group.iter().map(|p| p.as_slice()), &mut scratch)
                 .unwrap();
         }
-        assert_eq!(to_host.tx_datagrams() - sent_before, packets.len() as u64);
+        // Every packet went out. The pump thread drives the tunnel's timers
+        // meanwhile, so a keepalive may be counted with them.
+        let sent = to_host.tx_datagrams() - sent_before;
+        assert!(
+            sent >= packets.len() as u64,
+            "{sent} of {} sent",
+            packets.len()
+        );
 
         let deadline = Instant::now() + Duration::from_secs(5);
         while at_host.lock().len() < packets.len() {
