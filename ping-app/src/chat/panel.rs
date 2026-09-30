@@ -11,7 +11,7 @@ use pingpong_ui::{icon, IconName, Ink, Radius, Theme, Type};
 
 use crate::app::PingApp;
 
-use super::{thousands, Chat};
+use super::{provider_name, thousands, Chat};
 
 /// Where the agent acted: a ring and a dot, on a picture `w` × `h`.
 pub(super) fn marker(
@@ -114,8 +114,19 @@ pub(super) fn plan_card(plan: &[PlanStep], t: Theme) -> impl IntoElement {
     pingpong_ui::section(title, t).pt(px(8.0)).child(body)
 }
 
-/// Who has the keyboard and mouse, the connection, this turn, the tokens.
+/// The host, who does the thinking, who has the keyboard and mouse, the
+/// connection, this turn, the tokens. The page's title bar holds only the
+/// session's title, so this card is where the rest is said.
 pub(super) fn session_card(chat: &Chat, watching: bool, t: Theme) -> impl IntoElement {
+    let agent = if chat.settings.model.is_empty() {
+        provider_name(chat.settings.provider).to_string()
+    } else {
+        format!(
+            "{} · {}",
+            provider_name(chat.settings.provider),
+            chat.settings.model
+        )
+    };
     let control = match chat.link {
         None => "Not connected".to_string(),
         Some(l) => match l.agent {
@@ -215,6 +226,8 @@ pub(super) fn session_card(chat: &Chat, watching: bool, t: Theme) -> impl IntoEl
         .pt(px(8.0))
         .child(pingpong_ui::rows(
             [
+                row("Host", chat.host.clone()),
+                row("Agent", agent),
                 row("Keyboard and mouse", control),
                 row("Connection", connection),
                 row("This turn", turn),

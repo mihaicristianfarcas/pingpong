@@ -43,8 +43,10 @@ something, look over its shoulder, do a bit yourself, ask again.
 - **What the agent sees** (the eye at the top) is a side panel: the screen
   after the latest action with a ring where it landed — the picture the
   model got, not a second stream — every step so far, the model's plan as
-  it ticks it off, and the session (who has the keyboard and mouse, the
-  connection, this turn's actions and minutes left, tokens).
+  it ticks it off, and the session (the host, the agent and its model, who
+  has the keyboard and mouse, the connection, this turn's actions and
+  minutes left, tokens). The top of the page holds only the session's title
+  and its buttons.
 - **Log In** opens the session's desktop in a stream window beside the
   agent. **Ctrl+Alt+Shift+T** takes the keyboard and mouse and gives them
   back; closing the window leaves the session running.

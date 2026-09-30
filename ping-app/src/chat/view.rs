@@ -5,12 +5,12 @@ use std::time::Duration;
 use gpui::{div, prelude::*, px, AnyElement, Context, ElementId, FontWeight, Window};
 use ping_agent::providers::Approvals;
 use pingpong_ui::{
-    button, chip, field, icon, icon_button, notice, spinner, IconName, Ink, Radius, Theme, Type,
+    button, field, icon, icon_button, notice, spinner, IconName, Ink, Radius, Theme, Type,
 };
 
 use crate::app::PingApp;
 
-use super::{provider_name, thousands, Act, Chat, ChatState, Item};
+use super::{Act, Chat, ChatState, Item};
 
 pub(super) fn action_row(a: &Act, t: Theme) -> impl IntoElement {
     let glyph = if a.text.starts_with("type") {
@@ -139,41 +139,14 @@ impl PingApp {
         let Some(chat) = self.agents.chats.iter().find(|c| c.id == id) else {
             return div().into_any_element();
         };
-        let state = chat.state();
-        let (state_text, tint) = match state {
-            ChatState::Working => ("Working", Ink::FRESH),
-            ChatState::Waiting => ("Waiting for you", Ink::ATTENTION),
-            ChatState::Paused => ("Paused", Ink::ATTENTION),
-            ChatState::Connecting => ("Connecting…", Ink::IDLE),
-            ChatState::Connected => ("Connected", Ink::FRESH),
-            ChatState::Idle => ("Not connected", Ink::IDLE),
-        };
-        let mut meta = vec![
-            chat.host.clone(),
-            provider_name(chat.settings.provider).to_string(),
-        ];
-        if !chat.settings.model.is_empty() {
-            meta.push(chat.settings.model.clone());
-        }
-        if chat.actions > 0 {
-            meta.push(format!(
-                "{} action{}",
-                chat.actions,
-                if chat.actions == 1 { "" } else { "s" }
-            ));
-        }
-        if chat.tokens.0 + chat.tokens.1 > 0 {
-            meta.push(format!(
-                "{} tokens",
-                thousands(chat.tokens.0 + chat.tokens.1)
-            ));
-        }
         let ended = chat.conversation.is_none();
         let panel = chat.panel;
         let busy = chat.busy();
-        let connecting = state == ChatState::Connecting || chat.watch_pending;
+        let connecting = chat.state() == ChatState::Connecting || chat.watch_pending;
 
-        // Along the title bar: the session, and what can be done with it.
+        // Along the title bar: the session's title, and what can be done with
+        // it. Its state, host and figures are the side panel's and the
+        // sidebar row's to say.
         let bar = div()
             .flex_none()
             .h(px(pingpong_ui::Metrics::TOOLBAR))
@@ -186,30 +159,12 @@ impl PingApp {
                 div()
                     .flex_1()
                     .min_w_0()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(Type::BODY + 0.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(chat.title.clone()),
-                    )
-                    .child(chip(state_text, t.ink(tint), t))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(Type::META))
-                            .text_color(t.tertiary)
-                            .child(meta.join(" · ")),
-                    ),
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .text_size(px(Type::BODY + 0.5))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(chat.title.clone()),
             )
             .child(
                 button(
