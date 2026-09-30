@@ -117,6 +117,7 @@ For everyone:
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `PING_AGENT_API_KEY` (a custom endpoint) | agents | API keys; win over saved keys |
 | `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | agents | Point the API loops at a gateway or proxy |
 | `PINGPONG_APPEARANCE` | the apps | `light` or `dark`, whatever the system says |
+| `PINGPONG_UPDATE_API` | the apps | Where the update check asks instead of `https://api.github.com` (a mirror, or a test) |
 | `PING_SOFTWARE_DECODE` | Ping on Linux | Decode in software even where VA-API is available |
 | `PONG_CAPTURE` | Pong on Linux | `x11` or `portal`, where the session type is not clear |
 

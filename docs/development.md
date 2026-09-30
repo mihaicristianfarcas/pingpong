@@ -148,6 +148,8 @@ normal use.
 | `PING_UI_DEMO=…`, `PONG_UI_DEMO=…` | Drive either window and save screenshots ([ui.md](ui.md#checking-it-without-clicking)) |
 | `PING_UI_DEMO_SCREEN=PATH` | The picture the sample agent sessions show |
 | `PONG_APP_URL`, `PONG_APP_CERT`, `PONG_APP_TOKEN` | Point Pong's window at another host's API |
+| `PINGPONG_UPDATE_API=URL` | The update check asks this instead of `https://api.github.com` (the paths are GitHub's) |
+| `PINGPONG_COMMIT=SHA`, `PINGPONG_RELEASE=1` | At build time: the commit the update check compares with `main` (else the checkout's), and a release build (follows releases only). `cargo run -p pingpong-update --example check [releases\|main]` asks GitHub as the apps would |
 | `PONG_NO_PROMPTS=1` | A bundled Mac host does not ask for permissions at start |
 | `PING_AGENT_MCP="CMD … mcp"` | Agent runs start this MCP server instead of their own (e.g. one inside the Linux container) |
 | `PING_AGENT_PATH_MAP=LOCAL=REMOTE` | Rewrites paths passed to such a server |

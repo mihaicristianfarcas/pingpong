@@ -17,6 +17,7 @@ members = [
     "ping-app",
     "pingpong-transport",
     "pingpong-ui",
+    "pingpong-update",
     "pong-app",
 ]
 # spikes/* are deliberately NOT members -- a throwaway probe must never gate a
