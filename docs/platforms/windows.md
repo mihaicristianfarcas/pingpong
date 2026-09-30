@@ -92,6 +92,14 @@ An asleep or switched-off monitor is still on the cable, and Windows spends
 - **Network priority (QoS).** Sunshine marks its traffic for Wi-Fi's video
   queue with qWAVE; qWAVE will not take Pong's dual-stack socket. It would
   take an IPv4 socket of its own, or a system QoS policy on the host.
+- **Keeping the host's monitors on, with its monitor asleep or switched
+  off.** With **Keep this PC's monitors on while streaming** (or
+  `ping stream --keep-host-displays`) the host's own monitor stays part of
+  the desktop, so Windows brings it up before the session starts: 12 to 38 s
+  measured with the monitor switched off at its button, against about a
+  second with it awake. The client waits up to 45 s for a session to start.
+  The default mode does not pay this: it takes the host's monitors out of the
+  desktop.
 - **Ending with the monitor asleep.** Bringing a DisplayPort monitor back
   from deep sleep blocks the display change for as long as it takes to wake
   (up to ~26 s measured); a client connecting meanwhile waits.

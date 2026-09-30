@@ -30,8 +30,10 @@ use super::{send_control, Codec, Ctx, Event, FrameTiming, StreamSettings, VideoO
 
 /// How long to wait for the host before giving up on the session. The host
 /// acks only once the virtual display is up, which for a mode it has never
-/// shown can take several seconds.
-const GIVE_UP_AFTER: Duration = Duration::from_secs(30);
+/// shown can take several seconds, and far longer where a Windows host keeps
+/// its own monitor in the desktop and that monitor is asleep or switched
+/// off: Windows brings it up first (12 to 38 s measured).
+const GIVE_UP_AFTER: Duration = Duration::from_secs(45);
 const START_RETRY: Duration = Duration::from_millis(250);
 const PING_EVERY: Duration = Duration::from_millis(500);
 /// Nothing from the host for this long mid-stream: say the connection is

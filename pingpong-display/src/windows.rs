@@ -41,10 +41,13 @@ use windows::Win32::System::Power::{
 /// two whole intervals of slack before anything is reaped.
 const PING_EVERY: Duration = Duration::from_secs(1);
 
-/// How long to wait for an added monitor to attach to the desktop. Measured
-/// from under 1 s to 3.9 s on the test host (Apollo's takes ~3 s there too);
-/// this is a ceiling, not a typical wait.
+/// How long to poll for an added monitor to attach to the desktop, not
+/// counting the time the display calls themselves block (see
+/// `wait_for_arrival`). Measured from under 1 s to 3.9 s on the test host
+/// (Apollo's takes ~3 s there too); this is a ceiling, not a typical wait.
 const ARRIVAL_TIMEOUT: Duration = Duration::from_secs(10);
+/// How often the wait looks.
+const ARRIVAL_POLL: Duration = Duration::from_millis(100);
 
 // ---------------------------------------------------------------------------
 // CCD helpers
@@ -950,9 +953,16 @@ impl WindowsDisplay {
         keepalive: &Keepalive,
     ) -> Result<String, DisplayError> {
         let started = Instant::now();
-        let deadline = started + ARRIVAL_TIMEOUT;
-        while Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(100));
+        // The wait is counted in polls, not on the clock. The display calls
+        // below block while Windows brings a sleeping monitor up, and the
+        // virtual display attaches only once that is done: with the host's
+        // own monitor kept on and asleep that took 12 s, and 26 s from a
+        // DisplayPort monitor's deep sleep. On the clock, one blocked call
+        // used the whole timeout up, and the wait gave up the moment the call
+        // returned, a poll or two before the display was there.
+        let polls = ARRIVAL_TIMEOUT.as_millis() / ARRIVAL_POLL.as_millis();
+        for _ in 0..polls {
+            std::thread::sleep(ARRIVAL_POLL);
             // Not there yet with the displays off: perhaps Windows waits for
             // them. Wake them, as before.
             if started.elapsed() >= ARRIVE_ASLEEP && !keepalive.display_on.load(Ordering::Acquire) {
@@ -973,8 +983,10 @@ impl WindowsDisplay {
         }
         let seen: Vec<String> = attached_displays().into_iter().map(|d| d.name).collect();
         Err(DisplayError::Os(format!(
-            "display {id:?} did not attach within {}s; attached={seen:?}",
-            ARRIVAL_TIMEOUT.as_secs()
+            "display {id:?} did not attach within {}s of looking ({:.1}s in all); \
+                attached={seen:?}",
+            ARRIVAL_TIMEOUT.as_secs(),
+            started.elapsed().as_secs_f32()
         )))
     }
 
@@ -1065,6 +1077,11 @@ impl DisplayControl for WindowsDisplay {
         // them now. Isolating: power them off first, and on again only once
         // they are out of the desktop (below), so that only the virtual
         // display has to come up.
+        //
+        // A kept monitor that is asleep or switched off makes this slow: the
+        // wake blocks until Windows has brought it up, 12 to 38 s measured.
+        // Powering off first, as when isolating, only moves that wait to the
+        // wake after the setup (tried: 24 s there), so the order stays.
         if self.isolate {
             power_displays_off();
         } else {
