@@ -12,12 +12,15 @@
 	<string>Ping</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Both versions are set to the workspace's by tools/build-ping-app. -->
 	<key>CFBundleShortVersionString</key>
-	<string>0.5.0</string>
+	<string>0.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>0.0.0</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Mihai-Cristian Farcaș. MIT License.</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>

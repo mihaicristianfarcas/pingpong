@@ -4,9 +4,13 @@
 #
 #   tools/build-ping-app            -> target/Ping.app
 #   tools/build-ping-app --install  -> also copy it to /Applications
+#
+# The bundle's version is the workspace's (Cargo.toml). PINGPONG_RELEASE=1
+# makes it a release build, as tools/package-macos does.
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 APP="$REPO/target/Ping.app"
+VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' "$REPO/Cargo.toml")
 
 export MACOSX_DEPLOYMENT_TARGET=14.0
 # Xcode's Metal compiler, when it is installed: the bundle then carries GPUI's
@@ -30,12 +34,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/target/release/ping-app" "$APP/Contents/MacOS/Ping"
 cp "$REPO/ping-app/macos/Info.plist" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
 # The dev identity when there is one (see tools/dev-signing-identity), so the
 # permissions macOS grants survive a rebuild; else ad hoc.
 SIGN=$("$REPO/tools/dev-signing-identity" --check)
 codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Ping "$APP" >/dev/null
-echo "built $APP"
+echo "built $APP ($VERSION)"
 
 if [[ ${1:-} == --install ]]; then
     rm -rf /Applications/Ping.app

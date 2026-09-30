@@ -134,7 +134,7 @@ host's; it is kept per user, in `window.toml` beside the app token
 
 | Setting | Default | What it does |
 |---|---|---|
-| Show Pong's icon at login | on after `host-deploy.ps1` (Windows) | The icon at sign-in, without the window (a LaunchAgent on a Mac, the user's `Run` key on Windows; not on Linux) |
+| Show Pong's icon at login | on after `tools/build-pong-app --install` or `host-deploy.ps1` | The icon at sign-in, without the window (a LaunchAgent on a Mac, the user's `Run` key on Windows; not on Linux) |
 | Look for updates | as Ping's | As Ping's, for Pong |
 
 A changed name or port applies after Pong restarts (the window offers to).

@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # Build Pong.app: the macOS host, bundled so that macOS grants Screen
 # Recording and Accessibility to Pong itself (ad-hoc signed); and Pong
-# Control.app, its window (pong-app), which talks to the running host.
+# Control.app, its window and menu bar icon (pong-app), which talks to the
+# running host.
 #
 #   tools/build-pong-app            -> target/Pong.app, target/Pong Control.app
-#   tools/build-pong-app --install  -> also copy them to /Applications and
-#                                      start the host at login (a LaunchAgent)
+#   tools/build-pong-app --install  -> also copy them to /Applications, start
+#                                      the host at login and keep it running,
+#                                      and put Pong's icon in the menu bar at
+#                                      login (two LaunchAgents)
+#
+# The bundles' version is the workspace's (Cargo.toml). PINGPONG_RELEASE=1
+# makes them a release build, as tools/package-macos does.
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 APP="$REPO/target/Pong.app"
+CONTROL="$REPO/target/Pong Control.app"
 AGENT="$HOME/Library/LaunchAgents/dev.pingpong.Pong.plist"
+CONTROL_AGENT="$HOME/Library/LaunchAgents/dev.pingpong.PongControl.plist"
+VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' "$REPO/Cargo.toml")
 
 export MACOSX_DEPLOYMENT_TARGET=14.0
 # Xcode's Metal compiler, when it is installed: the bundle then carries GPUI's
@@ -22,29 +31,49 @@ if DEVELOPER_DIR=$XCODE xcrun metal --version >/dev/null 2>&1; then
 fi
 cargo build --release -p pong -p pong-app ${FEATURES[@]+"${FEATURES[@]}"} --manifest-path "$REPO/Cargo.toml"
 
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-cp "$REPO/target/release/pong" "$APP/Contents/MacOS/pong"
-cp "$REPO/pong/macos/Info.plist" "$APP/Contents/Info.plist"
+# Pong's icon, drawn by the same code as Ping's.
+ICNS="$REPO/target/Pong.icns"
+MAKE_ICON="$REPO/ping-app/examples/make-icon.rs"
+if [[ ! -f $ICNS || $MAKE_ICON -nt $ICNS ]]; then
+    cargo run --release -q -p ping-app --example make-icon --manifest-path "$REPO/Cargo.toml" -- "$REPO/target/icon"
+    iconutil -c icns "$REPO/target/icon/Pong.iconset" -o "$ICNS"
+fi
+
+# bundle DIR PLIST: an app bundle's skeleton, its Info.plist at the
+# workspace's version, and the icon.
+bundle() {
+    rm -rf "$1"
+    mkdir -p "$1/Contents/MacOS" "$1/Contents/Resources"
+    cp "$2" "$1/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" \
+        -c "Set :CFBundleVersion $VERSION" "$1/Contents/Info.plist"
+    cp "$ICNS" "$1/Contents/Resources/Pong.icns"
+}
+
 # The dev identity when there is one (see tools/dev-signing-identity), so the
 # Screen Recording and Accessibility permissions survive a rebuild; else ad hoc.
 SIGN=$("$REPO/tools/dev-signing-identity" --check)
-codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Pong "$APP" >/dev/null
-echo "built $APP"
 
-CONTROL="$REPO/target/Pong Control.app"
-rm -rf "$CONTROL"
-mkdir -p "$CONTROL/Contents/MacOS"
+bundle "$APP" "$REPO/pong/macos/Info.plist"
+cp "$REPO/target/release/pong" "$APP/Contents/MacOS/pong"
+codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Pong "$APP" >/dev/null
+echo "built $APP ($VERSION)"
+
+bundle "$CONTROL" "$REPO/pong-app/macos/Info.plist"
 cp "$REPO/target/release/pong-app" "$CONTROL/Contents/MacOS/Pong Control"
-cp "$REPO/pong-app/macos/Info.plist" "$CONTROL/Contents/Info.plist"
 codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.PongControl "$CONTROL" >/dev/null
-echo "built $CONTROL"
+echo "built $CONTROL ($VERSION)"
 
 if [[ ${1:-} == --install ]]; then
+    # The menu bar icon that runs is the old build: it quits (as its Quit
+    # does) and the new one starts below.
+    osascript -e 'tell application id "dev.pingpong.PongControl" to quit' >/dev/null 2>&1 || true
     rm -rf /Applications/Pong.app "/Applications/Pong Control.app"
     cp -R "$APP" /Applications/Pong.app
     cp -R "$CONTROL" "/Applications/Pong Control.app"
     mkdir -p "$(dirname "$AGENT")"
+    # The host: at login, and again whenever it exits. Pong's window writes
+    # the same agent when its "Start Pong" button is used.
     cat > "$AGENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -66,8 +95,33 @@ if [[ ${1:-} == --install ]]; then
 </dict>
 </plist>
 PLIST
-    launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null || true
-    launchctl bootstrap "gui/$(id -u)" "$AGENT"
-    echo "installed /Applications/Pong.app; it starts at login ($AGENT)"
+    # Pong's icon: at login, without its window, and not again once quit.
+    # "Show Pong's icon at login" in the window's General settings turns
+    # this same agent on and off.
+    cat > "$CONTROL_AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.pingpong.PongControl</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/Pong Control.app/Contents/MacOS/Pong Control</string>
+		<string>--background</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>
+PLIST
+    for agent in "$AGENT" "$CONTROL_AGENT"; do
+        launchctl bootout "gui/$(id -u)" "$agent" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$agent"
+    done
+    echo "installed /Applications/Pong.app and /Applications/Pong Control.app"
+    echo "the host starts at login ($AGENT), Pong's icon too ($CONTROL_AGENT)"
     echo "macOS will ask for Screen Recording and Accessibility the first time."
 fi

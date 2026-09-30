@@ -68,12 +68,15 @@ created one (`tools/dev-signing-identity`, see
 tools/build-pong-app --install
 ```
 
-This installs **Pong.app** (the host) and **Pong Control.app** (its window)
-in `/Applications`, and a LaunchAgent that starts the host at login
-(`~/Library/LaunchAgents/dev.pingpong.Pong.plist`). On first start Pong asks
-for **Screen Recording** (to capture) and **Accessibility** (to use the
-keyboard and mouse); grant both in System Settings > Privacy & Security.
-Without Accessibility, clients can watch but not control.
+This installs **Pong.app** (the host) and **Pong Control.app** (its window,
+and Pong's menu bar icon) in `/Applications`, and two LaunchAgents: one
+starts the host at login and keeps it running
+(`~/Library/LaunchAgents/dev.pingpong.Pong.plist`), the other puts Pong's
+icon in the menu bar at login (`dev.pingpong.PongControl.plist`; **Show
+Pong's icon at login** in the window turns it off). On first start Pong
+asks for **Screen Recording** (to capture) and **Accessibility** (to use
+the keyboard and mouse); grant both in System Settings > Privacy &
+Security. Without Accessibility, clients can watch but not control.
 
 Without `--install`, the apps are left in `target/`. To run the host from a
 terminal instead: `cargo run --release -p pong -- host` (the terminal then
@@ -179,7 +182,7 @@ anywhere ([networking.md](networking.md)). Next: [usage.md](usage.md).
 | | |
 |---|---|
 | Ping, macOS | Delete `/Applications/Ping.app` and `~/Library/Application Support/Ping` |
-| Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist`, delete that file, the two apps, and `~/Library/Application Support/Pong` |
+| Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist` and the same for `dev.pingpong.PongControl.plist`, delete those files, the two apps, and `~/Library/Application Support/Pong` |
 | Ping, Windows | Delete `%LOCALAPPDATA%\Programs\Ping`, its Start menu entry and `%APPDATA%\Ping` |
 | Pong, Windows | `pong uninstall` as administrator, then delete `C:\Program Files\Pong`, `C:\ProgramData\Pong`, `%APPDATA%\Pong`, the Start menu entry, and the `Pong` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
 | Ping, Linux | Delete the binary and `~/.config/ping` |
