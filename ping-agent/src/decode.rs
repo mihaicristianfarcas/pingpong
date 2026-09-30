@@ -393,8 +393,11 @@ mod tests {
         let waited = action.elapsed();
         assert!(got.settled);
         assert_eq!(got.picture.y[0], 220);
+        // At least the 150 ms of change and the 200 ms of quiet; at most
+        // well short of the 3 s limit (it settled, it did not give up). The
+        // sleeps run long on a loaded machine: 1.08 s on a CI runner.
         assert!(
-            waited >= Duration::from_millis(340) && waited < Duration::from_millis(900),
+            waited >= Duration::from_millis(340) && waited < Duration::from_millis(2500),
             "{waited:?}"
         );
         feeder.join().unwrap();
