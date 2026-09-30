@@ -26,7 +26,10 @@ prompts, the lock screen and the sign-in screen — the model Sunshine and
 Apollo use (`pong/src/service.rs`).
 
 State lives in `C:\ProgramData\Pong\`: `config.toml`, the host's identity,
-paired clients, the web UI's certificate and accounts, and `logs\`.
+paired clients, the web UI's certificate and accounts, and `logs\`. The host
+makes that folder private when it starts (`pong/src/private.rs`): only
+SYSTEM and Administrators can read it, apart from the two files Pong's
+window needs (`config.toml`, `web-cert.pem`).
 `tools/host-deploy.ps1` installs a build as the service and adds Pong's
 window to the Start menu; see [../install.md](../install.md).
 

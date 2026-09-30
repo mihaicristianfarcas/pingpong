@@ -66,7 +66,8 @@ reason other than you quitting.
 
 Changes made with `add-client`, `remove-client` and `agent-access` apply to
 a running host after it restarts; the window and the web UI apply theirs at
-once.
+once. On Windows the installed host's data folder is private to SYSTEM and
+Administrators, so these commands need an administrator's terminal there.
 
 ## `ping-agent` — AI agents
 

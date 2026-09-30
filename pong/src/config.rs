@@ -162,7 +162,10 @@ impl HostConfig {
     pub fn save(&self, dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
         let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(Self::path(dir), text)
+        std::fs::write(Self::path(dir), text)?;
+        // Pong's window reads the web port from it, and is not elevated.
+        crate::private::make_public(&Self::path(dir));
+        Ok(())
     }
 }
 

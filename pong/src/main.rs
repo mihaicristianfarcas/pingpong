@@ -57,6 +57,7 @@ mod power;
 mod power;
 mod presence;
 mod priority;
+mod private;
 mod sender;
 #[cfg(windows)]
 mod service;
@@ -111,7 +112,13 @@ fn init_logging_named(
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let dir = config::data_dir();
-    match args.first().map(String::as_str).unwrap_or("host") {
+    let command = args.first().map(String::as_str).unwrap_or("host");
+    // On Windows the data folder is the host's alone (see `private`). Not
+    // from the clipboard helper, which runs as the signed-in user.
+    if command != "clipboard-agent" {
+        private::secure_data_dir(&dir);
+    }
+    match command {
         // Clipboard sharing as the signed-in user, for the host (Windows).
         #[cfg(windows)]
         "clipboard-agent" => clipagent::run(&args),

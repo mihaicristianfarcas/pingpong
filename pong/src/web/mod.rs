@@ -120,7 +120,7 @@ fn load_app_tokens(dir: &Path) -> AppTokens {
 fn save_app_tokens(dir: &Path, tokens: &AppTokens) -> std::io::Result<()> {
     let text = toml::to_string(tokens).unwrap_or_default();
     pingpong_transport::identity::write_private(&dir.join(APP_TOKENS), text.as_bytes())?;
-    restrict_to_admins(&dir.join(APP_TOKENS))
+    crate::private::restrict_to_admins(&dir.join(APP_TOKENS))
 }
 
 /// A fresh local token, where only this host's user can read it: 0600 on a
@@ -131,7 +131,7 @@ fn write_local_token(dir: &Path) -> Option<String> {
     let path = dir.join(LOCAL_TOKEN);
     let t = token();
     let written = pingpong_transport::identity::write_private(&path, t.as_bytes())
-        .and_then(|()| restrict_to_admins(&path));
+        .and_then(|()| crate::private::restrict_to_admins(&path));
     match written {
         Ok(()) => Some(t),
         Err(e) => {
@@ -140,43 +140,6 @@ fn write_local_token(dir: &Path) -> Option<String> {
             None
         }
     }
-}
-
-/// On Windows, a file only SYSTEM and Administrators can read (ProgramData
-/// would give it to every user). Elsewhere write_private's 0600 already is.
-#[cfg(windows)]
-fn restrict_to_admins(path: &Path) -> std::io::Result<()> {
-    use windows::core::{w, HSTRING};
-    use windows::Win32::Foundation::{LocalFree, HLOCAL};
-    use windows::Win32::Security::Authorization::{
-        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-    };
-    use windows::Win32::Security::{
-        SetFileSecurityW, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-        PSECURITY_DESCRIPTOR,
-    };
-    let mut sd = PSECURITY_DESCRIPTOR::default();
-    unsafe {
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            w!("D:P(A;;FA;;;SY)(A;;FA;;;BA)"),
-            SDDL_REVISION_1,
-            &mut sd,
-            None,
-        )
-        .map_err(std::io::Error::other)?;
-        let ok = SetFileSecurityW(
-            &HSTRING::from(path.as_os_str()),
-            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-            sd,
-        );
-        let _ = LocalFree(Some(HLOCAL(sd.0)));
-        ok.ok().map_err(std::io::Error::other)
-    }
-}
-
-#[cfg(not(windows))]
-fn restrict_to_admins(_path: &Path) -> std::io::Result<()> {
-    Ok(())
 }
 
 fn cookie_of(headers: &HeaderMap) -> Option<String> {
@@ -753,6 +716,8 @@ fn certificate(dir: &Path, name: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
         cert.signing_key.serialize_pem().into_bytes(),
     );
     std::fs::write(&cert_path, &c).map_err(|e| e.to_string())?;
+    // Pong's window pins this certificate, and is not elevated.
+    crate::private::make_public(&cert_path);
     pingpong_transport::identity::write_private(&key_path, &k).map_err(|e| e.to_string())?;
     Ok((c, k))
 }

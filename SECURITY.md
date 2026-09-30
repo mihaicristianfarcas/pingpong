@@ -38,11 +38,13 @@ port.
 
 **Secrets at rest.** On macOS and Linux, each device's private keys, the
 agent's API keys and the host's tokens are written readable only by their
-owner (0600). On Windows, the host's web tokens are restricted to SYSTEM and
-Administrators; other files rely on their folder's permissions (Ping's in
-the user's `%APPDATA%`; the host's in `C:\ProgramData\Pong`, which does not
-restrict reading by default). Whoever can read a device's keys can act as
-that device: unpair a device you lost.
+owner (0600). On Windows, Ping's files are in the user's own `%APPDATA%`,
+and the host makes its data folder (`C:\ProgramData\Pong`) private when it
+starts: only SYSTEM, Administrators and the folder's owner can read or write
+it, except `config.toml` and `web-cert.pem`, which Pong's window needs and
+every user may read; the host's tokens are closed to everyone but SYSTEM and
+Administrators. Whoever can read a device's keys can act as that device:
+unpair a device you lost.
 
 **The host's privileges.** On Windows, Pong runs as SYSTEM so it can
 capture and control the secure desktop (UAC prompts, the lock screen), as
