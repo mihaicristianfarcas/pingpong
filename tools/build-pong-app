@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build Pong.app: the macOS host, bundled so that macOS grants Screen
-# Recording and Accessibility to Pong itself (ad-hoc signed); and Pong
+# Recording and Accessibility to Pong itself (signed as tools/build-ping-app
+# signs Ping.app); and Pong
 # Control.app, its window and menu bar icon (pong-app), which talks to the
 # running host.
 #
@@ -50,18 +51,26 @@ bundle() {
     cp "$ICNS" "$1/Contents/Resources/Pong.icns"
 }
 
-# The dev identity when there is one (see tools/dev-signing-identity), so the
-# Screen Recording and Accessibility permissions survive a rebuild; else ad hoc.
-SIGN=$("$REPO/tools/dev-signing-identity" --check)
+# A Developer ID (PINGPONG_SIGN_IDENTITY, as the release workflow sets it)
+# with the hardened runtime and a secure timestamp, which notarization
+# requires. Else the dev identity when there is one (see
+# tools/dev-signing-identity), so the Screen Recording and Accessibility
+# permissions survive a rebuild; else ad hoc.
+if [[ -n ${PINGPONG_SIGN_IDENTITY:-} ]]; then
+    SIGN=(--sign "$PINGPONG_SIGN_IDENTITY" --options runtime --timestamp)
+else
+    DEV=$("$REPO/tools/dev-signing-identity" --check)
+    SIGN=(--sign "${DEV:--}")
+fi
 
 bundle "$APP" "$REPO/pong/macos/Info.plist"
 cp "$REPO/target/release/pong" "$APP/Contents/MacOS/pong"
-codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Pong "$APP" >/dev/null
+codesign --force "${SIGN[@]}" --identifier dev.pingpong.Pong "$APP" >/dev/null
 echo "built $APP ($VERSION)"
 
 bundle "$CONTROL" "$REPO/pong-app/macos/Info.plist"
 cp "$REPO/target/release/pong-app" "$CONTROL/Contents/MacOS/Pong Control"
-codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.PongControl "$CONTROL" >/dev/null
+codesign --force "${SIGN[@]}" --identifier dev.pingpong.PongControl "$CONTROL" >/dev/null
 echo "built $CONTROL ($VERSION)"
 
 if [[ ${1:-} == --install ]]; then

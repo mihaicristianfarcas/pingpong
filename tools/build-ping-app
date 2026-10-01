@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build Ping.app: the Rust app (ping-app) in a bundle with its icon, signed
-# with the dev identity when there is one (else ad hoc).
+# with a Developer ID when PINGPONG_SIGN_IDENTITY names one (a release), else
+# with the dev identity when there is one, else ad hoc.
 #
 #   tools/build-ping-app            -> target/Ping.app
 #   tools/build-ping-app --install  -> also copy it to /Applications
@@ -36,10 +37,18 @@ cp "$REPO/target/release/ping-app" "$APP/Contents/MacOS/Ping"
 cp "$REPO/ping-app/macos/Info.plist" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
-# The dev identity when there is one (see tools/dev-signing-identity), so the
-# permissions macOS grants survive a rebuild; else ad hoc.
-SIGN=$("$REPO/tools/dev-signing-identity" --check)
-codesign --force --sign "${SIGN:--}" --identifier dev.pingpong.Ping "$APP" >/dev/null
+# A Developer ID (PINGPONG_SIGN_IDENTITY, as the release workflow sets it)
+# with the hardened runtime and a secure timestamp, which notarization
+# requires. Else the dev identity when there is one (see
+# tools/dev-signing-identity), so the permissions macOS grants survive a
+# rebuild; else ad hoc.
+if [[ -n ${PINGPONG_SIGN_IDENTITY:-} ]]; then
+    SIGN=(--sign "$PINGPONG_SIGN_IDENTITY" --options runtime --timestamp)
+else
+    DEV=$("$REPO/tools/dev-signing-identity" --check)
+    SIGN=(--sign "${DEV:--}")
+fi
+codesign --force "${SIGN[@]}" --identifier dev.pingpong.Ping "$APP" >/dev/null
 echo "built $APP ($VERSION)"
 
 if [[ ${1:-} == --install ]]; then
