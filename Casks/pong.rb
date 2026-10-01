@@ -3,9 +3,9 @@
 cask "pong" do
   arch arm: "arm64", intel: "x86_64"
 
-  version "0.6.0"
-  sha256 arm:   "6d176c6d856cd07223a8b8ccffc5db9216e396b129fa3741051cdf650889f467",
-         intel: "9fa84cfa637391ca62d1bb649bf792e86735761ff41792c8beb7a9505860a325"
+  version "0.6.1"
+  sha256 arm:   "e8c3773e1d7a5391ef9380663472a4a4a5a3d87b284752bdd2b97400625847ee",
+         intel: "24b4b349ffe32e800f01e4bcd9bf3615e541051e38d1d15d9e85590a254fe3b1"
 
   url "https://github.com/mihaicristianfarcas/pingpong/releases/download/v#{version}/Pong-#{version}-macos-#{arch}.zip"
   name "Pong"
@@ -21,13 +21,6 @@ cask "pong" do
 
   app "Pong.app"
   app "Pong Control.app"
-
-  # The apps are signed but not notarized: without this, macOS refuses to
-  # open them until they are allowed in System Settings.
-  postflight_steps do
-    run "/usr/bin/xattr",
-        args: ["-dr", "com.apple.quarantine", "{{appdir}}/Pong.app", "{{appdir}}/Pong Control.app"]
-  end
 
   uninstall launchctl: [
               "dev.pingpong.Pong",
