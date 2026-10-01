@@ -89,12 +89,6 @@ $(arch_limit Ping)
 
   app "Ping.app"
 
-  # The apps are signed but not notarized: without this, macOS refuses to
-  # open them until they are allowed in System Settings.
-  postflight_steps do
-    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/Ping.app"]
-  end
-
   zap trash: [
     "~/Library/Application Support/Ping",
     "~/Library/Logs/Ping",
@@ -121,13 +115,6 @@ $(arch_limit Pong)
 
   app "Pong.app"
   app "Pong Control.app"
-
-  # The apps are signed but not notarized: without this, macOS refuses to
-  # open them until they are allowed in System Settings.
-  postflight_steps do
-    run "/usr/bin/xattr",
-        args: ["-dr", "com.apple.quarantine", "{{appdir}}/Pong.app", "{{appdir}}/Pong Control.app"]
-  end
 
   uninstall launchctl: [
               "dev.pingpong.Pong",

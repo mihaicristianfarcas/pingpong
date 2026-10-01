@@ -34,17 +34,10 @@ version and commit they are.
 ### On macOS
 
 Open the zip and move the apps to Applications: Ping, or Pong and Pong
-Control. They are signed but not notarized, so macOS does not open them
-from a download until you clear their quarantine flag, once (Homebrew does
-this for you):
-
-```sh
-xattr -dr com.apple.quarantine /Applications/Ping.app
-xattr -dr com.apple.quarantine /Applications/Pong.app "/Applications/Pong Control.app"
-```
-
-Then, for the host, open **Pong Control** and choose **Start Pong**, as in
-[Pong on macOS](#pong-on-macos).
+Control. They are signed with a Developer ID and notarized by Apple, so
+macOS opens them as any app from the internet, asking once whether you
+want to. Then, for the host, open **Pong Control** and choose **Start
+Pong**, as in [Pong on macOS](#pong-on-macos).
 
 ### On Windows
 
@@ -90,10 +83,8 @@ macOS asks for Screen Recording and Accessibility the first time (see
 [Pong on macOS](#pong-on-macos)).
 
 `brew upgrade --cask ping pong` updates them; the apps say when there is an
-update ([usage.md](usage.md#updates)). The releases are signed but not
-notarized, so the casks clear the download's quarantine flag for macOS to
-open them. An update is a new signature: macOS then asks Pong for Screen
-Recording and Accessibility again.
+update ([usage.md](usage.md#updates)). The apps are signed with a
+Developer ID and notarized by Apple.
 
 ## Building from source
 

@@ -9,17 +9,52 @@
 #
 # ARCH is this Mac's (arm64 or x86_64); VERSION the workspace's. The release
 # workflow (.github/workflows/release.yml) runs this on one Mac of each, then
-# tools/update-casks. The bundles are signed as tools/build-ping-app signs
-# them (the dev identity, else ad hoc), not notarized.
+# tools/update-casks.
+#
+# The bundles are signed as tools/build-ping-app signs them: with the
+# Developer ID that PINGPONG_SIGN_IDENTITY names, else the dev identity or ad
+# hoc. With an App Store Connect API key (APPLE_API_KEY_PATH, the .p8 file;
+# APPLE_API_KEY_ID; APPLE_API_ISSUER) they are notarized by Apple and the
+# ticket is stapled to each, so macOS opens them from a download, offline
+# too. The release workflow sets all four.
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' "$REPO/Cargo.toml")
 ARCH=$(uname -m)
 DIST="$REPO/target/dist"
 
+APPS=("$REPO/target/Ping.app" "$REPO/target/Pong.app" "$REPO/target/Pong Control.app")
+if [[ -n ${APPLE_API_KEY_PATH:-} && -z ${PINGPONG_SIGN_IDENTITY:-} ]]; then
+    echo "notarization needs a Developer ID to sign with: set PINGPONG_SIGN_IDENTITY" >&2
+    exit 1
+fi
+
 export PINGPONG_RELEASE=1
 "$REPO/tools/build-ping-app"
 "$REPO/tools/build-pong-app"
+
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+if [[ -n ${APPLE_API_KEY_PATH:-} ]]; then
+    NOTARY=(--key "$APPLE_API_KEY_PATH" --key-id "${APPLE_API_KEY_ID:?}" --issuer "${APPLE_API_ISSUER:?}")
+    # The three apps in one submission: one wait for Apple, minutes at most.
+    mkdir "$STAGE/notarize"
+    cp -R "${APPS[@]}" "$STAGE/notarize/"
+    ditto -c -k "$STAGE/notarize" "$STAGE/notarize.zip"
+    result=$(xcrun notarytool submit "$STAGE/notarize.zip" "${NOTARY[@]}" --wait --timeout 1h --output-format json)
+    status=$(plutil -extract status raw -o - - <<< "$result")
+    if [[ $status != Accepted ]]; then
+        # Apple's reasons, file by file.
+        xcrun notarytool log "$(plutil -extract id raw -o - - <<< "$result")" "${NOTARY[@]}" >&2 || true
+        echo "notarization: $status" >&2
+        exit 1
+    fi
+    for app in "${APPS[@]}"; do
+        xcrun stapler staple -q "$app"
+        # What Gatekeeper will say of the download: "Notarized Developer ID".
+        spctl --assess --type execute -vv "$app"
+    done
+fi
 
 mkdir -p "$DIST"
 # ditto keeps what a zip from the Finder keeps (extended attributes, the
@@ -28,12 +63,11 @@ PING="$DIST/Ping-$VERSION-macos-$ARCH.zip"
 rm -f "$PING"
 ditto -c -k --keepParent "$REPO/target/Ping.app" "$PING"
 # Both of Pong's apps at the archive's root, where the cask finds them.
-STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
-cp -R "$REPO/target/Pong.app" "$REPO/target/Pong Control.app" "$STAGE/"
+mkdir "$STAGE/pong"
+cp -R "$REPO/target/Pong.app" "$REPO/target/Pong Control.app" "$STAGE/pong/"
 PONG="$DIST/Pong-$VERSION-macos-$ARCH.zip"
 rm -f "$PONG"
-ditto -c -k "$STAGE" "$PONG"
+ditto -c -k "$STAGE/pong" "$PONG"
 for zip in "$PING" "$PONG"; do
     echo "$(shasum -a 256 "$zip" | cut -d' ' -f1)  $(basename "$zip")"
 done

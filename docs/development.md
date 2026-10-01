@@ -132,6 +132,8 @@ build. `tools/dev-signing-identity` creates one self-signed code-signing
 identity ("pingpong dev") in your login keychain; `tools/build-ping-app` and
 `tools/build-pong-app` sign with it when it exists, so the permissions
 survive rebuilds. The first signing asks to use the key: **Always Allow**.
+`PINGPONG_SIGN_IDENTITY` names another identity to sign with, as a release
+is ([Releases](#releases)).
 
 ## Test hooks
 
@@ -205,11 +207,24 @@ local archives
 put them in a local tap (`brew tap-new`), and `brew install --cask
 --appdir=DIR` from it.
 
-The macOS apps are signed (the dev identity, or ad hoc on the runners) but
-not notarized: the casks clear the quarantine flag after installing, and
-someone who downloads them does it by hand
-([install.md](install.md#from-the-website)). The Windows programs are not
-signed.
+On the runners the macOS apps are signed with a Developer ID, with the
+hardened runtime and a secure timestamp, notarized by Apple and stapled,
+so macOS opens them from a download. The workflow takes the certificate
+and an App Store Connect API key from five secrets
+(`MACOS_CERTIFICATE_P12`, the certificate and its key in base64;
+`MACOS_CERTIFICATE_PASSWORD`; `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`,
+`APPLE_API_ISSUER`), and a release on `main` fails without them. By hand,
+with the Developer ID in your keychain:
+
+```sh
+PINGPONG_SIGN_IDENTITY="Developer ID Application: NAME (TEAMID)" \
+APPLE_API_KEY_PATH=path/to/AuthKey_KEYID.p8 APPLE_API_KEY_ID=KEYID APPLE_API_ISSUER=ISSUER \
+tools/package-macos
+```
+
+Without the API key the apps are signed but not notarized; without
+`PINGPONG_SIGN_IDENTITY` they are signed as a development build is (below).
+The Windows programs are not signed.
 
 `main` takes changes only through pull requests: work on a branch, push it,
 and open one (`gh pr create`).

@@ -83,7 +83,9 @@ is ignoring its keyboard and mouse.
 macOS ties these permissions to the app's signature. An ad hoc signature
 changes with every build, so each rebuild would lose them;
 `tools/dev-signing-identity` creates one self-signed identity that the
-build scripts sign with, so permissions survive rebuilds.
+build scripts sign with, so permissions survive rebuilds. Releases are
+signed with the project's Developer ID, the same from one release to the
+next, and notarized.
 
 ### Measured (M4 Pro, client and host on one Mac)
 
