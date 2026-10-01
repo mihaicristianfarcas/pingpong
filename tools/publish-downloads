@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Publish a release's archives as the website's downloads: Cloudflare R2
+# (the bucket pingpong-downloads, served at downloads.ping-pong.sh), with
+# wrangler.
+#
+#   tools/publish-downloads DIST_DIR
+#
+# DIST_DIR holds what tools/package-macos, tools/package-windows.ps1 and
+# tools/linux/package made (APP-VERSION-OS-ARCH.zip or .tar.gz). Each goes
+# to latest/APP-OS-ARCH.EXT, a name that stays the same from one release to
+# the next so the page can link it, and is downloaded under its own name.
+# Then latest/SHA256SUMS, and last latest.json, which says what is there
+# (version, commit, each file's size and SHA-256) for the page to show.
+# Everything is stored with no-cache, so Cloudflare's edge asks R2 again at
+# each request. A browser may still keep an archive for hours (the zone's
+# Browser Cache TTL wins over no-cache for the file types the edge caches):
+# the page adds the commit to each link, which makes a new release a new URL.
+#
+# wrangler is the one on PATH, else npx's. On a runner it signs in with
+# CLOUDFLARE_API_TOKEN (an API token with Workers R2 Storage: Edit) and
+# CLOUDFLARE_ACCOUNT_ID; elsewhere, as `wrangler login` left it. The release
+# workflow (.github/workflows/release.yml) runs this for each push to main.
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+DIST=${1:?usage: publish-downloads DIST_DIR}
+BUCKET=${DOWNLOADS_BUCKET:-pingpong-downloads}
+BASE=${DOWNLOADS_URL:-https://downloads.ping-pong.sh}
+VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' "$REPO/Cargo.toml")
+COMMIT=${PINGPONG_COMMIT:-$(git -C "$REPO" rev-parse HEAD)}
+export WRANGLER_SEND_METRICS=false
+if command -v wrangler >/dev/null; then wrangler=(wrangler); else wrangler=(npx --yes wrangler@4); fi
+
+# put KEY FILE TYPE [DISPOSITION]
+put() {
+    local args=(r2 object put "$BUCKET/$1" --remote --file "$2" --content-type "$3" --cache-control no-cache)
+    [[ -n ${4:-} ]] && args+=(--content-disposition "$4")
+    # wrangler's own output is a few lines per file; its errors are what matter.
+    "${wrangler[@]}" "${args[@]}" >/dev/null
+    echo "published $BASE/$1"
+}
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+files='{}'
+: > "$WORK/SHA256SUMS"
+shopt -s nullglob
+for path in "$DIST"/*-"$VERSION"-*.zip "$DIST"/*-"$VERSION"-*.tar.gz; do
+    name=$(basename "$path")
+    # Ping-0.7.0-macos-arm64.zip -> Ping-macos-arm64.zip
+    key=${name/-$VERSION-/-}
+    case $name in
+        *.zip) type=application/zip ext=.zip ;;
+        *) type=application/gzip ext=.tar.gz ;;
+    esac
+    put "latest/$key" "$path" "$type" "attachment; filename=\"$name\""
+    sum=$(shasum -a 256 "$path" | cut -d' ' -f1)
+    echo "$sum  $name" >> "$WORK/SHA256SUMS"
+    files=$(jq --arg id "${key%"$ext"}" --arg name "$name" --arg url "$BASE/latest/$key" \
+        --argjson size "$(wc -c < "$path" | tr -d ' ')" --arg sha256 "$sum" \
+        '.[$id] = {name: $name, url: $url, size: $size, sha256: $sha256}' <<< "$files")
+done
+if [[ $files == '{}' ]]; then
+    echo "no archives for $VERSION in $DIST" >&2
+    exit 1
+fi
+put latest/SHA256SUMS "$WORK/SHA256SUMS" "text/plain; charset=utf-8"
+jq -n --arg version "$VERSION" --arg commit "$COMMIT" \
+    --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson files "$files" \
+    '{version: $version, commit: $commit, published: $published, files: $files}' > "$WORK/latest.json"
+put latest.json "$WORK/latest.json" application/json

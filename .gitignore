@@ -39,3 +39,6 @@ pingpong-server.toml
 
 # Local settings for the dev tools (tools/dev-sync).
 tools/dev.env
+
+# wrangler's cache, where it runs (tools/publish-downloads).
+.wrangler/
