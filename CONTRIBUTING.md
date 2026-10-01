@@ -46,7 +46,8 @@ best one.
 Using an AI coding agent is fine; you are responsible for what it wrote, as
 if you had written it.
 
-Contributions are accepted under the project's [MIT license](LICENSE). Do
-not include code copied or translated from GPL projects (Moonlight,
-Sunshine and Apollo among them): pingpong follows their behaviour, not
-their source.
+Contributions are accepted under the project's license, the
+[GPL-3.0](LICENSE). Do not include code copied or translated from
+Moonlight, Sunshine or Apollo: pingpong follows their behaviour, not their
+source. Code from elsewhere comes only under a license compatible with the
+GPL-3.0, with its notice.

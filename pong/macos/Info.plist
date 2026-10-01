@@ -23,7 +23,7 @@
 	<key>CFBundleIconFile</key>
 	<string>Pong</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Mihai-Cristian Farcaș. MIT License.</string>
+	<string>© 2026 Mihai-Cristian Farcaș. GPL-3.0 License.</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<!-- A background host: no Dock icon, no menu bar. -->

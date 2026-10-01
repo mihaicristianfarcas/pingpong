@@ -75,9 +75,11 @@ post-quantum fork of Cloudflare's boringtun; the windows are drawn with
 
 ## License
 
-[MIT](LICENSE). Two pieces of vendored code keep their own licenses: the
-NVENC type bindings in `pingpong-encode/src/nvenc_sys/` (MIT, from NVIDIA's
-header and the `nvidia-video-codec-sdk` crate; see the `LICENSE` there) and
-the no-op profiling shims in `vendor/` (Apache-2.0). The libraries pingpong
-depends on are under their own, permissive licenses (`cargo tree` lists
-them); FFmpeg, where it is used, is linked dynamically.
+[GPL-3.0](LICENSE): the GNU General Public License, version 3. Two pieces
+of vendored code keep their own licenses: the NVENC type bindings in
+`pingpong-encode/src/nvenc_sys/` (MIT, from NVIDIA's header and the
+`nvidia-video-codec-sdk` crate; see the `LICENSE` there) and the no-op
+profiling shims in `vendor/` (Apache-2.0). The libraries pingpong depends
+on are under their own licenses, all compatible with the GPL-3.0
+(`cargo tree` lists them); FFmpeg, where it is used, is linked
+dynamically.
