@@ -17,6 +17,7 @@ use crossbeam_channel::{Receiver, Sender};
 use gpui::{prelude::*, Context, Entity, Image, ImageFormat, ScrollHandle, Window};
 use ping_agent::computer::{LinkStatus, PlanStep};
 use ping_agent::conversation::Conversation;
+use ping_agent::jev::Ending;
 use ping_agent::providers::{AgentSettings, Ask, Provider, RunEvent};
 use pingpong_proto::control::agent_state;
 use pingpong_ui::{FieldEvent, TextField};
@@ -137,6 +138,8 @@ pub struct Chat {
     pub notices: Vec<Notice>,
     /// The agent waits at a secure screen (said once per wait).
     secure_wait: bool,
+    /// How the last turn ended, as Jev read it (cleared by a new message).
+    ending: Option<Ending>,
 }
 
 fn short_title(text: &str) -> String {
@@ -314,6 +317,7 @@ impl Chat {
             watch_pending: false,
             notices: Vec::new(),
             secure_wait: false,
+            ending: None,
         }
     }
 
@@ -334,6 +338,10 @@ impl Chat {
             Some(t) if t.question.is_some() || self.held => ChatState::Waiting,
             Some(t) if t.paused => ChatState::Paused,
             Some(_) => ChatState::Working,
+            // The turn is over, and Jev read it as waiting on the person.
+            None if matches!(self.ending, Some(Ending::Question | Ending::NeedsPerson)) => {
+                ChatState::Waiting
+            }
             None if self.connecting => ChatState::Connecting,
             None if self.connected => ChatState::Connected,
             None => ChatState::Idle,
@@ -372,6 +380,7 @@ impl Chat {
         }
         self.items.push(Item::You(text));
         self.turn_actions = 0;
+        self.ending = None;
         self.turn = Some(Turn {
             started: Instant::now(),
             paused: false,
@@ -531,6 +540,8 @@ impl Chat {
                 self.push_action(Act { text, ok, detail });
             }
             RunEvent::Plan(steps) => self.plan = steps,
+            RunEvent::Note(text) => self.items.push(Item::Note(text)),
+            RunEvent::Ending(e) => self.ending = Some(e),
             RunEvent::Usage {
                 input,
                 output,
@@ -566,9 +577,17 @@ impl Chat {
                     Item::You(_) => Some(String::new()),
                     _ => None,
                 });
+                let (kind, title) = match self.ending {
+                    Some(Ending::Question) => (NoticeKind::Waiting, "the agent asks you something"),
+                    Some(Ending::NeedsPerson) => {
+                        (NoticeKind::Waiting, "the agent needs you at the host")
+                    }
+                    Some(Ending::NotDone) => (NoticeKind::Stopped, "the agent could not finish"),
+                    Some(Ending::Done) | None => (NoticeKind::Done, "done"),
+                };
                 self.notice(
-                    NoticeKind::Done,
-                    format!("{}: done", self.host),
+                    kind,
+                    format!("{}: {title}", self.host),
                     plain(&summary, 220),
                 );
                 if last_reply.as_deref() != Some(summary.trim()) {

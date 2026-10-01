@@ -120,9 +120,10 @@ An asleep or switched-off monitor is still on the cable, and Windows spends
   (up to ~26 s measured); a client connecting meanwhile waits.
 - **AV1** needs an NVIDIA GPU that encodes it (RTX 40 series and later).
 - HDR and YUV 4:4:4 are not built.
-- **An agent's screen as text** (`read_screen`) comes from UI
-  Automation, read by the host on a thread that is per-monitor DPI-aware,
-  so the tree's places and the display's are both physical pixels. Windows 11's Notepad reads in 0.08-0.10 s, its open File menu
+- **An agent's screen as text** (`read_screen`, Jev's check of a click)
+  comes from UI Automation, read by the host on a thread that is per-monitor
+  DPI-aware, so the tree's places and the display's are both physical
+  pixels. Windows 11's Notepad reads in 0.08-0.10 s, its open File menu
   included. WebView2 apps (WhatsApp) show their web content's tree under
   several hosts; each element is listed once.
 

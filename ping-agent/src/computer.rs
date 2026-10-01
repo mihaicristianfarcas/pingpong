@@ -339,6 +339,9 @@ pub struct Config {
     /// Short by default: an MCP client gives a call a minute (Codex's
     /// default); Ping's own runs and sessions raise it to `HOLD_WAIT`.
     pub hold_wait: Duration,
+    /// Jev checks each click against what the host's tree says is under
+    /// it, when risky steps wait for a yes (`jev`).
+    pub jev_clicks: Option<crate::jev::Jev>,
 }
 
 impl Config {
@@ -356,6 +359,7 @@ impl Config {
             control: None,
             full_screens: false,
             hold_wait: Duration::from_secs(50),
+            jev_clicks: None,
         }
     }
 }
@@ -744,12 +748,14 @@ impl Computer {
                 // Paused from Ping, or waiting for a yes: time spent waiting
                 // for the person is not the run's.
                 let stop = self.stop_check();
-                let risk = crate::risk::assess(action);
+                let risk = crate::risk::assess(action)
+                    .map(crate::control::Risk::rule)
+                    .or_else(|| self.judge_click(action));
                 let waited = Instant::now();
                 let hold = self.config.hold_wait;
                 let gated = self.control.as_mut().expect("there").gate(
                     &action.describe(),
-                    risk.as_deref(),
+                    risk.as_ref(),
                     &stop,
                     hold,
                 );
@@ -925,6 +931,42 @@ impl Computer {
             return Ok(Outcome::text(text));
         }
         self.screenshot_outcome(Some(started))
+    }
+
+    /// Jev's judgment of a click, when risky steps wait for a yes: what the
+    /// host's accessibility tree says is under the pointer, and whether
+    /// pressing it deletes, spends, sends, changes settings or installs.
+    /// Nothing known there, or no answer in time: no judgment, and the
+    /// click goes as it would without Jev.
+    fn judge_click(&self, action: &Action) -> Option<crate::control::Risk> {
+        let jev = self.config.jev_clicks.as_ref()?;
+        if self.control.as_ref()?.approvals() != crate::providers::Approvals::Risky {
+            return None;
+        }
+        let (x, y) = match action {
+            Action::Click { at, .. } => at.or(self.pointer),
+            Action::MouseDown { .. } => self.pointer,
+            _ => None,
+        }?;
+        let started = Instant::now();
+        let hit = match self.session.as_ref()?.screen_text(Query::At {
+            x: x.min(u16::MAX as u32) as u16,
+            y: y.min(u16::MAX as u32) as u16,
+        }) {
+            Ok(hit) => hit,
+            Err(e) => {
+                tracing::debug!(error = e, "click not checked: nothing known there");
+                return None;
+            }
+        };
+        let why = jev.check_click(&hit);
+        tracing::info!(
+            action = action.describe(),
+            ms = started.elapsed().as_millis() as u64,
+            risky = why.is_some(),
+            "Jev checked a click"
+        );
+        why.map(crate::control::Risk::jev)
     }
 
     /// The front window as text, from the host's accessibility tree

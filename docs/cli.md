@@ -73,8 +73,8 @@ Administrators, so these commands need an administrator's terminal there.
 
 | Command | Does |
 |---|---|
-| `ping-agent providers` | What can run here, and which provider is chosen |
-| `ping-agent set-key PROVIDER` | Save an API key (`anthropic`, `openai`, `openrouter`, `custom`), read from stdin; an empty line forgets it |
+| `ping-agent providers` | What can run here, which provider is chosen, and whether Jev can help (and with what) |
+| `ping-agent set-key PROVIDER` | Save an API key (`anthropic`, `openai`, `openrouter`, `custom`, or `typesafe` for Jev, which is checked with the service at once), read from stdin; an empty line forgets it |
 | `ping-agent identity` | The agent's public keys (for `pong add-client --agent`) |
 | `ping-agent hosts` | Hosts the agent is paired with |
 | `ping-agent add-host NAME ADDR X25519 MLKEM` | Pair the agent by hand |
@@ -88,7 +88,9 @@ agent may use), `--provider codex|claude-code|anthropic|openai|openrouter|custom
 `--base-url URL` (run), `--size WxH` (run), `--approvals off|risky|every`
 (which steps wait for your yes on the terminal; `--confirm` is `every`),
 `--yes` (run: answer yes to the API's safety checks), `--answer yes|no`
-(converse: what every question is answered).
+(converse: what every question is answered), `--jev off|clicks,endings,model`
+(what Jev does this time, over the saved settings; see
+[ai-agents.md](ai-agents.md#jev-fast-judgments-beside-the-model)).
 
 `mcp` flags: `--host NAME` (the default host), `--size WxH`,
 `--max-actions N`, `--image-dir DIR` (screenshots also saved as files),
@@ -96,8 +98,10 @@ agent may use), `--provider codex|claude-code|anthropic|openai|openrouter|custom
 `--approvals off|risky|every` with `--control-dir DIR` (where questions and
 answers are exchanged; see [ai-agents.md](ai-agents.md#design-decisions-and-why)),
 `--hold-wait SECS` (how long an action waits while a person has the
-keyboard and mouse), `--data-dir DIR`. `--until` and `--owner-pid` bound a
-run started by Ping.
+keyboard and mouse), `--data-dir DIR`, `--jev-clicks` (Jev checks each
+click, with `--approvals risky`; its key is read from the data folder or
+`TYPESAFE_API_KEY`). `--until` and `--owner-pid` bound a run started by
+Ping.
 
 ## The apps
 
@@ -122,6 +126,8 @@ For everyone:
 | `PONG_DATA_DIR` | Pong, Pong's window | Pong's data folder |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `PING_AGENT_API_KEY` (a custom endpoint) | agents | API keys; win over saved keys |
 | `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | agents | Point the API loops at a gateway or proxy |
+| `TYPESAFE_API_KEY`, `TYPESAFE_AI_API_KEY` | agents | Jev's key (TypeSafe's, or an OpenRouter key), read in that order; wins over the saved one |
+| `TYPESAFE_BASE_URL` | agents | Where Jev is asked, instead of `https://api.typesafe.ai` (or `https://openrouter.ai/api` for an OpenRouter key) |
 | `PINGPONG_APPEARANCE` | the apps | `light` or `dark`, whatever the system says |
 | `PINGPONG_UPDATE_API` | the apps | Where the update check asks instead of `https://api.github.com` (a mirror, or a test) |
 | `PING_SOFTWARE_DECODE` | Ping on Linux | Decode in software even where VA-API is available |

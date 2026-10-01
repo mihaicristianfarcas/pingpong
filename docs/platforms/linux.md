@@ -56,11 +56,11 @@ pointer mapped to match).
 - **Sound.** The default output's monitor through libpulse-simple, which
   PipeWire serves too; stereo.
 - The screensaver and DPMS are held off during a session.
-- **An agent's screen as text** (`read_screen`) comes from AT-SPI, when
-  the desktop runs its accessibility bus (at-spi2-core; GNOME and KDE
-  start it, a bare window manager needs `dbus-launch` and the bus on the
-  session's D-Bus, as `tools/linux/agent-desktop` sets it up). GTK and Qt
-  apps publish to it.
+- **An agent's screen as text** (`read_screen`, Jev's check of a click)
+  comes from AT-SPI, when the desktop runs its accessibility bus
+  (at-spi2-core; GNOME and KDE start it, a bare window manager needs
+  `dbus-launch` and the bus on the session's D-Bus, as
+  `tools/linux/agent-desktop` sets it up). GTK and Qt apps publish to it.
 
 ### Under Wayland
 

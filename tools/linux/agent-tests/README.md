@@ -17,6 +17,10 @@ Helpers for `tools/linux/agent-desktop` (run them inside it with
   shape (problems go to `target/linux-out/agent/mock-llm.report`); run
   `ping-agent run` with `ANTHROPIC_BASE_URL=http://127.0.0.1:8900`,
   `OPENAI_BASE_URL=http://127.0.0.1:8900/v1` or `--provider custom
-  --base-url http://127.0.0.1:8900/v1`, any key.
+  --base-url http://127.0.0.1:8900/v1`, any key. It is Jev too, with
+  `TYPESAFE_BASE_URL=http://127.0.0.1:8900` and any `TYPESAFE_API_KEY`: a
+  click on anything named "Quit" or "Delete" is judged to delete, every turn
+  ends with a question, every request is routine (the states it was asked
+  about go to `target/linux-out/agent/mock-jev.log`).
 
 What was run with them, and what it showed: [docs/ai-agents.md](../../../docs/ai-agents.md).

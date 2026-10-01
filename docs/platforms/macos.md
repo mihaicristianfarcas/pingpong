@@ -79,8 +79,9 @@ inject the keyboard and mouse). As an app (`tools/build-pong-app`) it asks
 for both in its own name at start. From a terminal, the terminal needs them.
 Without Accessibility, Pong tells the client, and Ping shows that the host
 is ignoring its keyboard and mouse. The same permission lets Pong read the
-front window's accessibility tree for an agent that asks (`read_screen`);
-without it, the agent is told so and has the screenshot.
+front window's accessibility tree for an agent that asks (`read_screen`,
+Jev's check of a click); without it, the agent is told so and has the
+screenshot.
 
 macOS ties these permissions to the app's signature. An ad hoc signature
 changes with every build, so each rebuild would lose them;

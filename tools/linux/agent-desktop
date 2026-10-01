@@ -67,7 +67,9 @@ TOML
     ;;
 mcp)
     shift
-    exec docker exec -i -e PING_DATA_DIR=$OUT/ping -e RUST_LOG="${RUST_LOG:-warn,ping_agent=info}" "$NAME" /target/debug/ping-agent mcp "$@"
+    # Jev's key and endpoint pass through when set (the mock's, in tests).
+    exec docker exec -i -e PING_DATA_DIR=$OUT/ping -e RUST_LOG="${RUST_LOG:-warn,ping_agent=info}" \
+        -e TYPESAFE_API_KEY -e TYPESAFE_BASE_URL "$NAME" /target/debug/ping-agent mcp "$@"
     ;;
 exec)
     shift

@@ -181,6 +181,11 @@ fn mcp_command(ctx: &RunContext, events: &Path) -> Result<(String, Vec<String>),
         "--approvals".to_string(),
         ctx.settings.approvals.id().to_string(),
     ]);
+    // The server reads Jev's key itself (saved, or its variable): a key is
+    // never on a command line.
+    if ctx.settings.jev.check_clicks {
+        args.push("--jev-clicks".into());
+    }
     // A server on this machine also stops if this process dies (one run
     // elsewhere, PING_AGENT_MCP, cannot see it), and is told where Ping's
     // data is: Codex starts MCP servers with an environment of its own,

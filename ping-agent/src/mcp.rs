@@ -876,6 +876,7 @@ pub fn main(args: &[String]) -> std::process::ExitCode {
         image_dir: None,
         events: None,
     };
+    let mut jev_clicks = false;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -930,7 +931,18 @@ pub fn main(args: &[String]) -> std::process::ExitCode {
                     .unwrap_or_else(|| std::env::temp_dir().join("ping-agent-control"));
                 config.control = Some((dir, approvals));
             }
+            // Jev checks clicks (with risky steps approved): its key is read
+            // from the data folder or TYPESAFE_API_KEY, never an argument.
+            "--jev-clicks" => jev_clicks = true,
             other => eprintln!("ignoring unknown flag {other}"),
+        }
+    }
+    if jev_clicks {
+        config.jev_clicks = crate::jev::Jev::from_data_dir(&config.data_dir);
+        if config.jev_clicks.is_none() {
+            eprintln!(
+                "--jev-clicks: no key for Jev (ping-agent set-key typesafe); clicks go unchecked"
+            );
         }
     }
     match serve(Computer::new(config), opts) {
