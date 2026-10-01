@@ -426,6 +426,25 @@ impl NetLoop {
     }
 
     fn on_control(&mut self, h: &Header, body: &[u8]) -> Next {
+        if pingpong_proto::screen::is_screen(body) {
+            // Only an agent asks, and only the host answers: a request here
+            // is not ours to answer.
+            if let Some(pingpong_proto::screen::Msg::Part {
+                id,
+                total,
+                offset,
+                bytes,
+            }) = pingpong_proto::screen::decode(body)
+            {
+                self.emit(Event::ScreenPart {
+                    id,
+                    total,
+                    offset,
+                    bytes: bytes.to_vec(),
+                });
+            }
+            return Next::Timers;
+        }
         if pingpong_proto::clip::is_clip(body) {
             if let Some(c) = &self.clip {
                 c.deliver(body);
