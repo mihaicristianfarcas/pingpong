@@ -34,7 +34,7 @@ version = "0.6.0"
 edition = "2021"
 rust-version = "1.96"
 repository = "https://github.com/mihaicristianfarcas/pingpong"
-license = "MIT"
+license = "GPL-3.0-only"
 # Applications and their private libraries, not crates for crates.io.
 publish = false
 

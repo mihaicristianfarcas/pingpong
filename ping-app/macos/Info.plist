@@ -20,7 +20,7 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Mihai-Cristian Farcaș. MIT License.</string>
+	<string>© 2026 Mihai-Cristian Farcaș. GPL-3.0 License.</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>

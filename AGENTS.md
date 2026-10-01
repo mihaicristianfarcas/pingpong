@@ -44,11 +44,12 @@ own.
   Windows). Never commit keys, `.env` or `tools/dev.env`.
 - **A refactor changes no behaviour**, including user-visible strings, file
   formats and the wire format. Keep refactors in commits of their own.
-- **No copied code.** pingpong is MIT-licensed; Moonlight, Sunshine and
-  Apollo are GPL-3.0. Read them to learn what they do, then write your own
-  implementation: never paste or translate their code. The same goes for
-  any source whose license is not MIT-compatible. Vendored code keeps its
-  license and notice beside it (`pingpong-encode/src/nvenc_sys/LICENSE`).
+- **No copied code.** pingpong is licensed under the GPL-3.0, as Moonlight,
+  Sunshine and Apollo are, and is an implementation of its own: read them
+  to learn what they do, then write your own; never paste or translate
+  their code. Never take code from a source whose license is not
+  compatible with the GPL-3.0. Vendored code keeps its license and notice
+  beside it (`pingpong-encode/src/nvenc_sys/LICENSE`).
 
 ## Code
 
