@@ -83,7 +83,7 @@ def chat(req):
     check(msgs[-1]["role"] == "user" and any(p.get("type") == "image_url" for p in msgs[-1]["content"]), "chat: the screen after the calls")
     return {"choices": [{"message": {"role": "assistant", "content": "Done: typed the command (chat mock)."}}], "usage": {"prompt_tokens": 2000, "completion_tokens": 10}}
 
-HAZARDS = {"deletes", "spends", "sends", "settings", "installs"}
+HAZARDS = {"deletes", "spends", "sends", "settings", "installs", "discards"}
 
 def systemone(req):
     check(req.get("model") in ("jev-1.13.0", "jev-1.13"), "jev: the pinned model, as the service names it")

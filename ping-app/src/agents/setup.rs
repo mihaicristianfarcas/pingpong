@@ -134,7 +134,8 @@ impl PingApp {
                     "Check clicks",
                     Some(
                         "Before a click, the host says what is under it, and Jev judges whether \
-                            it deletes, spends, sends, changes settings or installs. If it \
+                            it deletes, spends, sends, changes settings, installs, or throws \
+                            away unsaved changes. If it \
                             likely does, the click asks for your go-ahead. With go-ahead for \
                             risky steps only; Jev never lets a step through that would ask."
                             .into(),

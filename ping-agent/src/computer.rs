@@ -935,7 +935,8 @@ impl Computer {
 
     /// Jev's judgment of a click, when risky steps wait for a yes: what the
     /// host's accessibility tree says is under the pointer, and whether
-    /// pressing it deletes, spends, sends, changes settings or installs.
+    /// pressing it deletes, spends, sends, changes settings, installs, or
+    /// throws away unsaved changes.
     /// Nothing known there, or no answer in time: no judgment, and the
     /// click goes as it would without Jev.
     fn judge_click(&self, action: &Action) -> Option<crate::control::Risk> {

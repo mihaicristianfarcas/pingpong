@@ -134,7 +134,7 @@ each a switch under **Agent setup > Jev**:
 
 | Setting | Default | What it does |
 |---|---|---|
-| Check clicks | on | Before a click, the host says what is under it (from its accessibility tree), and Jev judges whether pressing it deletes, spends, sends or posts, changes settings, or installs. If one is likely, the click waits for your go-ahead, as a risky command does. Only with go-ahead for risky steps |
+| Check clicks | on | Before a click, the host says what is under it (from its accessibility tree), and Jev judges whether pressing it deletes, spends, sends or posts, changes settings, installs, or throws away unsaved changes (Don't save, Discard, Revert). If one is likely, the click waits for your go-ahead, as a risky command does. Only with go-ahead for risky steps |
 | Sort how turns end | on | When a turn ends, Jev reads the model's last words: done, a question for you, a person needed at the host (a sign-in, a prompt), or not done. The session's state says **Waiting for you** for the middle two, and the notification says which |
 | Pick the model | off | When Jev judges a session's first message routine (a step or two, nothing at stake), the session runs at low effort, on Claude Sonnet 5 with an Anthropic key or `sonnet` with Claude Code. Never on a heavier model than yours; the rest of the session keeps the pick |
 
@@ -362,7 +362,11 @@ line (a hazard more likely than not) is not yet tuned on pingpong's own
 clicks; your answers to the questions it raises are what to tune it with.
 It reads the hazards literally: discarding unsaved changes (Notepad's
 **Don't save**) is not deleting to it (0.11, and 0.30 with the dialog's
-question beside it), so that click goes as it would without Jev.
+question beside it), so throwing away unsaved changes is a hazard of its
+own, asked as what the element is (Don't save, Discard and Revert To at
+0.85-0.98; Save, and Cancel in the same dialog, under the line). Jev cannot
+tell whose changes they are, so it asks whether they are yours or the
+agent's own.
 
 **Pick the model only ever makes a session lighter.** A cheaper model at a
 lower effort for what Jev judges routine, the model and effort you chose
