@@ -4,9 +4,8 @@
 # takes changes only through pull requests, and these checks must pass for
 # one to merge.
 #
-# workflow_dispatch: the release workflow's pull request for the casks is
-# opened with the workflow's own token, which starts no pull_request run, so
-# it starts this one by hand for the checks to be there.
+# workflow_dispatch: to run it by hand on a branch. Such a run does not count
+# for a pull request's checks: only the pull request's own run does.
 name: CI
 
 on:
