@@ -5,11 +5,12 @@
 //!   ping-agent hosts                             hosts the agent is paired with
 //!   ping-agent add-host NAME ADDR X25519 MLKEM   pair the agent by hand (see `pong identity`)
 //!   ping-agent run --host NAME [--provider P] [--model M] [--effort E] [--max-actions N]
-//!                  [--max-minutes N] [--base-url URL] [--approvals off|risky|every] [--confirm] [--yes] TASK
+//!                  [--max-minutes N] [--base-url URL] [--approvals off|risky|every] [--confirm] [--yes]
+//!                  [--jev off|clicks,endings,model] TASK
 //!   ping-agent converse --host NAME [--provider P] [--model M] [--approvals A] [--answer yes|no]
-//!                  MESSAGE [--then MESSAGE ...]  a conversation: each message a turn, one connection
-//!   ping-agent providers                         what can run here
-//!   ping-agent set-key PROVIDER                  save an API key (read from stdin)
+//!                  [--jev ...] MESSAGE [--then MESSAGE ...]  a conversation: each message a turn, one connection
+//!   ping-agent providers                         what can run here (and whether Jev can)
+//!   ping-agent set-key PROVIDER|typesafe         save an API key (read from stdin); typesafe is Jev's
 
 use std::process::ExitCode;
 
@@ -75,18 +76,48 @@ fn providers() -> ExitCode {
         let mark = if p == settings.provider { "*" } else { " " };
         println!("{mark} {:<12} {:<28} {state}", p.id(), p.label());
     }
+    let jev = match ping_agent::jev::service(&dir) {
+        Some(service) => {
+            let j = &settings.jev;
+            let on: Vec<&str> = [
+                (j.check_clicks, "clicks"),
+                (j.sort_endings, "endings"),
+                (j.pick_model, "model"),
+            ]
+            .iter()
+            .filter(|(on, _)| *on)
+            .map(|(_, what)| *what)
+            .collect();
+            format!(
+                "ready ({service} key): {}",
+                if on.is_empty() {
+                    "nothing turned on".to_string()
+                } else {
+                    on.join(", ")
+                }
+            )
+        }
+        None => format!(
+            "off: no key (ping-agent set-key typesafe, or set {})",
+            ping_agent::jev::KEY_ENV
+        ),
+    };
+    println!("  {:<12} {:<28} {jev}", "typesafe", "Jev (TypeSafe)");
     ExitCode::SUCCESS
 }
 
 fn set_key(args: &[String]) -> ExitCode {
-    let Some(p) = args
+    let jev = args.get(1).is_some_and(|a| a == ping_agent::jev::KEY_ID);
+    let Some(id) = args
         .get(1)
         .and_then(|a| ping_agent::providers::Provider::parse(a))
         .filter(|p| !p.is_subscription())
+        .map(|p| p.id())
+        .or(jev.then_some(ping_agent::jev::KEY_ID))
     else {
         eprintln!(
-            "usage: ping-agent set-key anthropic|openai|openrouter|custom  (the key on stdin; \
-                empty forgets it)"
+            "usage: ping-agent set-key anthropic|openai|openrouter|custom|typesafe  (the key on \
+                stdin; empty forgets it; typesafe is Jev's, a TypeSafe or OpenRouter key)"
         );
         return ExitCode::FAILURE;
     };
@@ -94,10 +125,21 @@ fn set_key(args: &[String]) -> ExitCode {
     let _ = std::io::stdin().read_line(&mut key);
     let key = key.trim();
     let dir = ping_core::store::data_dir();
-    match ping_agent::providers::secrets::set(&dir, p, (!key.is_empty()).then_some(key)) {
+    match ping_agent::providers::secrets::set_named(&dir, id, (!key.is_empty()).then_some(key)) {
         Ok(()) => {
             let what = if key.is_empty() { "forgotten" } else { "saved" };
-            println!("{} key {what}", p.id());
+            println!("{id} key {what}");
+            // Jev's key is checked at once (nothing is charged for it): a
+            // wrong one would otherwise only show as checks that never come.
+            if jev && !key.is_empty() {
+                match ping_agent::jev::Jev::with_key(key.to_string()).check() {
+                    Ok(ok) => println!("{ok}"),
+                    Err(e) => return fail(e),
+                }
+                if let Some(var) = ping_agent::jev::key_variable() {
+                    println!("{var} is set: its key is used instead.");
+                }
+            }
             ExitCode::SUCCESS
         }
         Err(e) => fail(e),
@@ -185,6 +227,11 @@ fn run(args: &[String]) -> ExitCode {
                     .unwrap_or(settings.approvals)
             }
             "--confirm" => settings.approvals = Approvals::Every,
+            "--jev" => {
+                if let Err(e) = jev_flag(it.next(), &mut settings.jev) {
+                    return fail(e);
+                }
+            }
             other => task.push(other.to_string()),
         }
     }
@@ -259,6 +306,8 @@ fn run(args: &[String]) -> ExitCode {
             ),
             RunEvent::Confirm(m) => eprintln!("? {}", m.question()),
             RunEvent::Plan(steps) => eprintln!("☰ plan: {}", plan_line(&steps)),
+            RunEvent::Note(n) => eprintln!("ℹ {n}"),
+            RunEvent::Ending(e) => eprintln!("… Jev: the turn ended: {}", e.id()),
             RunEvent::Finished(s) => {
                 println!("✓ {s}");
                 ok = true;
@@ -276,6 +325,30 @@ fn run(args: &[String]) -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// `--jev clicks,endings,model` (what Jev does, of the three), or `--jev
+/// off`: for this run, over the saved settings. Jev needs its key either way.
+fn jev_flag(value: Option<&String>, jev: &mut ping_agent::jev::JevSettings) -> Result<(), String> {
+    let usage = "--jev takes off, or some of clicks,endings,model (comma-separated)";
+    let value = value.ok_or(usage)?;
+    *jev = ping_agent::jev::JevSettings {
+        check_clicks: false,
+        sort_endings: false,
+        pick_model: false,
+    };
+    if value == "off" {
+        return Ok(());
+    }
+    for part in value.split(',') {
+        match part.trim() {
+            "clicks" => jev.check_clicks = true,
+            "endings" => jev.sort_endings = true,
+            "model" => jev.pick_model = true,
+            _ => return Err(usage.into()),
+        }
+    }
+    Ok(())
 }
 
 /// A plan on one line: "[x] one · [>] two · [ ] three".
@@ -330,6 +403,11 @@ fn converse(args: &[String]) -> ExitCode {
                     .next()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(settings.max_actions)
+            }
+            "--jev" => {
+                if let Err(e) = jev_flag(it.next(), &mut settings.jev) {
+                    return fail(e);
+                }
             }
             "--then" => messages.push(Vec::new()),
             other => messages.last_mut().expect("one").push(other.to_string()),
@@ -409,6 +487,8 @@ fn converse(args: &[String]) -> ExitCode {
                     eprintln!("? {} ({})", m.question(), if answer { "yes" } else { "no" })
                 }
                 RunEvent::Plan(steps) => println!("☰ plan: {}", plan_line(&steps)),
+                RunEvent::Note(n) => eprintln!("ℹ {n}"),
+                RunEvent::Ending(e) => eprintln!("… Jev: the turn ended: {}", e.id()),
                 RunEvent::Finished(s) => {
                     println!("✓ {s}");
                     break;

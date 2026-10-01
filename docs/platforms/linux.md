@@ -56,6 +56,11 @@ pointer mapped to match).
 - **Sound.** The default output's monitor through libpulse-simple, which
   PipeWire serves too; stereo.
 - The screensaver and DPMS are held off during a session.
+- **An agent's screen as text** (`read_screen`, Jev's check of a click)
+  comes from AT-SPI, when the desktop runs its accessibility bus
+  (at-spi2-core; GNOME and KDE start it, a bare window manager needs
+  `dbus-launch` and the bus on the session's D-Bus, as
+  `tools/linux/agent-desktop` sets it up). GTK and Qt apps publish to it.
 
 ### Under Wayland
 
@@ -74,6 +79,11 @@ gives a restore token (kept as `portal-token` in Pong's data folder), and
 later sessions start without asking. The screen is kept on through the
 Inhibit portal. `PONG_CAPTURE=x11|portal` overrides the choice where the
 environment does not make it clear.
+
+An agent gets no screen as text under Wayland: a Wayland client does not
+know where its windows are, so AT-SPI cannot say where anything is on the
+screen, and the host answers that it cannot rather than with places that
+would mislead a click.
 
 ### Running it
 

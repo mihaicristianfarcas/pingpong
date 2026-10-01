@@ -38,7 +38,7 @@ sha2 = "0.10"
 libc = "0.2"
 ctrlc = { version = "3", features = ["termination"] }
 pingpong-audio = { path = "../pingpong-audio" }
-objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFString", "CFDictionary", "CFNumber"] }
+objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFString", "CFDictionary", "CFNumber", "CFCGTypes"] }
 pingpong-capture = { path = "../pingpong-capture" }
 pingpong-encode = { path = "../pingpong-encode" }
 
@@ -50,6 +50,9 @@ pingpong-audio = { path = "../pingpong-audio" }
 pingpong-capture = { path = "../pingpong-capture" }
 pingpong-encode = { path = "../pingpong-encode" }
 x11rb = { version = "0.13", features = ["dpms", "screensaver"] }
+# AT-SPI, the accessibility tree (`linux/a11y.rs`): the zbus ashpd already
+# brings, with its blocking calls.
+zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
 
 [target.'cfg(windows)'.dependencies]
 pingpong-audio = { path = "../pingpong-audio" }
@@ -60,6 +63,7 @@ windows-service = "0.8"
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_System_Com",
     "Win32_System_Environment",
     "Win32_System_LibraryLoader",
     "Win32_Media",
@@ -69,11 +73,15 @@ windows = { version = "0.61", features = [
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_System_Pipes",
+    "Win32_System_Ole",
     "Win32_System_Power",
     "Win32_System_RemoteDesktop",
     "Win32_System_StationsAndDesktops",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }

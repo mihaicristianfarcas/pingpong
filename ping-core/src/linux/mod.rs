@@ -443,6 +443,7 @@ impl StreamApp {
                 }
                 Event::Notice(text) => render.set_notice(text),
                 Event::Agent(_) => {}
+                Event::ScreenPart { .. } => {}
                 Event::Warning(text) => {
                     if connection_warnings {
                         render.set_warning(text);

@@ -15,6 +15,14 @@
 //!                                    (started by the host for a session)
 
 #[cfg(windows)]
+mod a11y;
+#[cfg(target_os = "macos")]
+#[path = "mac/a11y.rs"]
+mod a11y;
+#[cfg(target_os = "linux")]
+#[path = "linux/a11y.rs"]
+mod a11y;
+#[cfg(windows)]
 mod apps;
 #[cfg(windows)]
 mod audio;
@@ -58,6 +66,7 @@ mod power;
 mod presence;
 mod priority;
 mod private;
+mod screen;
 mod sender;
 #[cfg(windows)]
 mod service;

@@ -6,8 +6,9 @@
 //! - `pause`: while it exists, actions wait;
 //! - `ask-N.json`: a step waiting for the person's go-ahead
 //!   (`{"n": N, "action": "type \"rm -rf build\"", "why": "…", "from": "rule"}`):
-//!   a risky action a rule caught, one the model asked about
-//!   (`ask_approval`), or any action when every one is to be approved;
+//!   a risky action a rule caught, a click Jev judged risky (`jev`), one the
+//!   model asked about (`ask_approval`), or any action when every one is to
+//!   be approved;
 //! - `answer-N`: `yes` or `no`.
 
 use std::path::{Path, PathBuf};
@@ -20,6 +21,30 @@ const POLL: Duration = Duration::from_millis(200);
 /// out, for a while: the person is not asked twice for one step.
 const COVER_FOR: Duration = Duration::from_secs(120);
 const COVER_ACTIONS: u32 = 3;
+
+/// Why an action should wait for the person's yes, and what judged it: a
+/// rule (`risk`) or Jev (`jev`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Risk {
+    pub why: String,
+    pub from: &'static str,
+}
+
+impl Risk {
+    pub fn rule(why: impl Into<String>) -> Risk {
+        Risk {
+            why: why.into(),
+            from: "rule",
+        }
+    }
+
+    pub fn jev(why: impl Into<String>) -> Risk {
+        Risk {
+            why: why.into(),
+            from: "jev",
+        }
+    }
+}
 
 pub struct Control {
     dir: PathBuf,
@@ -52,13 +77,13 @@ impl Control {
     }
 
     /// Before an input action: wait while paused, and for a yes when it is
-    /// to be approved (`risk`: why a rule thinks it risky). `stop` says if
-    /// the run must stop meanwhile (and why); `max_wait` is how long a
-    /// person is waited for.
+    /// to be approved (`risk`: why a rule or Jev thinks it risky). `stop`
+    /// says if the run must stop meanwhile (and why); `max_wait` is how long
+    /// a person is waited for.
     pub fn gate(
         &mut self,
         action: &str,
-        risk: Option<&str>,
+        risk: Option<&Risk>,
         stop: &dyn Fn() -> Option<String>,
         max_wait: Duration,
     ) -> Result<(), String> {
@@ -77,8 +102,8 @@ impl Control {
             std::thread::sleep(POLL);
         }
         let (why, from) = match (self.approvals, risk) {
-            (Approvals::Every, r) => (r.unwrap_or_default().to_string(), "every"),
-            (Approvals::Risky, Some(r)) if !self.covered() => (r.to_string(), "rule"),
+            (Approvals::Every, r) => (r.map(|r| r.why.clone()).unwrap_or_default(), "every"),
+            (Approvals::Risky, Some(r)) if !self.covered() => (r.why.clone(), r.from),
             _ => return Ok(()),
         };
         if self.ask(
@@ -310,7 +335,7 @@ mod tests {
         let person = answerer(d.clone(), vec![true, true]);
         c.gate(
             "type \"rm -rf build\"",
-            Some("It types a command…"),
+            Some(&Risk::rule("It types a command…")),
             &none,
             WAIT,
         )
@@ -327,8 +352,13 @@ mod tests {
                 WAIT
             )
             .unwrap());
-        c.gate("key shift+Delete", Some("Shift+Delete…"), &none, WAIT)
-            .unwrap();
+        c.gate(
+            "key shift+Delete",
+            Some(&Risk::jev("Shift+Delete…")),
+            &none,
+            WAIT,
+        )
+        .unwrap();
         let seen = person.join().unwrap();
         assert_eq!(seen[0].why, "It types a command…");
         assert_eq!(seen[1].what, "Empty the Recycle Bin");
@@ -340,7 +370,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut c = Control::new(dir.path().to_path_buf(), Approvals::Off);
         let none = || None;
-        c.gate("type \"rm -rf /\"", Some("…"), &none, WAIT).unwrap();
+        c.gate("type \"rm -rf /\"", Some(&Risk::rule("…")), &none, WAIT)
+            .unwrap();
         assert!(c
             .request(
                 &Ask {
@@ -367,7 +398,7 @@ mod tests {
         let e = c
             .gate(
                 "key shift+Delete",
-                Some("…"),
+                Some(&Risk::rule("…")),
                 &|| Some("Stopped.".into()),
                 WAIT,
             )

@@ -47,6 +47,11 @@ something, look over its shoulder, do a bit yourself, ask again.
   has the keyboard and mouse, the connection, this turn's actions and
   minutes left, tokens). The top of the page holds only the session's title
   and its buttons.
+- **The screen as text.** Beside the screenshots, the model can ask for the
+  front window's controls by name, each with the point to click it
+  (`read_screen`): the host reads them from its accessibility tree. An app
+  that publishes no tree (a game, a canvas) lists nothing; the screenshot
+  is still there.
 - **Log In** opens the session's desktop in a stream window beside the
   agent. **Ctrl+Alt+Shift+T** takes the keyboard and mouse and gives them
   back; closing the window leaves the session running.
@@ -113,9 +118,45 @@ ping-agent run --host gaming-pc --provider anthropic --max-actions 30 "…"
 ping-agent run --host gaming-pc --provider codex --approvals every "…"   # every action asks y/N
 ping-agent converse --host gaming-pc --provider codex "What is open?" --then "Close it"
 echo "$KEY" | ping-agent set-key openrouter
+echo "$KEY" | ping-agent set-key typesafe     # Jev's key (below)
+ping-agent run --host gaming-pc --jev clicks,endings "…"   # what Jev does this time
 ```
 
 The full list of flags is in [cli.md](cli.md#ping-agent--ai-agents).
+
+### Jev: fast judgments beside the model
+
+Jev is TypeSafe's decision model: it answers yes-or-no questions (with a
+probability), picks one of a set of options, or places something on a
+scale, in a fraction of a second. It writes nothing and drives nothing; the
+model you chose still does the work. With a key, Ping asks it three things,
+each a switch under **Agent setup > Jev**:
+
+| Setting | Default | What it does |
+|---|---|---|
+| Check clicks | on | Before a click, the host says what is under it (from its accessibility tree), and Jev judges whether pressing it deletes, spends, sends or posts, changes settings, installs, or throws away unsaved changes (Don't save, Discard, Revert). If one is likely, the click waits for your go-ahead, as a risky command does. Only with go-ahead for risky steps |
+| Sort how turns end | on | When a turn ends, Jev reads the model's last words: done, a question for you, a person needed at the host (a sign-in, a prompt), or not done. The session's state says **Waiting for you** for the middle two, and the notification says which |
+| Pick the model | off | When Jev judges a session's first message routine (a step or two, nothing at stake), the session runs at low effort, on Claude Sonnet 5 with an Anthropic key or `sonnet` with Claude Code. Never on a heavier model than yours; the rest of the session keeps the pick |
+
+**The key** is a TypeSafe key (from TypeSafe's console; Jev is then asked
+at `https://api.typesafe.ai`), or an OpenRouter key (`sk-or-…`): OpenRouter
+serves the same API, at the same price, from your OpenRouter credits (Jev
+has no free variant there). Save it in Agent setup or with `ping-agent
+set-key typesafe`, which check it with the service at once (a check costs
+nothing), or set `TYPESAFE_API_KEY` (or `TYPESAFE_AI_API_KEY`), which wins
+over the saved key; `TYPESAFE_BASE_URL` points Jev elsewhere. Without a key
+Jev is off, and the switches with it. Jev is pinned to `jev-1.13`, under
+each service's name for it (TypeSafe's API takes `jev-1.13.0` and refuses
+`jev-1.13`; OpenRouter takes `jev-1.13`).
+
+**What goes to TypeSafe** (or OpenRouter): for a click, the role and name of
+what is under it, the names of what holds it, the window's title and the
+app's name; for an ending, your message and the model's last 4,000
+characters; for a pick, your first message. Never a screenshot, and never
+what a field holds. Jev costs $0.042 per million input tokens (output is
+free); a click's check was 433 tokens, two thousandths of a cent, and took
+0.3-0.6 s from a home connection to TypeSafe's API (a click waits
+for it; a check that takes over 4 s is dropped and the click goes on).
 
 ### 3. Or use your hosts from another agent (MCP)
 
@@ -150,6 +191,8 @@ The tools, named as in Claude's computer-use toolset:
 - `type`, `key` (xdotool names: `ctrl+s`, `Return`, `alt+Tab`, `super`),
   `hold_key`
 - `wait`, `cursor_position`, `wait_for_control`, `session_status`
+- `read_screen` (the front window's controls as text, with the point to
+  click each, from the host's accessibility tree)
 - `share_plan` (the model's plan, for the person watching)
 
 Every action answers with a screenshot of the screen once it has settled.
@@ -293,6 +336,47 @@ sessions across launches would mean a database of transcripts and
 screenshots of a user's computers, with its own retention and security
 questions.
 
+**The screen as text is the host's accessibility tree, and nothing
+else.** Pong reads the front window on a thread of its own when the agent
+asks (AXUIElement on a Mac, UI Automation on Windows, AT-SPI on Linux under
+X11) and sends it back in parts (`pingpong_proto::screen`): controls as the
+apps name them, places in the stream's pixels, so a model can click what it
+read. There is no OCR: what an app does not publish is not guessed at.
+Under Wayland, AT-SPI cannot say where things are on the screen, so a Linux
+host there answers that it cannot. A field's contents are never read, and a
+password field is marked as one. A read stops at 0.6 s, or after two calls
+an app was too slow to answer, with what it has. Measured: a Mac (macOS 26)
+read Finder's menu bar in 4 ms once Pong had spoken to Finder (the first
+message to an app takes about half a second: the connection), and a slow
+app's window in 0.3 s; the Linux container desktop read Mousepad's window
+with a menu open in 30-40 ms.
+
+**Jev only ever adds a question.** Text on the screen can steer Jev
+(TypeSafe says so of `jev-1.13`), so a click Jev finds harmless goes exactly
+as it would without Jev: the model's own `ask_approval` and the rules stand
+as they are. A click Jev finds risky waits for your yes like a command a
+rule caught, and a yes to the model's own request covers it the same way.
+Jev checks clicks only with go-ahead for risky steps: with every step
+everything asks already, and with never you asked for no questions. Its
+line (a hazard more likely than not) is not yet tuned on pingpong's own
+clicks; your answers to the questions it raises are what to tune it with.
+It reads the hazards literally: discarding unsaved changes (Notepad's
+**Don't save**) is not deleting to it (0.11, and 0.30 with the dialog's
+question beside it), so throwing away unsaved changes is a hazard of its
+own, asked as what the element is (Don't save, Discard and Revert To at
+0.85-0.98; Save, and Cancel in the same dialog, under the line). Jev cannot
+tell whose changes they are, so it asks whether they are yours or the
+agent's own.
+
+**Pick the model only ever makes a session lighter.** A cheaper model at a
+lower effort for what Jev judges routine, the model and effort you chose
+otherwise. It picks once, at a session's first message, and the session
+keeps it: a conversation that changes models loses its thread's cache.
+OpenAI's models are not ranked here, so with Codex or an OpenAI key only
+the effort comes down; OpenRouter has its own router
+(`typesafe/jev-router`), and a custom endpoint's models are unknown, so
+neither is picked for.
+
 ## Threat model
 
 It protects against an agent that is confused, or instructed by something on
@@ -313,6 +397,9 @@ It does not protect against:
 - **What an agent does within its access.** It is a real computer. Use See
   only for looking, watch the first runs, and prefer a host account without
   administrator rights for agents' work.
+- **A click Jev misjudges.** Text on the screen can steer Jev into finding a
+  risky click harmless. That click then goes as it would without Jev; Jev
+  never lets through what a rule or the model would have asked about.
 
 ## Status
 
@@ -324,8 +411,27 @@ free models, watching and taking over, the host's rules (a UAC prompt, input
 at the host, a person starting a stream, See only set mid-session), typing
 Unicode on every host, and approvals across processes.
 
+Jev itself, against TypeSafe's API (`cargo test -p ping-agent jev_judges
+-- --ignored` with a key): ten plain clicks (emptying the Trash, Delete in a
+"Delete 3 items?" dialog, Send, Place your order and Install flagged at
+94-98%; Cancel in that dialog, the File menu, Bold, a settings tab and a
+link not), the four endings and four picks, all as a person would judge
+them. The screen as text and Jev, in the Linux container desktop against a
+scripted Jev (the same mock): `read_screen` over the tunnel, its places
+matching the screenshot to the pixel; Jev passing a click on Mousepad's
+**File** menu and flagging **Quit** in it, the question answered no and the
+model told; the ending and the model's pick through the Anthropic loop, and
+the pick kept for a conversation's second turn. The Mac's tree reader read
+Finder and a running app (`cargo test -p pong a11y -- --ignored`), and a
+Mac host (macOS 26) answered `read_screen` over the tunnel, its places
+matching the screenshot, with TypeSafe's Jev checking a click on TextEdit's
+**File** menu (harmless, 0.37 s). A Windows 11 host did the same with
+Notepad: its tree in 0.08-0.10 s, its File menu and its save dialog's
+buttons listed, Jev checking each click (0.4-0.5 s).
+
 Not verified yet:
 
+- Jev through OpenRouter (only TypeSafe's own API answered).
 - A model driving a Mac host (only a scripted session), and someone at a
   Mac host during an agent's session (the idle reading itself is
   unit-tested).

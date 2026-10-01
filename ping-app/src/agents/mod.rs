@@ -40,6 +40,9 @@ pub struct AgentsState {
     /// A new session's first message.
     composer: Entity<TextField>,
     key_field: Entity<TextField>,
+    /// Jev's key (TypeSafe's or OpenRouter's), and what saving it said.
+    jev_key: Entity<TextField>,
+    jev_note: Option<String>,
     base_url: Entity<TextField>,
     program: Entity<TextField>,
     /// The open sessions, newest last.
@@ -71,6 +74,16 @@ impl AgentsState {
             window,
             |this: &mut PingApp, _, event, _, cx| match event {
                 FieldEvent::Submit => this.agents.save_key(cx),
+                _ => cx.notify(),
+            },
+        )
+        .detach();
+        let jev_key = cx.new(|cx| TextField::new(cx).password().placeholder("Paste a key"));
+        cx.subscribe_in(
+            &jev_key,
+            window,
+            |this: &mut PingApp, _, event, _, cx| match event {
+                FieldEvent::Submit => this.agents.save_jev_key(cx),
                 _ => cx.notify(),
             },
         )
@@ -113,6 +126,8 @@ impl AgentsState {
             mcp_note: None,
             composer,
             key_field,
+            jev_key,
+            jev_note: None,
             base_url,
             program,
             chats: Vec::new(),
@@ -160,6 +175,47 @@ impl AgentsState {
         );
         self.key_field.update(cx, |f, cx| f.set_text("", cx));
         self.checked = None;
+        cx.notify();
+    }
+
+    fn save_jev_key(&mut self, cx: &mut Context<PingApp>) {
+        let key = self.jev_key.read(cx).text().trim().to_string();
+        if key.is_empty() {
+            return;
+        }
+        if let Err(e) =
+            providers::secrets::set_named(&self.dir, ping_agent::jev::KEY_ID, Some(&key))
+        {
+            self.jev_note = Some(e.to_string());
+            cx.notify();
+            return;
+        }
+        tracing::info!("Jev key saved");
+        self.jev_note = Some("Saved, readable only by you. Checking it…".into());
+        self.jev_key.update(cx, |f, cx| f.set_text("", cx));
+        // Asked at once (nothing is charged for it), off the window's
+        // thread: a wrong key would otherwise only show as checks that
+        // never come.
+        {
+            let jev = ping_agent::jev::Jev::with_key(key);
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { jev.check() })
+                    .await;
+                let _ = this.update(cx, |app, cx| {
+                    let used = ping_agent::jev::key_variable()
+                        .map(|v| format!(" {v} is set, though: its key is used instead."))
+                        .unwrap_or_default();
+                    app.agents.jev_note = Some(match result {
+                        Ok(ok) => format!("Saved, readable only by you. {ok}{used}"),
+                        Err(e) => format!("Saved, but {e}{used}"),
+                    });
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         cx.notify();
     }
 
@@ -279,7 +335,8 @@ impl PingApp {
 
     /// PING_UI_DEMO: `sample`/`sample-live` show a made-up session.
     pub fn agents_demo(&mut self, what: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if what == "sample" || what == "sample-live" || what == "sample-ask" {
+        if what == "sample" || what == "sample-live" || what == "sample-ask" || what == "sample-jev"
+        {
             let id = self.agents.next_id;
             self.agents.next_id += 1;
             let mut chat = Chat::sample(id, self.waker.clone(), what != "sample", window, cx);
@@ -287,6 +344,15 @@ impl PingApp {
                 chat.demo_ask(ping_agent::providers::Ask {
                     what: "Empty the Recycle Bin (8.9 GB, 2 items)".into(),
                     why: "To free the space for good, as you asked.".into(),
+                });
+            }
+            // A click Jev judged risky, waiting for a yes.
+            if what == "sample-jev" {
+                chat.demo_ask(ping_agent::providers::Ask {
+                    what: "left_click (412, 96)".into(),
+                    why: "Jev judges that clicking button \"Empty Recycle Bin\" may delete \
+                        files or data (94% likely)."
+                        .into(),
                 });
             }
             self.agents.chats.push(chat);

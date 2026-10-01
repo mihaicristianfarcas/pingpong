@@ -12,6 +12,7 @@ use ping_core::stats::{Stats, StatsCollector};
 use ping_core::store::{self, Hosts, KnownHost};
 use ping_core::stream::{ControlSender, Event, Stream, StreamSettings};
 use pingpong_proto::control::{self, AgentState, CursorState, SessionAck};
+use pingpong_proto::screen::{self, Assembly, Query, ScreenText};
 
 use crate::decode::{FrameStore, HeadlessVideo};
 
@@ -56,12 +57,22 @@ struct Seen {
     ended: Option<(String, bool)>,
     status: Option<String>,
     warning: Option<String>,
+    /// The host's answer to a question about the screen, part by part, and
+    /// the last one whole.
+    screen_parts: Option<Assembly>,
+    screen: Option<(u32, Vec<u8>)>,
 }
 
 pub struct HeadlessSession {
     stream: Stream,
     pub frames: Arc<FrameStore>,
     seen: Arc<(Mutex<Seen>, Condvar)>,
+    /// Numbers the questions about the screen.
+    next_question: std::sync::atomic::AtomicU32,
+    /// The host answered one; or never did (an older Pong), and is asked
+    /// no more.
+    screen_answered: std::sync::atomic::AtomicBool,
+    screen_unanswered: std::sync::atomic::AtomicBool,
     stats: Arc<StatsCollector>,
     pub host_name: String,
     pub host_os: u8,
@@ -135,6 +146,24 @@ impl HeadlessSession {
                     Event::Notice(t) => s.status = t,
                     Event::Warning(t) => s.warning = t,
                     Event::Rumble { .. } => {}
+                    Event::ScreenPart {
+                        id,
+                        total,
+                        offset,
+                        bytes,
+                    } => {
+                        if s.screen_parts.as_ref().is_none_or(|a| a.id != id) {
+                            s.screen_parts = Assembly::new(id, total);
+                        }
+                        let done = s
+                            .screen_parts
+                            .as_mut()
+                            .is_some_and(|a| a.add(total, offset, &bytes) && a.complete());
+                        if done {
+                            let a = s.screen_parts.take().expect("there");
+                            s.screen = Some((a.id, a.into_bytes()));
+                        }
+                    }
                 }
                 cond.notify_all();
             })
@@ -207,6 +236,9 @@ impl HeadlessSession {
             stream,
             frames,
             seen,
+            next_question: std::sync::atomic::AtomicU32::new(1),
+            screen_answered: std::sync::atomic::AtomicBool::new(false),
+            screen_unanswered: std::sync::atomic::AtomicBool::new(false),
             stats,
             host_name: known.name,
             host_os,
@@ -261,7 +293,58 @@ impl HeadlessSession {
         self.seen.0.lock().ack
     }
 
+    /// What the host's accessibility tree says about the screen (see
+    /// `pingpong_proto::screen`). A reply lost on the way is asked for
+    /// again; a host that never answers (an older Pong) is not asked again.
+    pub fn screen_text(&self, query: Query) -> Result<ScreenText, String> {
+        use std::sync::atomic::Ordering;
+        if self.screen_unanswered.load(Ordering::Relaxed) {
+            return Err(OLD_HOST.into());
+        }
+        let id = self.next_question.fetch_add(1, Ordering::Relaxed);
+        let packet = screen::request_packet(id, query);
+        let (lock, cond) = &*self.seen;
+        for attempt in 0..SCREEN_ASKS {
+            self.controls().send_packet(&packet);
+            let deadline = Instant::now() + SCREEN_WAIT;
+            let mut s = lock.lock();
+            loop {
+                if let Some((got, _)) = &s.screen {
+                    if *got == id {
+                        let (_, bytes) = s.screen.take().expect("there");
+                        self.screen_answered.store(true, Ordering::Relaxed);
+                        return ScreenText::decode(&bytes)
+                            .ok_or_else(|| "The host's answer was malformed.".to_string());
+                    }
+                }
+                // Parts of this answer arrived: it is coming, and wanted
+                // whole, not asked for again.
+                let arriving = s.screen_parts.as_ref().is_some_and(|a| a.id == id);
+                if cond.wait_until(&mut s, deadline).timed_out() && !arriving {
+                    break;
+                }
+                if s.ended.is_some() {
+                    return Err("The session ended.".into());
+                }
+            }
+            tracing::debug!(id, attempt, "no answer about the screen yet");
+        }
+        if !self.screen_answered.load(Ordering::Relaxed) {
+            self.screen_unanswered.store(true, Ordering::Relaxed);
+            return Err(OLD_HOST.into());
+        }
+        Err("The host did not say what is on the screen in time.".into())
+    }
+
     pub fn close(mut self) {
         self.stream.stop();
     }
 }
+
+/// How long one question about the screen waits for its answer, and how
+/// many times it is asked. A read takes up to 0.6 s on the host, and the
+/// first one in an app longer (`pong/src/mac/a11y.rs`).
+const SCREEN_WAIT: Duration = Duration::from_millis(1500);
+const SCREEN_ASKS: usize = 2;
+
+const OLD_HOST: &str = "The host does not read its screen as text (its Pong predates it).";

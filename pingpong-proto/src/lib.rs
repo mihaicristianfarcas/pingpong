@@ -1,6 +1,6 @@
 //! The pingpong wire protocol: datagram headers, frame packetization and
-//! Reed-Solomon FEC, reassembly, frame pacing, and the control, input, audio
-//! and clipboard messages that ride beside the video.
+//! Reed-Solomon FEC, reassembly, frame pacing, and the control, input, audio,
+//! clipboard and screen-text messages that ride beside the video.
 //!
 //! This crate performs no I/O and has no platform or GPU dependencies, so
 //! everything in it is unit-tested, property-tested and fuzzed on any machine.
@@ -20,6 +20,7 @@ pub mod mackeys;
 pub mod pacer;
 pub mod packetize;
 pub mod reassemble;
+pub mod screen;
 pub mod telemetry;
 pub mod video;
 

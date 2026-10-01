@@ -57,6 +57,9 @@ pub struct Continuity {
     /// The exchanges so far (the user's words, the reply), for models told
     /// the conversation rather than resuming it.
     pub history: Vec<(String, String)>,
+    /// What Jev picked at the first turn, kept for every turn after: a
+    /// conversation stays on one model (its thread, its cache).
+    pub picked: Option<crate::jev::Pick>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -120,6 +123,8 @@ impl Run {
                             return;
                         }
                     };
+                    let jev = crate::jev::Jev::from_data_dir(&task.data_dir);
+                    let settings = with_pick(&task, jev.as_ref(), &events);
                     let ctx = RunContext {
                         run_dir,
                         deadline: Instant::now()
@@ -127,7 +132,7 @@ impl Run {
                         data_dir: task.data_dir,
                         host: task.host,
                         task: task.task,
-                        settings: task.settings,
+                        settings,
                         events,
                         confirm,
                         stop,
@@ -140,6 +145,16 @@ impl Run {
                     };
                     let started = Instant::now();
                     let result = run(&ctx);
+                    // How it ended, as Jev reads the last words: said
+                    // before the words themselves.
+                    if let (Ok(reply), Some(jev)) = (&result, jev.as_ref()) {
+                        if ctx.settings.jev.sort_endings && !ctx.stopped() {
+                            if let Some(ending) = jev.sort_ending(&ctx.task, reply) {
+                                tracing::info!(ending = ending.id(), "Jev sorted the turn");
+                                ctx.emit(RunEvent::Ending(ending));
+                            }
+                        }
+                    }
                     // Over: whatever still follows the run lets go.
                     ctx.stop.store(true, Ordering::Relaxed);
                     if let Some(link) = &ctx.session {
@@ -213,6 +228,48 @@ impl Drop for Run {
     }
 }
 
+/// The run's settings, with what Jev picked for a routine session applied:
+/// at a conversation's first turn (kept for the rest) or a one-off task.
+fn with_pick(task: &Task, jev: Option<&crate::jev::Jev>, events: &Events) -> AgentSettings {
+    let mut settings = task.settings.clone();
+    let kept = task.session.as_ref().map(|l| l.continuity.lock().clone());
+    let pick = match &kept {
+        Some(c) if !c.history.is_empty() => c.picked.clone(),
+        _ if settings.jev.pick_model => {
+            jev.and_then(|j| j.pick(&task.task, settings.provider, &settings.model_or_default()))
+        }
+        _ => None,
+    };
+    let Some(pick) = pick else {
+        return settings;
+    };
+    if let Some(link) = &task.session {
+        link.continuity.lock().picked = Some(pick.clone());
+    }
+    let first = kept.as_ref().is_none_or(|c| c.history.is_empty());
+    if !pick.model.is_empty() {
+        settings.model = pick.model.clone();
+    }
+    settings.effort = pick.effort.clone();
+    if first {
+        let what = if pick.model.is_empty() {
+            format!("{} effort", pick.effort)
+        } else {
+            format!("{}, {} effort", pick.model, pick.effort)
+        };
+        tracing::info!(
+            model = settings.model,
+            effort = settings.effort,
+            "Jev picked a lighter model"
+        );
+        events(RunEvent::Note(format!(
+            "Jev judged this routine: it runs on {what}. Turn \"Pick the model\" off in \
+                Agent setup to keep your own choice."
+        )));
+    }
+    settings
+}
+
 fn run(ctx: &RunContext) -> Result<String, String> {
     if ctx.task.trim().is_empty() {
         return Err("Say what the agent should do.".into());
@@ -233,6 +290,7 @@ fn run(ctx: &RunContext) -> Result<String, String> {
             config.control = Some((ctx.control_dir(), ctx.settings.approvals));
             config.until = Some(ctx.until_epoch());
             config.hold_wait = crate::computer::HOLD_WAIT;
+            config.jev_clicks = jev_clicks(ctx);
             let mut computer = Computer::new(config);
             computer.set_waits(ctx.waits.clone());
             let events = ctx.events.clone();
@@ -260,6 +318,15 @@ fn run(ctx: &RunContext) -> Result<String, String> {
     }
 }
 
+/// Jev, if it is to check this run's clicks.
+fn jev_clicks(ctx: &RunContext) -> Option<crate::jev::Jev> {
+    ctx.settings
+        .jev
+        .check_clicks
+        .then(|| crate::jev::Jev::from_data_dir(&ctx.data_dir))
+        .flatten()
+}
+
 /// A turn of a conversation, on its shared connection.
 fn run_turn(ctx: &RunContext, link: &SessionLink) -> Result<String, String> {
     let until = ctx.until_epoch();
@@ -267,6 +334,7 @@ fn run_turn(ctx: &RunContext, link: &SessionLink) -> Result<String, String> {
         let mut c = link.computer.lock();
         c.config.session.width = ctx.settings.width;
         c.config.session.height = ctx.settings.height;
+        c.config.jev_clicks = jev_clicks(ctx);
         c.begin_turn(
             ctx.settings.max_actions,
             until,

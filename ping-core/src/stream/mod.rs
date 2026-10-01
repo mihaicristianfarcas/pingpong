@@ -191,6 +191,14 @@ pub enum Event {
         low: u16,
         high: u16,
     },
+    /// Part of the host's answer to an agent's question about its screen
+    /// (`pingpong_proto::screen`): the agent puts the parts together.
+    ScreenPart {
+        id: u32,
+        total: u32,
+        offset: u32,
+        bytes: Vec<u8>,
+    },
     Ended {
         reason: String,
         error: bool,
@@ -246,6 +254,13 @@ impl ControlSender {
 
     pub fn send(&self, msg: Control) {
         send_control(&self.0, msg);
+    }
+
+    /// A whole control packet built elsewhere (`pingpong_proto::screen`).
+    pub fn send_packet(&self, packet: &[u8]) {
+        if let Err(e) = self.0.endpoint.send(&self.0.peer, packet) {
+            tracing::debug!(error = %e, "control send");
+        }
     }
 
     /// Who drives the agent's session, as the host last said.
