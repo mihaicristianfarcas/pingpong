@@ -1,0 +1,270 @@
+---
+import Video from './Video.astro';
+import { RECORDING as R } from '../lib/facts';
+
+// Where the time goes between the host's capture and the client's screen.
+// The stages are averaged one by one; the total is measured end to end,
+// and what is left between the stages is shown as such.
+const stages = [
+  { name: 'Host', what: 'capture, encode, encrypt, send', ms: R.hostMs, fill: 'var(--data-1)' },
+  { name: 'Network', what: 'and reassembly; loopback here', ms: R.networkMs, fill: 'var(--data-2)' },
+  { name: 'Decode', what: 'the client’s decoder', ms: R.decodeMs, fill: 'var(--data-3)' },
+  { name: 'Present', what: 'render, with V-Sync', ms: R.renderMs, fill: 'var(--data-4)' },
+];
+const between = Math.max(0, R.captureToScreenMs - stages.reduce((a, s) => a + s.ms, 0));
+const all = [...stages, { name: 'Between', what: 'queues between stages', ms: between, fill: 'var(--data-muted)' }];
+// The statistics give each stage to a tenth of a millisecond: an average
+// of zero means every second was under 0.05 ms.
+const ms = (v: number) => (v < 0.005 ? '< 0.05 ms' : `${v.toFixed(2)} ms`);
+const total = R.captureToScreenMs.toFixed(1);
+// The parts drawn, each with whether its middle is past the bar's: a
+// tooltip there opens leftwards, so none reaches past the page's edge.
+const sum = all.reduce((a, s) => a + s.ms, 0);
+let start = 0;
+const drawn = all
+  .filter((s) => s.ms >= 0.005)
+  .map((s) => {
+    const end = start + s.ms / 2 > sum / 2;
+    start += s.ms;
+    return { ...s, end };
+  });
+---
+
+<section class="section" id="latency">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Latency</span>
+      <h2 class="title">The host’s screen and the client’s, side by side</h2>
+      <p class="lede">
+        A real stream from a Linux host to a Linux client, both screens recorded at the same instants. The host
+        shows a running clock, so the two halves can be compared frame by frame: the client is one frame behind the
+        host throughout. Ping’s statistics put {total} ms of that between the host capturing a frame and the client’s
+        screen showing it, and {R.framesLost === 0 ? 'no frame was lost' : `${R.framesLost} frames were lost`}.
+      </p>
+    </div>
+
+    <figure class="screens">
+      <div class="stage">
+        <Video
+          src="media/stream-split.mp4"
+          poster="media/stream-split.jpg"
+          label="The host's screen and Ping's window side by side, both showing the same running clock and frame counter."
+          width={1968}
+          height={540}
+        />
+        <span class="bezel host" aria-hidden="true"></span>
+        <span class="bezel client" aria-hidden="true"></span>
+      </div>
+      <figcaption class="halves">
+        <span><strong>Host</strong> · the screen Pong captures</span>
+        <span><strong>Client</strong> · Ping’s window</span>
+      </figcaption>
+    </figure>
+
+    <div class="budget">
+      <div class="budget-head">
+        <h3>Where the {total} ms go</h3>
+        <span class="note">Host capture to client screen, averaged over 32 s</span>
+      </div>
+      {/* One picture to a screen reader; the legend below says each part. */}
+      <div class="bar" role="img" aria-label={all.map((s) => `${s.name} ${ms(s.ms)}`).join(', ')}>
+        {drawn.map((s) => (
+          <span
+            class:list={['seg', { end: s.end }]}
+            style={`flex-grow: ${s.ms}; background: ${s.fill}`}
+            data-tip={`${s.name}: ${ms(s.ms)}`}
+          />
+        ))}
+      </div>
+      <ul class="legend">
+        {all.map((s) => (
+          <li>
+            <i style={`background: ${s.fill}`} aria-hidden="true" />
+            <strong>{s.name}</strong>
+            <span class="value num">{ms(s.ms)}</span>
+            <span class="what">{s.what}</span>
+          </li>
+        ))}
+      </ul>
+      <p class="note">
+        From Ping’s statistics: {R.mode}, encoded in software, host and client in one Linux container. On a real
+        network, add its round trip. On the benchmark machines, capture to encoded frame takes 2.2–2.6 ms at 1080p60.
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .screens {
+    margin: 0;
+  }
+
+  /* The clip is both screens, 960 px each with 48 px between them
+     (scripts/record-stream.sh). A mask keeps the two screens, with rounded
+     corners, and drops the gap; drawn in the clip's own pixels and
+     stretched with it, so it fits at every size. Each bezel draws a
+     screen's edge with the same corners. */
+  .stage {
+    position: relative;
+  }
+
+  .stage :global(.video) {
+    --screens: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1968 540' preserveAspectRatio='none'%3E%3Crect width='960' height='540' rx='20'/%3E%3Crect x='1008' width='960' height='540' rx='20'/%3E%3C/svg%3E");
+    -webkit-mask: var(--screens) 0 0 / 100% 100% no-repeat;
+    mask: var(--screens) 0 0 / 100% 100% no-repeat;
+  }
+
+  .bezel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: calc(960 / 1968 * 100%);
+    border: 1px solid rgb(255 255 255 / 0.22);
+    border-radius: calc(20 / 960 * 100%) / calc(20 / 540 * 100%);
+    box-shadow: 0 24px 48px -24px rgb(0 0 0 / 0.7);
+    pointer-events: none;
+  }
+
+  .host {
+    left: 0;
+  }
+
+  .client {
+    right: 0;
+  }
+
+  .halves {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: calc(48 / 1968 * 100%);
+    margin-top: 14px;
+    color: var(--text-3);
+    font-size: 0.875rem;
+  }
+
+  .halves strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .budget {
+    margin-top: clamp(48px, 6vw, 72px);
+  }
+
+  .budget-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 24px;
+    margin-bottom: 16px;
+  }
+
+  h3 {
+    font-size: 1.0625rem;
+  }
+
+  /* One bar, its parts in pipeline order, a 2px gap of the page between
+     them; square at the start, rounded at the end. */
+  .bar {
+    display: flex;
+    gap: 2px;
+    height: 16px;
+  }
+
+  .seg {
+    position: relative;
+    min-width: 2px;
+  }
+
+  .seg:last-child {
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* A hit area taller than the mark. */
+  .seg::before {
+    content: '';
+    position: absolute;
+    inset: -8px 0;
+  }
+
+  .seg::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 0;
+    z-index: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--line-2);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+  }
+
+  .seg.end::after {
+    right: 0;
+    left: auto;
+  }
+
+  .seg:hover::after {
+    opacity: 1;
+  }
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin: 24px 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .legend li {
+    display: grid;
+    grid-template-columns: 10px 1fr;
+    column-gap: 8px;
+    align-items: center;
+    font-size: 0.875rem;
+  }
+
+  .legend i {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  .legend strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .value,
+  .what {
+    grid-column: 2;
+  }
+
+  .value {
+    color: var(--text);
+  }
+
+  .what {
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  @media (max-width: 760px) {
+    .legend {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .halves {
+      font-size: 0.8125rem;
+    }
+  }
+</style>

@@ -1,0 +1,57 @@
+---
+// What a stream can be, in a line: from README.md and docs/parity.md.
+const specs = [
+  ['Up to 4K', 'at 120 fps and more'],
+  ['HEVC and H.264', 'hardware encode and decode'],
+  ['Stereo to 7.1', 'Opus audio'],
+  ['ML-KEM-768', 'post-quantum, every packet'],
+  ['No port forwarding', 'NATs punched from both sides'],
+  ['macOS, Windows, Linux', 'client and host on each'],
+];
+---
+
+<div class="wrap">
+  <dl class="specs">
+    {specs.map(([a, b]) => (
+      <div>
+        <dt>{a}</dt>
+        <dd>{b}</dd>
+      </div>
+    ))}
+  </dl>
+</div>
+
+<style>
+  .specs {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 24px;
+    margin: 0 0 clamp(64px, 8vw, 112px);
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+  }
+
+  dt {
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+
+  dd {
+    margin: 2px 0 0;
+    color: var(--text-3);
+    font-size: 0.875rem;
+  }
+
+  @media (max-width: 1000px) {
+    .specs {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .specs {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>

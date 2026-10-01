@@ -1,0 +1,126 @@
+---
+// A looping, muted clip that plays only while on screen, with a button to
+// pause it. With reduced motion asked for, it waits on its poster until
+// the button is pressed.
+interface Props {
+  src: string;
+  poster: string;
+  label: string;
+  width: number;
+  height: number;
+  class?: string;
+}
+const { src, poster, label, width, height, class: className } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+
+<div class:list={['video', className]}>
+  <video
+    data-clip
+    muted
+    loop
+    playsinline
+    preload="metadata"
+    poster={`${base}${poster}`}
+    width={width}
+    height={height}
+    aria-label={label}
+  >
+    <source src={`${base}${src}`} type="video/mp4" />
+  </video>
+  <button type="button" class="toggle" data-clip-toggle aria-label="Pause the video">
+    <svg class="pause" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"
+      ><rect x="3" y="2" width="3" height="10" rx="1" fill="currentColor"></rect><rect
+        x="8"
+        y="2"
+        width="3"
+        height="10"
+        rx="1"
+        fill="currentColor"></rect></svg
+    >
+    <svg class="play" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"
+      ><path d="M4 2.5v9l7.5-4.5z" fill="currentColor"></path></svg
+    >
+  </button>
+</div>
+
+<style>
+  .video {
+    position: relative;
+    background: #000;
+  }
+
+  video {
+    width: 100%;
+    height: auto;
+  }
+
+  .toggle {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    background: rgb(11 11 12 / 0.7);
+    color: var(--text);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .video:hover .toggle,
+  .toggle:focus-visible,
+  .video[data-paused] .toggle {
+    opacity: 1;
+  }
+
+  /* No hover to reveal it on a touch screen: always there. */
+  @media (hover: none) {
+    .toggle {
+      opacity: 1;
+    }
+  }
+
+  .play,
+  .video[data-paused] .pause {
+    display: none;
+  }
+
+  .video[data-paused] .play {
+    display: block;
+  }
+</style>
+
+<script>
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  for (const box of document.querySelectorAll<HTMLElement>('.video')) {
+    const video = box.querySelector<HTMLVideoElement>('[data-clip]');
+    const button = box.querySelector<HTMLButtonElement>('[data-clip-toggle]');
+    if (!video || !button || box.dataset.ready) continue;
+    box.dataset.ready = '';
+    // Paused by the person (or by asking for reduced motion): stays paused.
+    let held = still;
+    let visible = false;
+    const sync = () => {
+      const play = visible && !held;
+      if (play && video.paused) video.play().catch(() => {});
+      if (!play && !video.paused) video.pause();
+      box.toggleAttribute('data-paused', held);
+      button.setAttribute('aria-label', held ? 'Play the video' : 'Pause the video');
+    };
+    button.addEventListener('click', () => {
+      held = !held;
+      sync();
+    });
+    new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible && video.preload !== 'auto') video.preload = 'auto';
+      sync();
+    }, { rootMargin: '200px' }).observe(box);
+    sync();
+  }
+</script>

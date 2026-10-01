@@ -1,0 +1,91 @@
+---
+import Command from './Command.astro';
+import { TAP, onGitHub } from '../lib/repo';
+
+const steps = [
+  ['Install', 'Pong on the computer you stream from, Ping on the one you sit at.'],
+  ['Pair', 'Click the host in Ping and type the PIN it shows into Pong. You do this once, on your network.'],
+  ['Stream', 'Click the host again, from anywhere. Ctrl+Alt+Shift+Q ends the stream.'],
+];
+---
+
+<section class="section" id="install">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Get started</span>
+      <h2 class="title">Install, pair and stream</h2>
+    </div>
+
+    <ol class="steps">
+      {steps.map(([t, d]) => (
+        <li>
+          <h3>{t}</h3>
+          <p>{d}</p>
+        </li>
+      ))}
+    </ol>
+
+    <Command
+      label="Homebrew, macOS 14 and later, Apple silicon or Intel"
+      lines={[TAP, 'brew install --cask ping  # the client', 'brew install --cask pong  # the host']}
+    />
+    <p class="note after">
+      On Windows and Linux, build from source with Rust 1.96 or newer; a Windows host needs an NVIDIA GPU and SudoVDA.
+      <a href={onGitHub('docs/install.md')}>Installing, step by step</a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+    margin: 0 0 40px;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+  }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    align-content: start;
+    column-gap: 16px;
+    counter-increment: step;
+  }
+
+  .steps li::before {
+    content: counter(step);
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--line-2);
+    border-radius: 50%;
+    color: var(--text);
+    font-size: 0.8125rem;
+  }
+
+  .steps h3 {
+    font-size: 1rem;
+    line-height: 28px;
+  }
+
+  .steps p {
+    margin-top: 2px;
+    font-size: 0.9375rem;
+  }
+
+  .after {
+    margin-top: 16px;
+  }
+
+  @media (max-width: 860px) {
+    .steps {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+  }
+</style>

@@ -1,0 +1,33 @@
+---
+import Base from '../layouts/Base.astro';
+import Agents from '../components/Agents.astro';
+import Features from '../components/Features.astro';
+import Footer from '../components/Footer.astro';
+import Gallery from '../components/Gallery.astro';
+import Hero from '../components/Hero.astro';
+import Install from '../components/Install.astro';
+import Latency from '../components/Latency.astro';
+import Nav from '../components/Nav.astro';
+import Performance from '../components/Performance.astro';
+import Platforms from '../components/Platforms.astro';
+import Specs from '../components/Specs.astro';
+---
+
+<Base
+  title="pingpong: low-latency desktop streaming"
+  description="Ping and Pong stream one computer's desktop to another with the latency of Moonlight and Apollo, inside a single post-quantum WireGuard tunnel. Open source, for macOS, Windows and Linux."
+>
+  <Nav />
+  <main id="main">
+    <Hero />
+    <Specs />
+    <Features />
+    <Latency />
+    <Performance />
+    <Agents />
+    <Gallery />
+    <Platforms />
+    <Install />
+  </main>
+  <Footer />
+</Base>

@@ -1,0 +1,132 @@
+---
+import { Image } from 'astro:assets';
+import { REPO, VERSION } from '../lib/repo';
+// Screenshots of the apps on a real desktop, taken by hand.
+import ping from '../assets/hero/ping.webp';
+import pong from '../assets/hero/pong.webp';
+---
+
+<section class="hero" id="top">
+  <div class="wrap">
+    <div class="copy">
+      {VERSION && <a class="release" href={`${REPO}/releases`}>Version {VERSION}</a>}
+      <h1>Low-latency desktop streaming between your computers</h1>
+      <p class="lede">
+        Ping, the client, and Pong, the host, stream a desktop at up to 4K and 120 fps with the latency of
+        Moonlight and Apollo. Every packet travels in one post-quantum WireGuard tunnel. For macOS, Windows and
+        Linux, and open source under the MIT license.
+      </p>
+      <div class="actions">
+        <a class="button primary" href="#install">Install</a>
+        <a class="button secondary" href={REPO}>View on GitHub</a>
+      </div>
+    </div>
+    <div class="windows">
+      <figure class="back">
+        <Image
+          src={pong}
+          alt="Pong, the host: its Overview page, streaming to a MacBook Pro at 3024 by 1900 and 120 fps, with the session's live figures."
+          widths={[640, 960, 1280, 1600]}
+          sizes="(max-width: 1168px) 70vw, 800px"
+          loading="eager"
+        />
+      </figure>
+      <figure class="front">
+        <Image
+          src={ping}
+          alt="Ping, the client: its Hosts page, with one paired host, Pong, online."
+          widths={[640, 960, 1280, 1600]}
+          sizes="(max-width: 1168px) 70vw, 800px"
+          loading="eager"
+          fetchpriority="high"
+        />
+      </figure>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding-top: clamp(56px, 8vw, 104px);
+    padding-bottom: clamp(48px, 6vw, 80px);
+  }
+
+  .copy {
+    max-width: 46rem;
+  }
+
+  .release {
+    display: inline-block;
+    margin-bottom: 20px;
+    padding: 3px 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    color: var(--text-2);
+    font-size: 0.8125rem;
+  }
+
+  .release:hover {
+    border-color: rgb(255 255 255 / 0.28);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  h1 {
+    font-size: clamp(2.25rem, 1.5rem + 3vw, 3.75rem);
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+  }
+
+  .lede {
+    max-width: 40rem;
+    margin-top: 20px;
+    font-size: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 32px;
+  }
+
+  /* Pong's window behind, up and to the right; Ping's in front of it,
+     lower and to the left. Both in one grid cell, so the pair takes the
+     height it needs; the offset is a share of the width, so the pair keeps
+     its shape at every size. */
+  .windows {
+    display: grid;
+    margin-top: clamp(48px, 6vw, 72px);
+  }
+
+  .windows > figure {
+    grid-area: 1 / 1;
+    width: 66%;
+    margin: 0;
+  }
+
+  .windows :global(img) {
+    width: 100%;
+    height: auto;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    border-radius: 14px;
+    box-shadow: 0 30px 80px -24px rgb(0 0 0 / 0.75);
+  }
+
+  .windows > .back {
+    justify-self: end;
+    align-self: start;
+  }
+
+  .windows > .front {
+    z-index: 1;
+    justify-self: start;
+    margin-top: 17%;
+  }
+
+  /* A deeper shadow lifts Ping's off Pong's. */
+  .front :global(img) {
+    border-color: rgb(255 255 255 / 0.2);
+    box-shadow: 0 40px 100px -20px rgb(0 0 0 / 0.9);
+  }
+</style>

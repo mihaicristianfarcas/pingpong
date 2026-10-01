@@ -1,0 +1,157 @@
+---
+// Ping + Pong against Moonlight + Apollo, same machines, same settings
+// (docs/benchmarks.md). The measures have different units, so each gets
+// its own pair of bars, starting at zero; a range is drawn to its worse end.
+import { VERSUS } from '../lib/facts';
+import { onGitHub } from '../lib/repo';
+
+const worse = (v: string, better: string) => {
+  const ends = v.split('–').map(Number);
+  return better === 'lower' ? Math.max(...ends) : Math.min(...ends);
+};
+---
+
+<section class="section" id="performance">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Performance</span>
+      <h2 class="title">Measured against Moonlight + Apollo</h2>
+      <p class="lede">
+        The same MacBook, the same PC and the same demanding settings: 3024×1890 at 120 fps and 100 Mbit/s, HEVC, 7.1
+        sound, with the host’s screen full of noise.
+      </p>
+    </div>
+
+    <div class="stats">
+      {VERSUS.map((v) => {
+        const ours = worse(v.ours, v.better);
+        const theirs = worse(v.theirs, v.better);
+        const max = Math.max(ours, theirs);
+        return (
+          <figure class="stat">
+            <figcaption>
+              {v.label}
+              <span class="better">{v.better} is better</span>
+            </figcaption>
+            <dl>
+              <div class="row">
+                <dt>pingpong</dt>
+                <dd>
+                  <span class="track">
+                    <span class="b ours" style={`width: ${(ours / max) * 100}%`} />
+                  </span>
+                  <span class="v num">
+                    {v.ours} {v.unit}
+                  </span>
+                </dd>
+              </div>
+              <div class="row">
+                <dt>Moonlight + Apollo</dt>
+                <dd>
+                  <span class="track">
+                    <span class="b theirs" style={`width: ${(theirs / max) * 100}%`} />
+                  </span>
+                  <span class="v num">
+                    {v.theirs} {v.unit}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+          </figure>
+        );
+      })}
+    </div>
+
+    <p class="note foot">
+      Client: a 14″ MacBook Pro (M4 Pro) on Wi-Fi. Host: Windows 11, RTX 3070 Ti, SudoVDA. Ping’s figures are
+      30-second averages; Moonlight’s, its end-of-stream statistics. The two measure network round trip differently,
+      so it is left out here. <a href={onGitHub('docs/benchmarks.md')}>Every figure, and how it was taken</a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .stat {
+    margin: 0;
+    padding: 28px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  figcaption {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .better {
+    color: var(--text-3);
+    font-size: 0.875rem;
+    font-weight: 400;
+  }
+
+  dl {
+    display: grid;
+    gap: 18px;
+    margin: 24px 0 0;
+  }
+
+  dt {
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
+  dd {
+    display: grid;
+    grid-template-columns: 1fr 6.5rem;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0 0;
+  }
+
+  .track {
+    display: block;
+  }
+
+  /* Bars grow from the left; square there, rounded at the value end. */
+  .b {
+    display: block;
+    height: 16px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .ours {
+    background: var(--data-2);
+  }
+
+  .theirs {
+    background: var(--data-muted);
+  }
+
+  .v {
+    color: var(--text);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .foot {
+    max-width: 52rem;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 860px) {
+    .stats {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,116 @@
+---
+import { Font } from 'astro:assets';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : null;
+const card = `${base}og.jpg`;
+const cardUrl = Astro.site ? new URL(card, Astro.site).href : card;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#03050a" />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    {canonical && <link rel="canonical" href={canonical.href} />}
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={cardUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    {canonical && <meta property="og:url" content={canonical.href} />}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="generator" content={Astro.generator} />
+    <Font cssVariable="--font-geist" preload />
+    <Font cssVariable="--font-geist-mono" preload />
+    <script is:inline>
+      // Where the reader was, kept for a reload or a step back. The page is
+      // kept hidden until it is back there (see the end of <body>): browsers
+      // restore the position themselves only after a first paint of the top
+      // of the page (WebKit), or before the font has arrived and moved the
+      // text (all of them).
+      (() => {
+        // Script runs: the phone's menu button replaces the row of links.
+        document.documentElement.classList.add('js');
+        const key = 'scroll:' + location.pathname;
+        try {
+          history.scrollRestoration = 'manual';
+          const how = performance.getEntriesByType('navigation')[0]?.type;
+          const saved = sessionStorage.getItem(key);
+          if ((how === 'reload' || how === 'back_forward') && saved !== null && !location.hash) {
+            document.documentElement.dataset.restore = saved;
+          }
+          window.addEventListener('pagehide', () => sessionStorage.setItem(key, String(window.scrollY)));
+        } catch {
+          // No session storage (a private window, storage blocked): the
+          // browser's own restoration stands.
+          history.scrollRestoration = 'auto';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <slot />
+    <script is:inline>
+      // Back to where the reader was (see <head>), once the page is laid out
+      // as it will stay: the font in (the layout just forced starts it
+      // loading; on a reload it comes from the cache), and the images and
+      // the video sized by their markup. Shown then, or after 600 ms at the
+      // most, whichever comes first.
+      (() => {
+        const root = document.documentElement;
+        const saved = root.dataset.restore;
+        if (saved === undefined) return;
+        void document.body.offsetHeight;
+        let done = false;
+        const show = () => {
+          if (done) return;
+          done = true;
+          window.scrollTo(0, Number(saved));
+          delete root.dataset.restore;
+        };
+        (document.fonts ? document.fonts.ready : Promise.resolve()).then(show, show);
+        setTimeout(show, 600);
+      })();
+    </script>
+    <script>
+      // In-page links glide to their section without writing it into the
+      // address: a reload then returns to where the reader was, rather than
+      // to the last section a link pointed at. An address that arrives with
+      // a section loses it once the browser has scrolled there, for the
+      // same reason. The focus moves to the section too, so the keyboard
+      // carries on from there (the skip link relies on it).
+      const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+      document.addEventListener('click', (e) => {
+        const link = (e.target as Element).closest('a[href^="#"]');
+        if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const id = decodeURIComponent(link.getAttribute('href')!.slice(1));
+        const to = id === 'top' ? document.body : document.getElementById(id);
+        if (!to) return;
+        e.preventDefault();
+        const behavior = still.matches ? 'auto' : 'smooth';
+        if (id === 'top') window.scrollTo({ top: 0, behavior });
+        else to.scrollIntoView({ behavior });
+        if (!to.matches('a, button, input, [tabindex]')) to.setAttribute('tabindex', '-1');
+        to.focus({ preventScroll: true });
+      });
+      const dropHash = () => history.replaceState(history.state, '', location.pathname + location.search);
+      if (location.hash) window.addEventListener('load', dropHash, { once: true });
+      // A section typed into the address of the open page.
+      window.addEventListener('hashchange', dropHash);
+    </script>
+  </body>
+</html>

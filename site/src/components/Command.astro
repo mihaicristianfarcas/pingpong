@@ -1,0 +1,144 @@
+---
+// Shell commands with a button that copies them. A comment after two
+// spaces and `#` is shown but not copied.
+import Icon from './Icon.astro';
+
+interface Props {
+  lines: string[];
+  label: string;
+}
+
+const { lines, label } = Astro.props;
+const split = lines.map((line) => {
+  const at = line.indexOf('  #');
+  return at < 0 ? { cmd: line, note: '' } : { cmd: line.slice(0, at), note: line.slice(at) };
+});
+const copy = split.map((l) => l.cmd.trimEnd()).join('\n');
+---
+
+<div class="command">
+  <div class="cmd-head">
+    <span class="label">{label}</span>
+    <button type="button" class="copy" data-copy={copy} aria-label={`Copy: ${label}`}>
+      <Icon name="copy" size={15} />
+      <span data-copy-label>Copy</span>
+    </button>
+  </div>
+  <pre><code>{split.map((l) => (
+    <><span class="line"><span class="prompt" aria-hidden="true">$ </span>{l.cmd}{l.note && <span class="comment">{l.note}</span>}</span>{'\n'}</>
+  ))}</code></pre>
+</div>
+
+<style>
+  .command {
+    min-width: 0;
+    border-radius: var(--radius);
+    border: 1px solid var(--line-2);
+    background: rgb(3 5 10 / 0.55);
+    color: var(--text);
+  }
+
+  .cmd-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 10px 10px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .label {
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  pre {
+    margin: 0;
+    padding: 20px 22px 22px;
+    overflow-x: auto;
+    font-size: 0.86rem;
+    line-height: 1.85;
+  }
+
+  .line {
+    white-space: pre;
+  }
+
+  /* A phone wraps a long line rather than hiding its end, indented under
+     its prompt; the button still copies it whole. Between block lines the
+     newlines collapse away. */
+  @media (max-width: 640px) {
+    pre {
+      white-space: normal;
+      font-size: 0.78rem;
+    }
+
+    .line {
+      display: block;
+      padding-left: 2ch;
+      text-indent: -2ch;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .prompt {
+    color: var(--text-3);
+    user-select: none;
+  }
+
+  .comment {
+    color: var(--text-3);
+  }
+
+  .copy {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--line-2);
+    border-radius: 6px;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition:
+      color 0.2s,
+      border-color 0.2s,
+      background-color 0.2s;
+  }
+
+  .copy:hover {
+    border-color: rgb(255 255 255 / 0.28);
+    color: var(--text);
+  }
+
+  .copy[data-done] {
+    color: var(--text);
+  }
+</style>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+    const label = button.querySelector('[data-copy-label]');
+    let timer = 0;
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy ?? '');
+      } catch {
+        // No clipboard (an insecure origin, or permission refused): the
+        // command stays on screen to select by hand.
+        return;
+      }
+      button.dataset.done = '';
+      if (label) label.textContent = 'Copied';
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        delete button.dataset.done;
+        if (label) label.textContent = 'Copy';
+      }, 1600);
+    });
+  }
+</script>
