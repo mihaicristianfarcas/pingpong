@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # A sandboxed Linux desktop for AI agents to use, in a container: Xvfb with
 # openbox, a panel, a terminal, a text editor, a calculator and a file
-# manager, streamed by Linux Pong. This device's agent identity is paired
-# with it by hand, and so is a person's (for watching). Run from the Mac:
+# manager, streamed by Linux Pong, on one session bus with the accessibility
+# bus (AT-SPI), so Pong can read the apps' trees. This device's agent
+# identity is paired with it by hand, and so is a person's (for watching).
+# Run from the Mac:
 #
 #   tools/linux/agent-desktop start     build, start the desktop and Pong
 #   tools/linux/agent-desktop mcp ...   the MCP server, over docker exec (for agents)
@@ -18,6 +20,9 @@ OUT=/src/target/linux-out/agent
 SIZE=${AGENT_DESKTOP_SIZE:-1280x800}
 
 inside() { docker exec -i -e DISPLAY=:1 -e PONG_DATA_DIR=$OUT/pong -e PING_DATA_DIR=$OUT/ping -e NO_COLOR=1 "$NAME" "$@"; }
+# Commands run in the desktop's session (its bus, so its accessibility bus):
+# `exec` starts apps there.
+in_session() { inside bash -c 'export DBUS_SESSION_BUS_ADDRESS=$(cat '"$OUT"'/dbus-address 2>/dev/null); exec "$@"' _ "$@"; }
 
 case "${1:-}" in
 start)
@@ -42,6 +47,8 @@ TOML
         printf 'Groceries\n- milk\n- eggs\n' >$OUT/home/Documents/list.txt
         (Xvfb :1 -screen 0 ${SIZE}x24 -nolisten tcp >$OUT/xvfb.log 2>&1 &)
         sleep 1
+        eval \$(dbus-launch --sh-syntax)
+        echo \$DBUS_SESSION_BUS_ADDRESS >$OUT/dbus-address
         export HOME=$OUT/home
         (openbox >$OUT/desktop.log 2>&1 &)
         (tint2 >>$OUT/desktop.log 2>&1 &)
@@ -64,7 +71,7 @@ mcp)
     ;;
 exec)
     shift
-    inside "$@"
+    in_session "$@"
     ;;
 shot)
     f=${2:-target/linux-out/agent/x.png}

@@ -146,6 +146,8 @@ pub struct Shared {
     pub agent_log: Mutex<VecDeque<AgentLogEntry>>,
     /// The session's clipboard sharing, when its client asked for it.
     pub clip: Mutex<Option<Clip>>,
+    /// An agent's session: its questions about the screen (`screen`).
+    pub screen: Mutex<Option<crate::screen::ScreenText>>,
 }
 
 /// Clipboard sharing: here, or (a Windows host, which runs as SYSTEM) in a
@@ -518,6 +520,11 @@ impl SessionManager {
             .store(agent_access.is_some(), Ordering::Release);
         if agent_access.is_some() {
             tracing::info!(client = self.name_of(&peer), access = ?agent_access, "an AI agent's session");
+            *self.shared.screen.lock() = Some(crate::screen::ScreenText::start(
+                self.platform.screen_reader(&display, width, height),
+                self.endpoint.clone(),
+                peer.clone(),
+            ));
         }
         *self.shared.video.lock() = Some(video.commands());
         self.shared.active_peer.store(peer.id(), Ordering::Release);
@@ -924,6 +931,7 @@ impl SessionManager {
         // Out of the lock first: stopping waits for its thread.
         let clip = self.shared.clip.lock().take();
         drop(clip);
+        *self.shared.screen.lock() = None;
         if let Some(mut input) = self.shared.input.lock().take() {
             let _ = input.sink.release_all();
             self.platform.input_done(&input.sink);

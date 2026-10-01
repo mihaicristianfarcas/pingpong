@@ -174,6 +174,11 @@ impl Platform {
         ))
     }
 
+    /// What the agent's screen shows, read from the accessibility tree.
+    pub fn screen_reader(&self, d: &Display, width: u16, height: u16) -> crate::a11y::ScreenReader {
+        crate::a11y::ScreenReader::new(d.gdi_name.clone(), (width as u32, height as u32))
+    }
+
     /// Input for the session is over.
     pub fn input_done(&self, _sink: &Sink) {}
 

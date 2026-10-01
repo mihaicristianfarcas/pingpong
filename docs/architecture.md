@@ -195,7 +195,7 @@ bytes 16-19 frame_id
 | Video | Frame shards and parity | Reed-Solomon per frame; lost frames repaired by invalidation or IDR |
 | Audio | One 5 ms Opus packet per datagram; two parity datagrams per four | Reed-Solomon 4+2, as Sunshine; concealment beyond that |
 | Input | The newest events, and the ones before them (up to 8) | Unreliable but redundant: every packet repeats recent events, the host drops what it has seen |
-| Control | Session setup, loss reports, recovery requests, cursor state, pings, controllers, clipboard | Retransmitted by the sender where it matters (`SessionStart`), otherwise naturally repeated |
+| Control | Session setup, loss reports, recovery requests, cursor state, pings, controllers, clipboard, an agent's screen as text | Retransmitted by the sender where it matters (`SessionStart`), otherwise naturally repeated; the clipboard acknowledged chunk by chunk; screen text asked for again when a part is missing |
 
 Input is sent unreliably on purpose: a retransmission would hold every later
 event back by a round trip. Keys travel as physical scancodes (the host's

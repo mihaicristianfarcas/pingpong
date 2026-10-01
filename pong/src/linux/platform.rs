@@ -85,6 +85,8 @@ impl InputSink for Sink {
 pub struct Display {
     source: VideoSource,
     picture: (u32, u32, u32, u32),
+    /// The screen's size in the desktop's pixels.
+    screen: (u32, u32),
     /// Wayland: the portal session (screen, input, the screen kept on).
     portal: Option<SharedScreen>,
     /// X11: the screen kept on.
@@ -202,6 +204,7 @@ impl Platform {
                     node: granted.node,
                 },
                 picture,
+                screen: granted.size.unwrap_or((w, h)),
                 portal: Some(SharedScreen {
                     portal,
                     size: granted.size,
@@ -222,6 +225,7 @@ impl Platform {
         Ok(Display {
             source: VideoSource::X11,
             picture,
+            screen: (sw, sh),
             portal: None,
             _awake: Some(Awake::hold()),
             told: 0,
@@ -264,6 +268,16 @@ impl Platform {
                 .map_or(SinkKind::None, |s| SinkKind::X11(Box::new(s))),
         };
         Sink { inner, received: 0 }
+    }
+
+    /// What the agent's screen shows, read from the accessibility tree.
+    pub fn screen_reader(
+        &self,
+        d: &Display,
+        _width: u16,
+        _height: u16,
+    ) -> crate::a11y::ScreenReader {
+        crate::a11y::ScreenReader::new(d.picture, d.screen, d.portal.is_some())
     }
 
     /// Input for the session is over.

@@ -325,6 +325,7 @@ impl Host {
         };
         let body = &packet[HEADER_LEN..header.total_len as usize];
         match header.kind {
+            Kind::Control if pingpong_proto::screen::is_screen(body) => self.on_screen(peer, body),
             Kind::Control if pingpong_proto::clip::is_clip(body) => {
                 if self.shared.is_active(peer.id()) {
                     if let Some(clip) = self.shared.clip.lock().as_ref() {
@@ -340,6 +341,21 @@ impl Host {
             }
             Kind::Input => self.on_input(peer, &header, body),
             Kind::Video | Kind::Audio => {}
+        }
+    }
+
+    /// An agent asks what is on its screen (`screen`).
+    fn on_screen(&self, peer: &Arc<Peer>, body: &[u8]) {
+        let Some(pingpong_proto::screen::Msg::Request { id, query }) =
+            pingpong_proto::screen::decode(body)
+        else {
+            return;
+        };
+        if !self.shared.is_active(peer.id()) || !self.shared.agent_session.load(Ordering::Acquire) {
+            return;
+        }
+        if let Some(screen) = self.shared.screen.lock().as_ref() {
+            screen.ask(id, query);
         }
     }
 
