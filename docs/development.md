@@ -175,7 +175,9 @@ silicon and an Intel runner (`tools/package-macos`: release bundles, zipped
 as `Ping-VERSION-macos-ARCH.zip` and `Pong-VERSION-macos-ARCH.zip`),
 publishes the release with them, and opens a pull request that brings the
 Homebrew casks in `Casks/` to the new version (`tools/update-casks`); `brew
-upgrade` sees the release once it is merged. The same can be done by hand
+upgrade` sees the release once it is merged. GitHub holds CI on a pull
+request a workflow opened until it is approved: the workflow approves it,
+or says on the pull request that it needs approving by hand. The same can be done by hand
 from a Mac: `tools/package-macos`, `gh release create`, then
 `tools/update-casks VERSION target/dist` on a branch of its own. To try
 the casks before a release, write them against the local archives

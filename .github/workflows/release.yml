@@ -17,7 +17,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  # To start CI on the casks' branch (see ci.yml).
+  # To approve the casks pull request's CI run (see below).
   actions: write
 
 jobs:
@@ -82,7 +82,22 @@ jobs:
           git commit -m "Casks: Ping and Pong $version" \
             -m "The release's archives and their checksums, from the release workflow."
           git push origin "$branch"
-          # A pull request opened with this token starts no CI run of its own.
-          gh workflow run ci.yml --ref "$branch"
           gh pr create --base main --head "$branch" --title "Casks: Ping and Pong $version" \
             --body "The Homebrew casks at release $GITHUB_REF_NAME: its archives and their checksums. Merging this is what makes \`brew upgrade\` see the release."
+          # GitHub holds the CI run of a pull request a workflow opened until
+          # someone approves it, and main merges only on that run's checks
+          # (a run started by hand on the branch does not count). Approve it
+          # here; if this token may not, the pull request says so and it is
+          # approved by hand (Actions, or
+          # gh api -X POST repos/OWNER/REPO/actions/runs/ID/approve).
+          for _ in $(seq 1 20); do
+            run=$(gh run list --branch "$branch" --event pull_request --json databaseId,conclusion \
+              --jq '.[] | select(.conclusion == "action_required") | .databaseId' | head -n 1)
+            [ -n "$run" ] && break
+            sleep 6
+          done
+          if [ -n "$run" ] && gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$run/approve"; then
+            echo "approved CI run $run"
+          else
+            gh pr comment "$branch" --body "CI on this pull request waits for approval: approve its run in the Actions tab, then merge once it passes."
+          fi
