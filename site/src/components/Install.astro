@@ -50,13 +50,9 @@ const panels: Panel[] = [
     files: mac,
     steps: [
       'Open the zip and move <strong>Ping</strong> to Applications.',
-      'Let macOS open it: Ping is signed but not notarized, so run the command below once, in Terminal.',
       'Open Ping, and let it find devices on your local network when it asks.',
     ],
-    commands: [
-      { label: 'Once, in Terminal', lines: ['xattr -dr com.apple.quarantine /Applications/Ping.app'] },
-      { label: 'Or all of it with Homebrew', lines: [TAP, 'brew install --cask ping'] },
-    ],
+    commands: [{ label: 'Or with Homebrew', lines: [TAP, 'brew install --cask ping'] }],
   },
   {
     app: 'Pong',
@@ -65,16 +61,10 @@ const panels: Panel[] = [
     files: mac,
     steps: [
       'Open the zip and move <strong>Pong</strong> and <strong>Pong Control</strong> to Applications.',
-      'Let macOS open them: they are signed but not notarized, so run the command below once, in Terminal.',
-      'Open Pong Control and choose <strong>Start Pong</strong>: the host then runs whenever you are logged in. Allow Screen Recording and Accessibility when macOS asks.',
+      'Open Pong Control and choose <strong>Start Pong</strong>: the host then runs whenever you are logged in.',
+      'Allow Screen Recording and Accessibility when macOS asks: Pong needs the first to stream your screen, the second for the keyboard and mouse of whoever streams it.',
     ],
-    commands: [
-      {
-        label: 'Once, in Terminal',
-        lines: ['xattr -dr com.apple.quarantine /Applications/Pong.app "/Applications/Pong Control.app"'],
-      },
-      { label: 'Or all of it with Homebrew', lines: [TAP, 'brew install --cask pong'] },
-    ],
+    commands: [{ label: 'Or with Homebrew', lines: [TAP, 'brew install --cask pong'] }],
   },
   {
     app: 'Ping',
