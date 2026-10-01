@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Install Ping or Pong for this user from a release archive (made by
+# tools/linux/package, where this script is install.sh): the programs in
+# ~/.local/bin, a launcher entry each with its icon, and for Pong the host as
+# a user service, started now and at each login. tools/linux/install-apps
+# does the same for a checkout's build.
+#
+#   ./install.sh                # from the unpacked archive
+#   ./install.sh --uninstall
+set -euo pipefail
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+BIN=${XDG_BIN_HOME:-$HOME/.local/bin}
+DATA=${XDG_DATA_HOME:-$HOME/.local/share}
+UNITS=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
+
+# PROGRAM ID: the launcher entry and icon are ID.desktop and ID.png.
+apps=("ping-app dev.pingpong.Ping" "pong-app dev.pingpong.PongApp")
+
+if [[ ${1:-} == --uninstall ]]; then
+    if [[ -f $HERE/pong.service ]]; then
+        systemctl --user disable --now pong 2>/dev/null || true
+        rm -f "$UNITS/pong.service" "$HOME/.local/bin/pong"
+        systemctl --user daemon-reload 2>/dev/null || true
+    fi
+    for app in "${apps[@]}"; do
+        read -r program id <<< "$app"
+        [[ -f $HERE/$program ]] || continue
+        rm -f "$BIN/$program" "$DATA/applications/$id.desktop" "$DATA/icons/hicolor/256x256/apps/$id.png"
+    done
+    app=ping
+    [[ -f $HERE/pong ]] && app=pong
+    echo "uninstalled; your settings and pairings stay in ~/.config/$app"
+    exit 0
+fi
+
+# A library the system lacks shows here, not as a program that will not
+# start from the launcher.
+missing=$(for program in ping-app pong-app pong; do
+    if [[ -f $HERE/$program ]]; then
+        ldd "$HERE/$program" | awk '/not found/ { print $1 }'
+    fi
+done | sort -u)
+if [[ -n $missing ]]; then
+    echo "These libraries are missing; install them with your package manager, then run this again:" >&2
+    echo "$missing" | sed 's/^/  /' >&2
+    # Ubuntu 24.04's names for them, which the programs were built against.
+    packages=$(for lib in $missing; do
+        case $lib in
+            libavcodec.so.60) echo libavcodec60 ;;
+            libavutil.so.58) echo libavutil58 ;;
+            libswscale.so.7) echo libswscale7 ;;
+            libxkbcommon.so.0) echo libxkbcommon0 ;;
+            libxkbcommon-x11.so.0) echo libxkbcommon-x11-0 ;;
+            libpipewire-0.3.so.0) echo libpipewire-0.3-0t64 ;;
+            libpulse-simple.so.0) echo libpulse0 ;;
+            libasound.so.2) echo libasound2t64 ;;
+            libudev.so.1) echo libudev1 ;;
+        esac
+    done | sort -u | tr '\n' ' ')
+    if [[ -n $packages ]] && command -v apt-get >/dev/null; then
+        echo "On Ubuntu: sudo apt install $packages" >&2
+    fi
+    exit 1
+fi
+
+for app in "${apps[@]}"; do
+    read -r program id <<< "$app"
+    [[ -f $HERE/$program ]] || continue
+    install -Dm755 "$HERE/$program" "$BIN/$program"
+    # The program by its path: a ~/.local/bin made just now is in the
+    # session's PATH only from the next login.
+    mkdir -p "$DATA/applications"
+    sed "s|^Exec=.*|Exec=$BIN/$program|" "$HERE/$id.desktop" > "$DATA/applications/$id.desktop"
+    install -Dm644 "$HERE/$id.png" "$DATA/icons/hicolor/256x256/apps/$id.png"
+    echo "installed $program"
+done
+command -v update-desktop-database >/dev/null && update-desktop-database -q "$DATA/applications" || true
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true
+
+if [[ -f $HERE/pong ]]; then
+    # Where pong.service starts it from, whatever XDG_BIN_HOME says.
+    install -Dm755 "$HERE/pong" "$HOME/.local/bin/pong"
+    install -Dm644 "$HERE/pong.service" "$UNITS/pong.service"
+    systemctl --user daemon-reload
+    # restart: an update replaces a running host.
+    systemctl --user enable pong
+    systemctl --user restart pong
+    echo "installed pong, running as a user service (systemctl --user status pong)"
+fi
+
+case ":$PATH:" in
+    *":$BIN:"*) ;;
+    *) echo "note: $BIN is not in PATH yet (it is after you log in again, on most desktops): until then, start them from the launcher" ;;
+esac

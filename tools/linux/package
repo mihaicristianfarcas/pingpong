@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Package Ping and Pong for Linux as a release: the programs built as one
+# (PINGPONG_RELEASE=1: they then follow releases, not the main branch), in
+# tar archives for a GitHub release and the website's downloads.
+#
+#   tools/linux/package
+#     -> target/dist/Ping-VERSION-linux-ARCH.tar.gz   (ping-app)
+#        target/dist/Pong-VERSION-linux-ARCH.tar.gz   (pong, pong-app, pong.service)
+#
+# Each archive is a folder of the same name with the programs, their launcher
+# entries and icons, and install.sh (tools/linux/install-release). ARCH is
+# this machine's (x86_64, aarch64); VERSION the workspace's. The programs
+# link the system's libraries (FFmpeg, PipeWire, ...) as this machine has
+# them: built on Ubuntu 24.04, they run on it and on distributions built on
+# it. The release workflow (.github/workflows/release.yml) runs this on an
+# Ubuntu 24.04 runner.
+set -euo pipefail
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version = "\(.*\)"/\1/p' "$REPO/Cargo.toml")
+ARCH=$(uname -m)
+TARGET=${CARGO_TARGET_DIR:-$REPO/target}
+DIST="$REPO/target/dist"
+
+export PINGPONG_RELEASE=1
+cd "$REPO"
+cargo build --release -p ping-app -p pong-app
+# The host on its own: it and the GPUI apps ask one dependency for different
+# async runtimes (docs/development.md).
+cargo build --release -p pong
+
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$DIST"
+
+# archive NAME FILE...: target/dist/NAME-VERSION-linux-ARCH.tar.gz, FILE given
+# as SOURCE or SOURCE:NAME_IN_ARCHIVE.
+archive() {
+    local name=$1-$VERSION-linux-$ARCH file
+    shift
+    mkdir -p "$STAGE/$name"
+    for file in "$@" "$REPO/tools/linux/install-release:install.sh"; do
+        local from=${file%%:*} to=${file#*:}
+        [[ $file == *:* ]] || to=$(basename "$from")
+        install -m "$([[ -x $from ]] && echo 755 || echo 644)" "$from" "$STAGE/$name/$to"
+    done
+    # Unpacked as whoever unpacks it, not as the build's user.
+    tar -C "$STAGE" --owner=0 --group=0 --numeric-owner -czf "$DIST/$name.tar.gz" "$name"
+    echo "$(sha256sum "$DIST/$name.tar.gz" | cut -d' ' -f1)  $name.tar.gz"
+}
+
+archive Ping \
+    "$TARGET/release/ping-app" \
+    "$REPO/tools/linux/dev.pingpong.Ping.desktop" \
+    "$REPO/ping-app/assets/icon-256.png:dev.pingpong.Ping.png"
+archive Pong \
+    "$TARGET/release/pong" \
+    "$TARGET/release/pong-app" \
+    "$REPO/tools/linux/pong.service" \
+    "$REPO/tools/linux/dev.pingpong.PongApp.desktop" \
+    "$REPO/pong-app/assets/icon-256.png:dev.pingpong.PongApp.png"

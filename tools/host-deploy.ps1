@@ -4,12 +4,29 @@
 # user running this; "Show Pong's icon at login" in the window turns it off).
 #
 #   powershell -File host-deploy.ps1 [-Source <path to pong.exe>] [-NoStart]
+#
+# In a release archive (tools/package-windows.ps1) this script is
+# install.ps1, beside pong.exe and Pong Control.exe, and takes them from
+# there; in a checkout, from target\release.
 param(
-    [string]$Source = (Join-Path $PSScriptRoot '..\target\release\pong.exe'),
-    [string]$Window = (Join-Path $PSScriptRoot '..\target\release\pong-app.exe'),
+    [string]$Source = $(if (Test-Path (Join-Path $PSScriptRoot 'pong.exe')) { Join-Path $PSScriptRoot 'pong.exe' }
+        else { Join-Path $PSScriptRoot '..\target\release\pong.exe' }),
+    [string]$Window = $(if (Test-Path (Join-Path $PSScriptRoot 'Pong Control.exe')) { Join-Path $PSScriptRoot 'Pong Control.exe' }
+        else { Join-Path $PSScriptRoot '..\target\release\pong-app.exe' }),
     [switch]$NoStart
 )
 $ErrorActionPreference = 'Stop'
+# A service is installed by an administrator. From a PowerShell that is not
+# one (the release archive's "Install Pong.cmd"), start again as one, which
+# Windows asks the user to allow, in a window that stays open to show how it
+# went.
+$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $again = '-NoProfile -ExecutionPolicy Bypass -NoExit -File "{0}" -Source "{1}" -Window "{2}"' -f $PSCommandPath, $Source, $Window
+    if ($NoStart) { $again += ' -NoStart' }
+    Start-Process powershell -Verb RunAs -ArgumentList $again
+    return
+}
 $dest = 'C:\Program Files\Pong'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
@@ -22,10 +39,15 @@ if ($svc -and $svc.Status -ne 'Stopped') {
 Get-Process pong -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 Copy-Item -Force $Source (Join-Path $dest 'pong.exe')
+# A download's files carry the internet's mark, and SmartScreen would
+# question Pong's window at its first start: the copies are trusted as this
+# installer is.
+Unblock-File (Join-Path $dest 'pong.exe')
 if (Test-Path $Window) {
     Get-Process 'Pong Control' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     $control = Join-Path $dest 'Pong Control.exe'
     Copy-Item -Force $Window $control
+    Unblock-File $control
     # For everyone on this PC: Start menu, "Pong".
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Pong.lnk'))
