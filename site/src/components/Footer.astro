@@ -1,0 +1,107 @@
+---
+import Logo from './Logo.astro';
+import { REPO, onGitHub } from '../lib/repo';
+---
+
+<footer class="footer">
+  <div class="wrap grid">
+    <div class="about">
+      <Logo />
+      <p>
+        pingpong follows the lead of <a href="https://moonlight-stream.org">Moonlight</a>,
+        <a href="https://github.com/LizardByte/Sunshine">Sunshine</a> and
+        <a href="https://github.com/ClassicOldSong/Apollo">Apollo</a>: where it had to choose how streaming should
+        behave, it chose what they do. It is a separate implementation, written from scratch in Rust. The tunnel is
+        <a href="https://github.com/mihaicristianfarcas/pq-boringtun">pq-boringtun</a>; the windows are drawn with
+        <a href="https://github.com/zed-industries/zed/tree/main/crates/gpui">GPUI</a>.
+      </p>
+    </div>
+    <nav aria-label="Documentation">
+      <h2>Documentation</h2>
+      <a href={onGitHub('docs/install.md')}>Installing</a>
+      <a href={onGitHub('docs/usage.md')}>Using Ping and Pong</a>
+      <a href={onGitHub('docs/networking.md')}>Reaching a host from anywhere</a>
+      <a href={onGitHub('docs/ai-agents.md')}>AI agents</a>
+      <a href={onGitHub('docs/benchmarks.md')}>Benchmarks</a>
+    </nav>
+    <nav aria-label="Project">
+      <h2>Project</h2>
+      <a href={REPO}>Source</a>
+      <a href={`${REPO}/releases`}>Releases</a>
+      <a href={onGitHub('CONTRIBUTING.md')}>Contributing</a>
+      <a href={onGitHub('SECURITY.md')}>Security</a>
+      <a href={onGitHub('LICENSE')}>MIT License</a>
+    </nav>
+  </div>
+  <div class="wrap legal">
+    <span>MIT licensed.</span>
+    <span>Moonlight, Sunshine and Apollo are their authors’ projects; pingpong is not affiliated with them.</span>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    padding-top: 56px;
+    border-top: 1px solid var(--line);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 48px;
+  }
+
+  .about p {
+    max-width: 30rem;
+    margin-top: 16px;
+    font-size: 0.875rem;
+  }
+
+  nav {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    font-size: 0.875rem;
+  }
+
+  nav a {
+    padding-block: 4px;
+    color: var(--text-2);
+  }
+
+  nav a:hover {
+    color: var(--text);
+  }
+
+  h2 {
+    margin-bottom: 4px;
+    color: var(--text);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  /* The rule above spans the content, not the gutters. */
+  .legal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 24px;
+    margin-top: 56px;
+    padding-block: 24px 32px;
+    background: linear-gradient(var(--line), var(--line)) var(--gutter) 0 / calc(100% - 2 * var(--gutter)) 1px
+      no-repeat;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+  }
+
+  @media (max-width: 760px) {
+    .grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .about {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

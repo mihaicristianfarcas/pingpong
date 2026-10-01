@@ -17,6 +17,7 @@ pong-app/             Pong's window and tray icon (GPUI)       ─┘
 pingpong-*/           the libraries both share (see docs/architecture.md)
 Casks/                the Homebrew casks, written at each release (see below)
 docs/                 documentation; docs/design/ is the design history
+site/                 the landing page (Astro), not part of the workspace (below)
 tools/                build, deploy and test scripts (below)
 spikes/               early experiments, not built with the workspace
 vendor/               two no-op crates GPUI names
@@ -254,6 +255,44 @@ nightly Rust):
 cd pingpong-proto/fuzz
 cargo +nightly fuzz run depacketize   # also: control, input
 ```
+
+## The website
+
+`site/` is pingpong's landing page, built with [Astro](https://astro.build)
+(Node 22.12 or newer). It reads the repository rather than copies of it
+where it can: the UI's icons in `pingpong-ui/assets/icons/` and the
+release in `Casks/ping.rb`, so a new release shows on its next build.
+
+```sh
+cd site
+npm install
+npm run dev       # http://localhost:4321, reloading as you edit
+npm run build     # astro check, then the page in site/dist/
+npm run preview   # serves site/dist/
+```
+
+`SITE_URL` and `BASE_PATH` say where the page is served from; for GitHub
+Pages, `SITE_URL=https://mihaicristianfarcas.github.io BASE_PATH=/pingpong/
+npm run build`. Without `SITE_URL` the page has no canonical URL.
+
+What it shows is made from the apps, by scripts in `site/scripts/`:
+
+| Script | Makes |
+|---|---|
+| `capture-apps.sh` (macOS) | The windows' screenshots in `src/assets/shots/`, from the demo mode in their dark appearance, with empty temporary data folders. Needs the release apps built and Screen Recording for the terminal. The hero's two windows (`src/assets/hero/`) are screenshots taken by hand. |
+| `record-stream.sh` | The stream video in `public/media/`: a Linux host and client in the container (`tools/linux-dev`), the host showing a running clock (`clock-scene.py`), both screens read at the same instants from Xvfb's framebuffers (`grab-screens.py`) and set side by side; and the averages of Ping's statistics, for `src/lib/facts.ts`. A run whose slowest second fell below 55 fps (the VM starved, both sides at once) is refused and made again. |
+
+`agent-screen.html` is the desktop the sample agent session is shown
+(rendered as `agent-screen.webp`); `og-card.html` is the link preview
+(`public/og.jpg`). Both are rendered at their size (1280x800, 1200x630) by
+any headless browser. `src/assets/icons/` holds the apps' icons as SVG,
+drawn as `ping-app/examples/make-icon.rs` draws them but with the ball and
+its trail in blue; `public/favicon.svg` is Ping's.
+
+Every figure on the page is one from the documentation or from that
+recording, with the conditions it was measured under, and lives in
+`src/lib/facts.ts` with where it comes from. When a figure there changes,
+change it on the page too.
 
 ## Assets
 

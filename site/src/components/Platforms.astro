@@ -1,0 +1,143 @@
+---
+// Where each system stands, after the README's status table.
+import { onGitHub } from '../lib/repo';
+
+type Status = 'Daily use' | 'Works';
+const systems: { os: string; versions: string; client: [Status, string]; host: [Status, string] }[] = [
+  {
+    os: 'macOS',
+    versions: '14 and later',
+    client: ['Daily use', 'Ping.app'],
+    host: ['Works', 'Pong.app: a virtual display at your size, HEVC, stereo sound; no controllers'],
+  },
+  {
+    os: 'Windows',
+    versions: '10 and 11',
+    client: ['Works', 'Ping.exe, less tested than on macOS'],
+    host: ['Daily use', 'PongService: starts at boot and streams the lock screen; needs an NVIDIA GPU and SudoVDA'],
+  },
+  {
+    os: 'Linux',
+    versions: 'X11 and Wayland',
+    client: ['Works', 'ping-app, tested in a container'],
+    host: ['Works', 'pong as a user service; the screen is scaled, with no virtual display'],
+  },
+];
+---
+
+<section class="section" id="platforms">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Platforms</span>
+      <h2 class="title">A client and a host on every desktop</h2>
+    </div>
+
+    <div class="table-wrap" role="region" aria-label="Where Ping and Pong run" tabindex="0">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">System</th>
+            <th scope="col">Client (Ping)</th>
+            <th scope="col">Host (Pong)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {systems.map((s) => (
+            <tr>
+              <th scope="row">
+                {s.os}
+                <span>{s.versions}</span>
+              </th>
+              {[s.client, s.host].map(([status, text]) => (
+                <td>
+                  <span class:list={['status', status === 'Daily use' && 'daily']}>{status}</span>
+                  <p>{text}</p>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="note after">
+      Phones, tablets and TVs are out of scope.
+      <a href={onGitHub('docs/parity.md')}>Feature by feature against Moonlight + Apollo</a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  table {
+    width: 100%;
+    min-width: 640px;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+
+  th,
+  td {
+    padding: 20px 24px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  thead th {
+    padding-block: 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+
+  tbody tr + tr {
+    border-top: 1px solid var(--line);
+  }
+
+  tbody th {
+    width: 20%;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  tbody th span {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-3);
+    font-size: 0.8125rem;
+    font-weight: 400;
+  }
+
+  td {
+    width: 40%;
+  }
+
+  .status {
+    display: inline-block;
+    padding: 1px 8px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    color: var(--text-2);
+    font-size: 0.75rem;
+  }
+
+  .status.daily {
+    border-color: rgb(141 178 255 / 0.4);
+    color: var(--accent);
+  }
+
+  td p {
+    margin-top: 8px;
+  }
+
+  .after {
+    margin-top: 16px;
+  }
+</style>

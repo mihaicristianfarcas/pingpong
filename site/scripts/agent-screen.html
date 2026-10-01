@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 800px; overflow: hidden; }
+  body {
+    font: 13px/1 "Segoe UI", -apple-system, system-ui, sans-serif;
+    color: #e8ebf2;
+    background:
+      radial-gradient(60% 70% at 78% 30%, rgba(56, 110, 255, 0.55), transparent 70%),
+      radial-gradient(50% 60% at 20% 90%, rgba(20, 60, 180, 0.45), transparent 70%),
+      linear-gradient(160deg, #0b1a44 0%, #050b1f 55%, #02040c 100%);
+    position: relative;
+  }
+  /* Soft wallpaper ribbons. */
+  .ribbon { position: absolute; border-radius: 50%; filter: blur(2px); opacity: .55; }
+  .r1 { width: 1100px; height: 520px; left: 420px; top: -120px; border: 2px solid rgba(140, 180, 255, .25); transform: rotate(-12deg); }
+  .r2 { width: 1300px; height: 640px; left: 360px; top: -160px; border: 1px solid rgba(140, 180, 255, .15); transform: rotate(-9deg); }
+
+  .win {
+    position: absolute; left: 24px; top: 64px; width: 1000px; height: 640px;
+    background: #1c1f26; border: 1px solid rgba(255,255,255,.09); border-radius: 10px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.55); overflow: hidden;
+  }
+  .title { height: 40px; display: flex; align-items: center; padding: 0 14px; gap: 10px; background: #15171c; }
+  .title .tab { height: 30px; margin-top: 10px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: #1c1f26; border-radius: 8px 8px 0 0; font-size: 12.5px; }
+  .title .ctrl { margin-left: auto; display: flex; gap: 22px; color: #9aa3b5; font-size: 14px; }
+  .bar { height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .bar .nav { color: #8c95a8; letter-spacing: 10px; font-size: 14px; }
+  .bar .path { flex: 1; height: 30px; display: flex; align-items: center; padding: 0 12px; background: #262a33; border-radius: 6px; color: #d5dae5; gap: 8px; }
+  .bar .search { width: 220px; height: 30px; display: flex; align-items: center; padding: 0 12px; background: #262a33; border-radius: 6px; color: #7d869a; }
+  .side { position: absolute; left: 0; top: 84px; bottom: 0; width: 200px; border-right: 1px solid rgba(255,255,255,.06); }
+  .item { position: absolute; left: 8px; right: 8px; height: 30px; display: flex; align-items: center; gap: 10px; padding-left: 14px; border-radius: 6px; color: #cfd5e1; }
+  .item.on { background: rgba(96, 140, 255, .18); color: #fff; }
+  .ico { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+  .head, .row { position: absolute; left: 200px; right: 0; display: grid; grid-template-columns: 1fr 160px 150px 110px; align-items: center; padding: 0 18px 0 26px; }
+  .head { top: 84px; height: 24px; color: #8c95a8; font-size: 12px; }
+  .row { height: 26px; }
+  .row.sel { background: rgba(96, 140, 255, .22); box-shadow: inset 0 0 0 1px rgba(120, 160, 255, .35); }
+  .row .name { display: flex; align-items: center; gap: 10px; }
+  .row .dim { color: #9aa3b5; }
+  .row .size { text-align: right; color: #cfd5e1; }
+  .status { position: absolute; left: 200px; right: 0; bottom: 0; height: 28px; display: flex; align-items: center; padding: 0 18px; color: #8c95a8; font-size: 12px; border-top: 1px solid rgba(255,255,255,.06); }
+
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: rgba(12, 16, 28, .82); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,.07); display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .app { width: 32px; height: 32px; border-radius: 8px; }
+  .app.open { box-shadow: 0 6px 0 -4px #7aa2ff; }
+  .clock { position: absolute; right: 18px; text-align: right; font-size: 12px; line-height: 1.35; color: #d5dae5; }
+  .icons { position: absolute; right: 30px; top: 70px; display: grid; gap: 26px; justify-items: center; }
+  .dicon { display: grid; justify-items: center; gap: 6px; font-size: 12px; color: #e8ebf2; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  .dicon .ico { width: 42px; height: 42px; border-radius: 10px; }
+</style>
+</head>
+<body>
+  <div class="ribbon r1"></div><div class="ribbon r2"></div>
+
+  <div class="icons">
+    <div class="dicon"><div class="ico" style="background:linear-gradient(135deg,#4c7dff,#2346b8)"></div>Recycle Bin</div>
+    <div class="dicon"><div class="ico" style="background:linear-gradient(135deg,#1b2838,#2a475e)"></div>Steam</div>
+    <div class="dicon"><div class="ico" style="background:linear-gradient(135deg,#5b5bd6,#302f7a)"></div>OBS Studio</div>
+  </div>
+
+  <div class="win">
+    <div class="title">
+      <div class="tab"><span class="ico" style="background:#f2c14e"></span>Downloads</div>
+      <div class="ctrl"><span>—</span><span>☐</span><span>✕</span></div>
+    </div>
+    <div class="bar">
+      <span class="nav">←→↑</span>
+      <div class="path"><span class="ico" style="background:#4f86ff;width:14px;height:14px"></span>This PC › Downloads</div>
+      <div class="search">Search Downloads</div>
+    </div>
+
+    <div class="side">
+      <!-- Positioned so Downloads sits at (96, 412) on the screen. -->
+      <div class="item" style="top: 20px"><span class="ico" style="background:#6d7a95"></span>Home</div>
+      <div class="item" style="top: 56px"><span class="ico" style="background:#4ba3ff"></span>Gallery</div>
+      <div class="item" style="top: 108px"><span class="ico" style="background:#3f7bff"></span>Desktop</div>
+      <div class="item" style="top: 144px"><span class="ico" style="background:#7c8aa8"></span>Documents</div>
+      <div class="item on" style="top: 249px"><span class="ico" style="background:#39c27a"></span>Downloads</div>
+      <div class="item" style="top: 180px"><span class="ico" style="background:#f06a8a"></span>Music</div>
+      <div class="item" style="top: 214px"><span class="ico" style="background:#a77bff"></span>Pictures</div>
+      <div class="item" style="top: 285px"><span class="ico" style="background:#ff8b4a"></span>Videos</div>
+      <div class="item" style="top: 340px"><span class="ico" style="background:#6d7a95"></span>This PC</div>
+      <div class="item" style="top: 376px"><span class="ico" style="background:#6d7a95"></span>Network</div>
+    </div>
+
+    <div class="head"><span>Name</span><span>Date modified</span><span>Type</span><span style="text-align:right">Size ↓</span></div>
+    <!-- Rows centred at y = 188, 214, 240 ... on the screen (window top 64). -->
+    <div class="row sel" style="top: 111px"><span class="name"><span class="ico" style="background:#e95420"></span>ubuntu-24.04-desktop.iso</span><span class="dim">22/09/2026 21:14</span><span class="dim">Disc Image File</span><span class="size">5.8 GB</span></div>
+    <div class="row sel" style="top: 137px"><span class="name"><span class="ico" style="background:#f2c14e"></span>cyberpunk-patch-2.3.zip</span><span class="dim">18/09/2026 19:02</span><span class="dim">Compressed Folder</span><span class="size">3.1 GB</span></div>
+    <div class="row" style="top: 163px"><span class="name"><span class="ico" style="background:#f2c14e"></span>OBS recordings</span><span class="dim">27/09/2026 23:40</span><span class="dim">File folder</span><span class="size">2.6 GB</span></div>
+    <div class="row" style="top: 189px"><span class="name"><span class="ico" style="background:#3f7bff"></span>SteamSetup.exe</span><span class="dim">02/09/2026 10:11</span><span class="dim">Application</span><span class="size">2.3 MB</span></div>
+    <div class="row" style="top: 215px"><span class="name"><span class="ico" style="background:#4ba3ff"></span>controller-mapping.png</span><span class="dim">25/09/2026 16:45</span><span class="dim">PNG File</span><span class="size">1.9 MB</span></div>
+    <div class="row" style="top: 241px"><span class="name"><span class="ico" style="background:#e04848"></span>manual.pdf</span><span class="dim">12/09/2026 08:30</span><span class="dim">PDF Document</span><span class="size">1.2 MB</span></div>
+    <div class="row" style="top: 267px"><span class="name"><span class="ico" style="background:#7c8aa8"></span>notes.txt</span><span class="dim">29/09/2026 12:05</span><span class="dim">Text Document</span><span class="size">4 KB</span></div>
+    <div class="status">212 items &nbsp;·&nbsp; 2 items selected &nbsp;·&nbsp; 8.9 GB</div>
+  </div>
+
+  <div class="taskbar">
+    <div class="app" style="background:linear-gradient(135deg,#4c7dff,#2346b8)"></div>
+    <div class="app" style="background:#262a33"></div>
+    <div class="app open" style="background:#f2c14e"></div>
+    <div class="app" style="background:linear-gradient(135deg,#1b2838,#2a475e)"></div>
+    <div class="app" style="background:linear-gradient(135deg,#5b5bd6,#302f7a)"></div>
+    <div class="clock">14:32<br>01/10/2026</div>
+  </div>
+</body>
+</html>

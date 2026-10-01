@@ -1,0 +1,333 @@
+---
+// The two windows, as they are: captured from the apps' demo mode
+// (PING_UI_DEMO / PONG_UI_DEMO, docs/ui.md) in their dark appearance, with
+// the demo's made-up hosts and devices. Pong's Overview is the hero's.
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import pongDevices from '../assets/shots/pong-devices.webp';
+import pingVideo from '../assets/shots/ping-video.webp';
+import pingInput from '../assets/shots/ping-input.webp';
+import pongNetwork from '../assets/shots/pong-network.webp';
+import pongAgents from '../assets/shots/pong-agents.webp';
+
+const tabs = [
+  {
+    app: 'Pong',
+    page: 'Devices',
+    text: 'Pairing requests with their PIN field, and paired devices and agents, each with its own access.',
+    img: pongDevices,
+    alt: 'Pong’s Devices page: a MacBook Air asking to pair, and three paired devices including an AI agent.',
+  },
+  {
+    app: 'Ping',
+    page: 'Video',
+    text: 'Your display’s resolution and refresh rate by default, and a bitrate that picks itself as Moonlight’s does.',
+    img: pingVideo,
+    alt: 'Ping’s Video settings: resolution and frame rate matching this display, the codec, display mode and bitrate.',
+  },
+  {
+    app: 'Ping',
+    page: 'Input',
+    text: 'The clipboard, a controller as a mouse, and Moonlight’s shortcuts while you stream.',
+    img: pingInput,
+    alt: 'Ping’s Input settings: the Windows key, clipboard sharing, controller as a mouse, and the stream’s shortcuts.',
+  },
+  {
+    app: 'Pong',
+    page: 'Network',
+    text: 'Streaming over the internet without forwarding a port, and asking the router for one when it can.',
+    img: pongNetwork,
+    alt: 'Pong’s Network settings: streaming over the internet, asking the router to forward the port, and the three ports.',
+  },
+  {
+    app: 'Pong',
+    page: 'AI agents',
+    text: 'Whether agents may pair at all, and how long your own input at the host holds them.',
+    img: pongAgents,
+    alt: 'Pong’s AI agents settings: allowing paired agents, and how long local input holds an agent.',
+  },
+];
+---
+
+<section class="section" id="apps">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">The apps</span>
+      <h2 class="title">Native apps for the client and the host</h2>
+      <p class="lede">
+        Ping runs on the computer you sit at, Pong on the one you stream from. Both are native windows drawn with
+        GPUI, follow your system’s light or dark appearance, and explain every setting in a line.
+      </p>
+    </div>
+
+    <div class="gallery" data-gallery>
+      <div class="controls">
+        <div class="tabs" role="tablist" aria-label="Pages of the apps">
+          {tabs.map((t, i) => (
+            <button
+              type="button"
+              role="tab"
+              class="tab"
+              id={`tab-${i}`}
+              aria-controls={`pane-${i}`}
+              aria-selected={i === 0 ? 'true' : 'false'}
+              tabindex={i === 0 ? 0 : -1}
+              data-tab={i}
+            >
+              <span class="app">{t.app}</span>
+              {t.page}
+            </button>
+          ))}
+        </div>
+        <button type="button" class="toggle" data-toggle aria-label="Stop changing pages">
+          <Icon name="pause" size={16} class="when-on" />
+          <Icon name="play" size={16} class="when-off" />
+        </button>
+      </div>
+
+      <div class="panes">
+        {tabs.map((t, i) => (
+          <div
+            class="pane"
+            role="tabpanel"
+            id={`pane-${i}`}
+            aria-labelledby={`tab-${i}`}
+            tabindex={i === 0 ? 0 : -1}
+            data-pane={i}
+            data-on={i === 0 ? '' : undefined}
+          >
+            <figure class="capture">
+              <figcaption>{t.text}</figcaption>
+              <Image src={t.img} alt={t.alt} widths={[640, 960, 1280, 1880]} sizes="(max-width: 1168px) 94vw, 1120px" />
+            </figure>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
+
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    min-height: 36px;
+    padding: 7px 14px;
+    overflow: hidden;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+    isolation: isolate;
+    transition:
+      color 0.15s,
+      border-color 0.15s,
+      background-color 0.15s;
+  }
+
+  .tab:hover {
+    color: var(--text);
+    border-color: rgb(255 255 255 / 0.3);
+  }
+
+  .tab[aria-selected='true'] {
+    border-color: rgb(255 255 255 / 0.5);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .app {
+    color: var(--text-3);
+    font-size: 0.75rem;
+  }
+
+  .tab[aria-selected='true'] .app {
+    color: var(--text-2);
+  }
+
+  /* While the pages change by themselves, the chosen tab fills from left to
+     right in the time it has left. A new tab starts its fill afresh; it
+     holds while the keyboard is in the gallery, and while the gallery is
+     off screen. */
+  .tab::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: rgb(141 178 255 / 0.28);
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+
+  .gallery[data-auto] .tab[aria-selected='true']::before {
+    animation: fill var(--dwell) linear forwards;
+  }
+
+  .gallery[data-auto]:is(:has(:focus-visible), [data-away]) .tab[aria-selected='true']::before {
+    animation-play-state: paused;
+  }
+
+  @keyframes fill {
+    to {
+      transform: none;
+    }
+  }
+
+  .toggle {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .toggle:hover {
+    border-color: rgb(255 255 255 / 0.3);
+    color: var(--text);
+  }
+
+  .gallery[data-auto] .toggle :global(.when-off),
+  .gallery:not([data-auto]) .toggle :global(.when-on) {
+    display: none;
+  }
+
+  /* Every page in the same cell, so the gallery keeps the tallest one's
+     height and nothing below it moves when the page changes. */
+  .panes {
+    display: grid;
+    margin-top: 24px;
+  }
+
+  /* The new page is there at once, its words with it; only the old
+     picture fades away, above the new one. */
+  .pane {
+    z-index: 1;
+    grid-area: 1 / 1;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.25s,
+      visibility 0s linear 0.25s;
+  }
+
+  .pane:not([data-on]) figcaption {
+    visibility: hidden;
+  }
+
+  .pane[data-on] {
+    z-index: 0;
+    opacity: 1;
+    visibility: visible;
+    transition: none;
+  }
+
+  figcaption {
+    margin-bottom: 24px;
+    color: var(--text-2);
+    font-size: 0.9375rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pane {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  /** How long each page shows before the next. */
+  const DWELL = 6000;
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-gallery]')) {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    const panes = [...root.querySelectorAll<HTMLElement>('[data-pane]')];
+    const toggle = root.querySelector<HTMLButtonElement>('[data-toggle]')!;
+    let current = 0;
+    root.style.setProperty('--dwell', `${DWELL}ms`);
+
+    const show = (i: number, focus = false) => {
+      current = (i + tabs.length) % tabs.length;
+      tabs.forEach((t, j) => {
+        t.setAttribute('aria-selected', String(j === current));
+        t.tabIndex = j === current ? 0 : -1;
+      });
+      panes.forEach((p, j) => {
+        p.toggleAttribute('data-on', j === current);
+        p.tabIndex = j === current ? 0 : -1;
+      });
+      if (focus) tabs[current].focus();
+    };
+
+    const auto = (on: boolean) => {
+      root.toggleAttribute('data-auto', on);
+      toggle.setAttribute('aria-label', on ? 'Stop changing pages' : 'Change pages by themselves');
+    };
+
+    // On by themselves unless the reader asked for less motion; a page the
+    // reader picks, or the button, stops them.
+    auto(!window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    toggle.addEventListener('click', () => auto(!root.hasAttribute('data-auto')));
+
+    // The fill running out is the cue for the next page.
+    root.addEventListener('animationend', (e) => {
+      if (e.animationName === 'fill' && root.hasAttribute('data-auto')) show(current + 1);
+    });
+
+    tabs.forEach((t, i) =>
+      t.addEventListener('click', () => {
+        auto(false);
+        show(i);
+      }),
+    );
+    root.querySelector('[role="tablist"]')!.addEventListener('keydown', (e) => {
+      const k = (e as KeyboardEvent).key;
+      if (k === 'ArrowRight' || k === 'ArrowDown') show(current + 1, true);
+      else if (k === 'ArrowLeft' || k === 'ArrowUp') show(current - 1, true);
+      else if (k === 'Home') show(0, true);
+      else if (k === 'End') show(tabs.length - 1, true);
+      else return;
+      auto(false);
+      e.preventDefault();
+    });
+
+    // Every page's picture is fetched and decoded as the gallery comes near,
+    // so none appears late the first time it is shown. Off screen, the
+    // fill holds.
+    let fetched = false;
+    new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting && !fetched) {
+          fetched = true;
+          for (const img of root.querySelectorAll('img')) {
+            img.loading = 'eager';
+            img.decode().catch(() => {});
+          }
+        }
+      },
+      { rootMargin: '800px 0px' },
+    ).observe(root);
+    new IntersectionObserver(([e]) => root.toggleAttribute('data-away', !e.isIntersecting)).observe(root);
+  }
+</script>

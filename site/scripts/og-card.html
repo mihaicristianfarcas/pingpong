@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face { font-family: Geist; src: url(../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2) format('woff2'); font-weight: 100 900; }
+* { margin: 0; box-sizing: border-box; }
+body { width: 1200px; height: 630px; overflow: hidden; font-family: Geist, system-ui; position: relative;
+  background: linear-gradient(180deg, #020309 0%, rgba(2,3,9,.85) 22%, rgba(2,3,9,0) 58%), radial-gradient(55% 50% at 12% 92%, rgba(37,84,214,.42), transparent 72%), radial-gradient(42% 46% at 90% 38%, rgba(29,64,175,.45), transparent 72%), radial-gradient(48% 42% at 62% 102%, rgba(67,56,202,.38), transparent 72%), radial-gradient(60% 48% at 40% 66%, rgba(12,28,82,.85), transparent 75%), linear-gradient(180deg, #020309, #050b1f 50%, #0a1640); }
+.copy { position: absolute; left: 72px; top: 72px; width: 540px; }
+.logo { display: flex; align-items: center; gap: 14px; color: #eef1f7; font-weight: 600; font-size: 28px; letter-spacing: -0.015em; }
+.logo span { display: flex; gap: 6px; }
+.logo img { width: 42px; height: 42px; }
+h1 { margin-top: 56px; color: #eef1f7; font-size: 60px; line-height: 1.05; letter-spacing: -0.035em; font-weight: 600; }
+p { margin-top: 24px; color: #bec5d5; font-size: 24px; line-height: 1.4; }
+.win { position: absolute; width: 620px; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; box-shadow: 0 24px 60px -12px rgba(0,0,0,.85); }
+.back { left: 720px; top: 60px; }
+.front { left: 630px; top: 250px; }
+</style></head><body>
+<div class="copy">
+  <div class="logo"><span><img src="../src/assets/icons/ping.svg"><img src="../src/assets/icons/pong.svg"></span>pingpong</div>
+  <h1>Low-latency desktop streaming between your computers</h1>
+  <p>Post-quantum encrypted. For macOS, Windows and Linux.</p>
+</div>
+<img class="win back" src="../src/assets/hero/pong.webp">
+<img class="win front" src="../src/assets/hero/ping.webp">
+</body></html>

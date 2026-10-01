@@ -1,0 +1,40 @@
+---
+// The apps' own icons (ping-app/examples/make-icon.rs) with their ball and
+// trail in the page's blue, Ping's then Pong's, and the name.
+// public/favicon.svg is Ping's.
+import ping from '../assets/icons/ping.svg';
+import pong from '../assets/icons/pong.svg';
+
+interface Props {
+  size?: number;
+}
+const { size = 26 } = Astro.props;
+---
+
+<span class="logo">
+  <span class="marks">
+    <img src={ping.src} width={size} height={size} alt="" />
+    <img src={pong.src} width={size} height={size} alt="" />
+  </span>
+  <span class="name">pingpong</span>
+</span>
+
+<style>
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .marks {
+    display: flex;
+    gap: 4px;
+  }
+
+  .name {
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+</style>
