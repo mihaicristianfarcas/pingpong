@@ -6,7 +6,8 @@ use gpui::{
 };
 use ping_agent::providers::{self, AgentSettings, Approvals, Provider};
 use pingpong_ui::{
-    button, chip, field, rows, section, select, setting, stepper, IconName, Ink, Theme, Type,
+    button, chip, field, rows, section, select, setting, stepper, switch, IconName, Ink, Theme,
+    Type,
 };
 
 use crate::app::PingApp;
@@ -55,6 +56,123 @@ pub(super) fn add_mcp(cmd: &[&str], exe: &str, settings: &AgentSettings, claude:
 }
 
 impl PingApp {
+    /// Jev's key, and what it does with it.
+    fn jev_rows(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        let service = ping_agent::jev::service(&self.dir);
+        let saved = providers::secrets::saved_named(&self.dir, ping_agent::jev::KEY_ID);
+        let has_text = !self.agents.jev_key.read(cx).text().trim().is_empty();
+        let detail = self
+            .agents
+            .jev_note
+            .clone()
+            .unwrap_or_else(|| match service {
+                Some(s) if saved => format!(
+                    "A {s} key is saved, readable only by you. {} works too.",
+                    ping_agent::jev::KEY_ENV
+                ),
+                Some(s) => format!("A {s} key is set in {}.", ping_agent::jev::KEY_ENV),
+                None => format!(
+                    "A TypeSafe key, or an OpenRouter one (OpenRouter serves Jev too). Saved \
+                    readable only by you, or set {}.",
+                    ping_agent::jev::KEY_ENV
+                ),
+            });
+        let key_row =
+            setting(
+                "Key",
+                Some(detail.into()),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(div().w(px(180.0)).child(field(&self.agents.jev_key, t)))
+                    .child(
+                        button("jev-key-save", "Save", t)
+                            .disabled(!has_text)
+                            .on_click(cx.listener(|this, _, _, cx| this.agents.save_jev_key(cx))),
+                    )
+                    .when(saved, |d| {
+                        d.child(button("jev-key-forget", "Forget", t).danger().on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.agents.jev_note = Some(
+                                    match providers::secrets::set_named(
+                                        &this.dir,
+                                        ping_agent::jev::KEY_ID,
+                                        None,
+                                    ) {
+                                        Ok(()) => "Forgotten.".into(),
+                                        Err(e) => e.to_string(),
+                                    },
+                                );
+                                cx.notify();
+                            }),
+                        ))
+                    }),
+                t,
+            )
+            .into_any_element();
+        let off = service.is_none();
+        let jev = self.agents.settings.jev.clone();
+        let toggle =
+            |id: &'static str, on: bool, set: fn(&mut ping_agent::jev::JevSettings, bool)| {
+                let this = cx.weak_entity();
+                switch(id, on && !off, t)
+                    .disabled(off)
+                    .on_toggle(move |on, _, cx| {
+                        let _ = this.update(cx, |app, cx| {
+                            set(&mut app.agents.settings.jev, on);
+                            app.agents.save_settings();
+                            tracing::info!(setting = id, on, "Jev setting changed");
+                            cx.notify();
+                        });
+                    })
+            };
+        rows(
+            [
+                key_row,
+                setting(
+                    "Check clicks",
+                    Some(
+                        "Before a click, the host says what is under it, and Jev judges whether \
+                            it deletes, spends, sends, changes settings or installs. If it \
+                            likely does, the click asks for your go-ahead. With go-ahead for \
+                            risky steps only; Jev never lets a step through that would ask."
+                            .into(),
+                    ),
+                    toggle("jev-clicks", jev.check_clicks, |j, on| j.check_clicks = on),
+                    t,
+                )
+                .into_any_element(),
+                setting(
+                    "Sort how turns end",
+                    Some(
+                        "Jev reads the agent's last words: done, a question for you, a person \
+                            needed at the host, or not done. The session and its notification \
+                            say which."
+                            .into(),
+                    ),
+                    toggle("jev-endings", jev.sort_endings, |j, on| j.sort_endings = on),
+                    t,
+                )
+                .into_any_element(),
+                setting(
+                    "Pick the model",
+                    Some(
+                        "When Jev judges a session's first message routine, the session runs at \
+                            low effort, on Claude Sonnet with an Anthropic key or Claude Code. \
+                            Never on a heavier model than yours."
+                            .into(),
+                    ),
+                    toggle("jev-model", jev.pick_model, |j, on| j.pick_model = on),
+                    t,
+                )
+                .into_any_element(),
+            ],
+            t,
+        )
+        .into_any_element()
+    }
+
     pub fn render_agent_setup(
         &mut self,
         t: Theme,
@@ -292,6 +410,15 @@ impl PingApp {
                 ],
                 t,
             )))
+            .child(section("Jev", t).child(self.jev_rows(t, cx)))
+            .when(ping_agent::jev::key(&self.dir).is_none(), |d| {
+                d.child(pingpong_ui::footnote(
+                    "Jev is TypeSafe's decision model: yes-or-no judgments in a fraction of a \
+                        second, a few thousandths of a cent each, beside the model you chose. \
+                        It is off until a key is saved.",
+                    t,
+                ))
+            })
             .child(section("Hosts the agent may use", t).child(self.agent_host_rows(t, cx)))
             .child(section("Your hosts in other agents", t).child(rows(
                 [

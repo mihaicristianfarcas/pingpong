@@ -13,8 +13,8 @@ use super::{Page, PingApp};
 /// comma-separated list: `pair=HOST[:PORT]` opens the pairing sheet, `add`
 /// the add-host sheet, `unpair=NAME` its confirmation, `menu=NAME` a host's
 /// menu, `settings[=video|audio|input|agents]` a settings page,
-/// `agents[=setup|sample|sample-live|sample-ask]` the Agents page (the setup page or a
-/// sample session), `chat=MESSAGE` a message to the agent session (a new one
+/// `agents[=setup|sample|sample-live|sample-ask|sample-jev]` the Agents page (the setup
+/// page or a sample session; `sample-jev` waits on a click Jev judged risky), `chat=MESSAGE` a message to the agent session (a new one
 /// on the first agent host; each waits for the turn before it), `stream=NAME` streams from that host,
 /// `stop-after=SECS` ends a stream after that long as the user would,
 /// `update` and `update-main` make the update check say there is a newer

@@ -148,7 +148,8 @@ PONG_UI_DEMO=sample,devices,snapshot=/tmp/devices.png,quit target/debug/pong-app
 ```
 
 Ping's steps: `settings[=general|video|audio|input|agents]`,
-`agents[=setup|sample|sample-live|sample-ask]`, `chat=MESSAGE` (to the open
+`agents[=setup|sample|sample-live|sample-ask|sample-jev]` (`sample-jev`: a
+click Jev judged risky waits for a yes), `chat=MESSAGE` (to the open
 session, or a new one on the first host the agent may use), `login`,
 `pair=HOST:PORT`, `add`, `menu=NAME`, `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
