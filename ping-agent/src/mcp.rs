@@ -41,7 +41,9 @@ const INSTRUCTIONS: &str = "\
     whose screen you see in screenshots and whose keyboard and mouse you drive. \
     Coordinates are pixels of the full screenshot, (0, 0) at the top left. After each action \
     you get a screenshot taken once the screen settled; you do not need to ask for one. \
-    Prefer keyboard shortcuts where they are reliable. The owner may watch, pause you or \
+    Prefer keyboard shortcuts where they are reliable. read_screen lists the front window's \
+    controls by name with the point to click each: use it to find a control or read small \
+    text exactly. The owner may watch, pause you or \
     take over. That is no reason to stop: carry on, and your next action waits for them to hand \
     back, is not done, and returns the screen as they left it to decide again. Stop and report \
     only if an action says it gave up waiting. \
@@ -133,6 +135,12 @@ pub fn tool_list() -> Value {
                     quoting the command or text (\"Delete the 3 files in Downloads/old\", \
                     \"type `rm -rf build` and press Return\")"},
                 "reason": {"type": "string", "description": "Why it is needed, in a few words"}}, "required": ["action"]}},
+        {"name": "read_screen", "description": "The screen as text: the front window's \
+            buttons, fields, links, menu items and labels, as the host's accessibility tree \
+            names them, each with the point to click it. Exact labels, read in a moment: use \
+            it to find a control or read what a screenshot shows too small. An app that \
+            publishes no tree (a game, a canvas) lists nothing: use the screenshot then.",
+            "inputSchema": empty},
         {"name": "wake_host", "description": "Wake a sleeping host (Wake-on-LAN, on its \
             local network).",
             "inputSchema": {"type": "object", "properties": {"host": {"type": "string"}}, "required": ["host"]}},
@@ -316,7 +324,9 @@ impl Server {
                         })
                 }
                 "wake_host" => wake(&computer, text_arg(args, "host").as_deref()),
-                "share_plan" | "ask_approval" => function_call(&mut computer, name, args),
+                "share_plan" | "ask_approval" | "read_screen" => {
+                    function_call(&mut computer, name, args)
+                }
                 other => Err(format!("no tool named {other}")),
             },
         };
@@ -429,7 +439,7 @@ pub(crate) fn tool_spec(name: &str) -> (Value, Value) {
 }
 
 /// The tools every API model gets beside its provider's computer tool.
-pub(crate) const FUNCTION_TOOLS: [&str; 2] = ["share_plan", "ask_approval"];
+pub(crate) const FUNCTION_TOOLS: [&str; 3] = ["share_plan", "ask_approval", "read_screen"];
 
 /// Answer a call of one of `FUNCTION_TOOLS`.
 pub(crate) fn function_call(
@@ -440,6 +450,7 @@ pub(crate) fn function_call(
     match name {
         "share_plan" => share_plan_call(computer, args),
         "ask_approval" => ask_approval_call(computer, args),
+        "read_screen" => computer.read_screen(),
         other => Err(format!("no tool named {other}")),
     }
 }

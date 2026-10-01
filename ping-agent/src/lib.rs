@@ -10,6 +10,7 @@
 //! - [`providers`] and [`runner`]: running an agent on a task from Ping
 //!   itself -- through Claude Code or Codex (the user's subscription), or
 //!   straight to Anthropic's, OpenAI's or an OpenAI-compatible API (a key).
+//! - [`screen`]: the screen as text, from the host's accessibility tree.
 
 pub mod computer;
 pub mod control;
@@ -22,3 +23,4 @@ pub mod mcp;
 pub mod providers;
 pub mod risk;
 pub mod runner;
+pub mod screen;

@@ -47,6 +47,11 @@ something, look over its shoulder, do a bit yourself, ask again.
   has the keyboard and mouse, the connection, this turn's actions and
   minutes left, tokens). The top of the page holds only the session's title
   and its buttons.
+- **The screen as text.** Beside the screenshots, the model can ask for the
+  front window's controls by name, each with the point to click it
+  (`read_screen`): the host reads them from its accessibility tree. An app
+  that publishes no tree (a game, a canvas) lists nothing; the screenshot
+  is still there.
 - **Log In** opens the session's desktop in a stream window beside the
   agent. **Ctrl+Alt+Shift+T** takes the keyboard and mouse and gives them
   back; closing the window leaves the session running.
@@ -150,6 +155,8 @@ The tools, named as in Claude's computer-use toolset:
 - `type`, `key` (xdotool names: `ctrl+s`, `Return`, `alt+Tab`, `super`),
   `hold_key`
 - `wait`, `cursor_position`, `wait_for_control`, `session_status`
+- `read_screen` (the front window's controls as text, with the point to
+  click each, from the host's accessibility tree)
 - `share_plan` (the model's plan, for the person watching)
 
 Every action answers with a screenshot of the screen once it has settled.
@@ -292,6 +299,21 @@ typed a 200-character sentence exactly).
 sessions across launches would mean a database of transcripts and
 screenshots of a user's computers, with its own retention and security
 questions.
+
+**The screen as text is the host's accessibility tree, and nothing
+else.** Pong reads the front window on a thread of its own when the agent
+asks (AXUIElement on a Mac, UI Automation on Windows, AT-SPI on Linux under
+X11) and sends it back in parts (`pingpong_proto::screen`): controls as the
+apps name them, places in the stream's pixels, so a model can click what it
+read. There is no OCR: what an app does not publish is not guessed at.
+Under Wayland, AT-SPI cannot say where things are on the screen, so a Linux
+host there answers that it cannot. A field's contents are never read, and a
+password field is marked as one. A read stops at 0.6 s, or after two calls
+an app was too slow to answer, with what it has. Measured: a Mac (macOS 26)
+read Finder's menu bar in 4 ms once Pong had spoken to Finder (the first
+message to an app takes about half a second: the connection), and a slow
+app's window in 0.3 s; the Linux container desktop read Mousepad's window
+with a menu open in 30-40 ms.
 
 ## Threat model
 

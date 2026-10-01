@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use pingpong_proto::control::{agent_state, AgentNote, AgentState, Control};
 use pingpong_proto::input::{Button, InputEvent};
+use pingpong_proto::screen::Query;
 
 use crate::frame::Rgb;
 use crate::headless::{HeadlessOptions, HeadlessSession};
@@ -924,6 +925,17 @@ impl Computer {
             return Ok(Outcome::text(text));
         }
         self.screenshot_outcome(Some(started))
+    }
+
+    /// The front window as text, from the host's accessibility tree
+    /// (`read_screen`).
+    pub fn read_screen(&mut self) -> Result<Outcome, String> {
+        if self.session.is_none() {
+            self.connect(None, None)?;
+        }
+        let session = self.session.as_ref().ok_or("Not connected.")?;
+        let text = session.screen_text(Query::Window)?;
+        Ok(Outcome::text(crate::screen::describe(&text)))
     }
 
     /// A person has the keyboard and mouse (or must answer a secure screen,

@@ -7,6 +7,7 @@ import json, sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 REPORT = "/src/target/linux-out/agent/mock-llm.report"
+FUNCTIONS = ["share_plan", "ask_approval", "read_screen"]
 problems = []
 def check(cond, what):
     if not cond:
@@ -15,7 +16,7 @@ def check(cond, what):
 
 def anthropic(req):
     tools = req.get("tools") or []
-    check(tools[:1] == [{"type": "computer_toolset_20260801"}] and [t.get("name") for t in tools[1:]] == ["share_plan", "ask_approval"], "anthropic: tools are the computer toolset, share_plan and ask_approval")
+    check(tools[:1] == [{"type": "computer_toolset_20260801"}] and [t.get("name") for t in tools[1:]] == FUNCTIONS, "anthropic: tools are the computer toolset and the function tools")
     check(req.get("thinking", {}).get("type") == "adaptive", "anthropic: adaptive thinking")
     msgs = req["messages"]
     check(msgs[0]["role"] == "user" and any(b.get("type") == "image" for b in msgs[0]["content"]), "anthropic: first message has a screenshot")
@@ -44,7 +45,7 @@ def anthropic(req):
 
 def openai(req):
     tools = req.get("tools") or []
-    check(tools[:1] == [{"type": "computer"}] and [(t.get("type"), t.get("name")) for t in tools[1:]] == [("function", "share_plan"), ("function", "ask_approval")], "openai: tools are the computer tool, share_plan and ask_approval")
+    check(tools[:1] == [{"type": "computer"}] and [(t.get("type"), t.get("name")) for t in tools[1:]] == [("function", f) for f in FUNCTIONS], "openai: tools are the computer tool and the function tools")
     inp = req["input"]
     if "previous_response_id" not in req:
         check(inp[0]["role"] == "user" and any(c["type"] == "input_image" for c in inp[0]["content"]), "openai: first input has a screenshot")
