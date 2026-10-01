@@ -113,8 +113,9 @@ tools/linux-dev tools/linux/loopback-test        # a Linux host streaming to a L
   runs `cargo build --release ARGS` there. Set `PINGPONG_SSH=user@host` and
   `PINGPONG_HOST_DIR` in the environment or in `tools/dev.env` (not
   committed).
-- `tools/host-deploy.ps1` (on the host, as administrator) installs the
-  built `pong.exe` as `PongService`, and Pong's window.
+- `tools/host-deploy.ps1` (on the host; it asks for an administrator when
+  not run as one) installs the built `pong.exe` as `PongService`, and
+  Pong's window.
 - `tools/host-run.ps1 -Command '…'` runs a command in the interactive
   console session and prints its output: SSH lands in session 0, where there
   is no desktop to capture and no display to configure.
@@ -163,30 +164,52 @@ Per-second statistics: `RUST_LOG=info,ping_core::stats=debug` on the client
 
 ## Releases
 
-A release is a version tag: the workspace's version in `Cargo.toml`
-(`[workspace.package]`), which every program has, tagged as `vVERSION`.
+Every push to `main` that changes the programs is built and published:
+`.github/workflows/release.yml` builds Ping and Pong on an Apple silicon
+and an Intel Mac, on Windows and on Linux, and publishes the archives as
+the website's downloads. Pushes that change only `docs/`, `Casks/` or
+Markdown files build nothing. The website, [ping-pong.sh](https://ping-pong.sh),
+is not on `main`: it lives on the `landing-page` branch, which is rebased
+on `main` when it needs to be and never merged into it.
 
-```sh
-git tag v0.7.0 && git push origin v0.7.0
-```
+| Script | Makes |
+|---|---|
+| `tools/package-macos` | `Ping-VERSION-macos-ARCH.zip` (Ping.app) and `Pong-VERSION-macos-ARCH.zip` (Pong.app, Pong Control.app) |
+| `tools/package-windows.ps1` | `Ping-VERSION-windows-x86_64.zip` (Ping.exe beside FFmpeg's DLLs) and `Pong-VERSION-windows-x86_64.zip` (pong.exe, Pong Control.exe, `install.ps1`, which is `tools/host-deploy.ps1`, and `Install Pong.cmd`) |
+| `tools/linux/package` | `Ping-VERSION-linux-ARCH.tar.gz` and `Pong-VERSION-linux-ARCH.tar.gz`, each a folder with the programs, launcher entries, icons and `install.sh` (`tools/linux/install-release`) |
+| `tools/publish-downloads DIST` | The downloads: each archive at `https://downloads.ping-pong.sh/latest/APP-OS-ARCH.EXT`, then `latest/SHA256SUMS` and `latest.json` (version, commit, sizes, checksums), in the Cloudflare R2 bucket `pingpong-downloads`, with wrangler |
 
-`.github/workflows/release.yml` then builds the macOS apps on an Apple
-silicon and an Intel runner (`tools/package-macos`: release bundles, zipped
-as `Ping-VERSION-macos-ARCH.zip` and `Pong-VERSION-macos-ARCH.zip`),
-publishes the release with them, and opens a pull request that brings the
-Homebrew casks in `Casks/` to the new version (`tools/update-casks`); `brew
-upgrade` sees the release once it is merged. GitHub holds CI on a pull
-request a workflow opened until it is approved: the workflow approves it,
-or says on the pull request that it needs approving by hand. The same can be done by hand
-from a Mac: `tools/package-macos`, `gh release create`, then
-`tools/update-casks VERSION target/dist` on a branch of its own. To try
-the casks before a release, write them against the local archives
+All of them build with `PINGPONG_RELEASE=1`, so the programs follow
+releases, not `main`. The downloads keep their names from one build to the
+next, so the website links them as they are and reads `latest.json` for
+what they are. The workflow signs in to Cloudflare with the repository's
+secret `CLOUDFLARE_API_TOKEN` (an API token with **Workers R2 Storage:
+Edit**) and variable `CLOUDFLARE_ACCOUNT_ID`; by hand, `wrangler login` is
+enough.
+
+A **version** is released by merging the change that sets it: the
+workspace's version in `Cargo.toml` (`[workspace.package]`), which every
+program has. When a push to `main` has a version with no `vVERSION` tag
+yet, the same archives become the GitHub release `vVERSION`, and the
+workflow opens a pull request that brings the Homebrew casks in `Casks/`
+to it (`tools/update-casks`); `brew upgrade` sees the release once that is
+merged. GitHub holds CI on a pull request a workflow opened until it is
+approved: the workflow approves it, or says on the pull request that it
+needs approving by hand.
+
+To build the archives of a branch without publishing them, run the
+workflow on it (`gh workflow run release.yml --ref BRANCH`): they are the
+run's artifacts. To try the casks before a release, write them against the
+local archives
 (`CASKS_DIR=DIR tools/update-casks VERSION target/dist file://$PWD/target/dist`),
 put them in a local tap (`brew tap-new`), and `brew install --cask
 --appdir=DIR` from it.
 
-The apps are signed (the dev identity, or ad hoc on the runners) but not
-notarized: the casks clear the quarantine flag after installing.
+The macOS apps are signed (the dev identity, or ad hoc on the runners) but
+not notarized: the casks clear the quarantine flag after installing, and
+someone who downloads them does it by hand
+([install.md](install.md#from-the-website)). The Windows programs are not
+signed.
 
 `main` takes changes only through pull requests: work on a branch, push it,
 and open one (`gh pr create`).

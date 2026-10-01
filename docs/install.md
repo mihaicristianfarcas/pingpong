@@ -1,16 +1,77 @@
 # Installing
 
 pingpong has two programs: **Ping**, the client, on the computer you sit at,
-and **Pong**, the host, on the computer you stream. On a Mac both install
-with [Homebrew](#with-homebrew-macos) from a release; everywhere they can be
-built from this repository with Rust. Pick the sections for your systems:
+and **Pong**, the host, on the computer you stream. Every system has them
+ready to [download](#from-the-website) from
+[ping-pong.sh](https://ping-pong.sh/#install); on a Mac they also install
+with [Homebrew](#with-homebrew-macos), and everywhere they build from this
+repository with Rust. Pick the sections for your systems:
 
 | | macOS 14+ | Windows 10/11 | Linux |
 |---|---|---|---|
-| Ping (client) | [Homebrew](#with-homebrew-macos) or [Ping.app](#ping-on-macos) | [Ping.exe](#ping-on-windows) | [ping-app](#ping-on-linux) |
-| Pong (host) | [Homebrew](#with-homebrew-macos) or [Pong.app](#pong-on-macos) | [PongService](#pong-on-windows) | [a user service](#pong-on-linux) |
+| Ping (client) | [Download](#on-macos), [Homebrew](#with-homebrew-macos) or [Ping.app](#ping-on-macos) | [Download](#on-windows) or [Ping.exe](#ping-on-windows) | [Download](#on-linux) or [ping-app](#ping-on-linux) |
+| Pong (host) | [Download](#on-macos), [Homebrew](#with-homebrew-macos) or [Pong.app](#pong-on-macos) | [Download](#on-windows) or [PongService](#pong-on-windows) | [Download](#on-linux) or [a user service](#pong-on-linux) |
 
 Then [pair them](#pairing).
+
+## From the website
+
+[ping-pong.sh](https://ping-pong.sh/#install) asks which computer you are
+installing on and what it runs, and gives you its download: the newest
+build of the `main` branch, made by the release workflow
+([development.md](development.md#releases)). The files keep their
+addresses from one build to the next, for scripts, under
+`https://downloads.ping-pong.sh/latest/`:
+
+| | macOS, Apple silicon | macOS, Intel | Windows, x86_64 | Linux, x86_64 |
+|---|---|---|---|---|
+| Ping | `Ping-macos-arm64.zip` | `Ping-macos-x86_64.zip` | `Ping-windows-x86_64.zip` | `Ping-linux-x86_64.tar.gz` |
+| Pong | `Pong-macos-arm64.zip` | `Pong-macos-x86_64.zip` | `Pong-windows-x86_64.zip` | `Pong-linux-x86_64.tar.gz` |
+
+`latest/SHA256SUMS` has their checksums, and `latest.json` says which
+version and commit they are.
+
+### On macOS
+
+Open the zip and move the apps to Applications: Ping, or Pong and Pong
+Control. They are signed but not notarized, so macOS does not open them
+from a download until you clear their quarantine flag, once (Homebrew does
+this for you):
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Ping.app
+xattr -dr com.apple.quarantine /Applications/Pong.app "/Applications/Pong Control.app"
+```
+
+Then, for the host, open **Pong Control** and choose **Start Pong**, as in
+[Pong on macOS](#pong-on-macos).
+
+### On Windows
+
+- **Ping**: extract the zip into a folder of its own (Ping.exe needs
+  FFmpeg's DLLs beside it) and open **Ping.exe**. It is not signed, so
+  SmartScreen asks first: **More info**, then **Run anyway**.
+- **Pong**: the host needs what [Pong on Windows](#pong-on-windows) lists
+  first (an NVIDIA GPU, SudoVDA). Extract the zip and double-click
+  **Install Pong.cmd**: it asks Windows for an administrator, then does
+  what `host-deploy.ps1` does there (PongService, the Start menu entry, the
+  icon at sign-in). Run it from a newer download to update.
+
+### On Linux
+
+The programs are built on Ubuntu 24.04 and use the system's libraries as
+it has them (FFmpeg 6, PipeWire): they run on Ubuntu 24.04 and the
+distributions built on it. Elsewhere, [build from source](#building-from-source).
+
+```sh
+tar xzf Ping-VERSION-linux-x86_64.tar.gz
+Ping-VERSION-linux-x86_64/install.sh
+```
+
+`install.sh` puts the programs in `~/.local/bin`, each with a launcher
+entry; Pong's also installs the host as a user service and starts it (see
+[Pong on Linux](#pong-on-linux)). It names any library the system is
+missing. `install.sh --uninstall` removes what it installed.
 
 ## With Homebrew (macOS)
 
@@ -215,8 +276,8 @@ anywhere ([networking.md](networking.md)). Next: [usage.md](usage.md).
 | Pong, macOS | `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.pingpong.Pong.plist` and the same for `dev.pingpong.PongControl.plist`, delete those files, the two apps, and `~/Library/Application Support/Pong` |
 | Ping, Windows | Delete `%LOCALAPPDATA%\Programs\Ping`, its Start menu entry and `%APPDATA%\Ping` |
 | Pong, Windows | `pong uninstall` as administrator, then delete `C:\Program Files\Pong`, `C:\ProgramData\Pong`, `%APPDATA%\Pong`, the Start menu entry, and the `Pong` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
-| Ping, Linux | `tools/linux/install-apps --uninstall` (or delete the binary), and `~/.config/ping` |
-| Pong, Linux | `systemctl --user disable --now pong`, then delete the unit, the binary and `~/.config/pong` |
+| Ping, Linux | `install.sh --uninstall` from the download, or `tools/linux/install-apps --uninstall` (or delete the binary); and `~/.config/ping` |
+| Pong, Linux | `install.sh --uninstall` from the download; or `systemctl --user disable --now pong`, then delete the unit and the binary. Then `~/.config/pong` |
 
 Unpair a device on the other side too (Ping: the host's menu > Unpair; Pong:
 **Devices**).

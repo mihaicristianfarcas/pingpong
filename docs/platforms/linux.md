@@ -22,8 +22,9 @@ line of its standard output. That process is `ping_core::linux`:
   with the same colour maths as the Windows renderer.
 - **Controllers.** gilrs (evdev), rumble included.
 - **Sound.** cpal (ALSA; PipeWire and PulseAudio through it).
-- **In the launcher.** `tools/linux/install-apps` installs Ping's and Pong's
-  windows for the user with a desktop entry and an icon each. The entries
+- **In the launcher.** `tools/linux/install-apps` (from a checkout) and the
+  downloads' `install.sh` install Ping's and Pong's windows for the user
+  with a desktop entry and an icon each. The entries
   are named after the windows' app ids (`dev.pingpong.Ping`,
   `dev.pingpong.PongApp`), so the dock and the task switcher show each
   window under its own icon, under Wayland and X11.
