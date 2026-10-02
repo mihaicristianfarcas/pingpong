@@ -12,7 +12,9 @@
 //!   draws its pointer into the picture and gets relative motion (Moonlight's
 //!   default), or positions after +M; an older host gets positions on its
 //!   desktop, with the pointer drawn here in the shape it reports, and
-//!   relative motion while a game has the mouse;
+//!   relative motion while a game has the mouse. While ⌘⇧ is held the
+//!   pointer is the Mac's, so a screenshot shortcut finds a live one
+//!   (`shortcut_modifiers`);
 //! - the picture fills the area below the notch, at the nearest standard
 //!   aspect ratio (`aspect`): exactly at the Mac's default scaling, with 5
 //!   rows of black above and below in a scaled desktop;
@@ -70,6 +72,20 @@ pub struct Handler {
     /// Keys swallowed as the last key of a hotkey chord: their key-up must not
     /// be forwarded either.
     swallowed: HashSet<u16>,
+    /// The stream holds the Mac's pointer: hidden and cut off from the mouse
+    /// (`hold_pointer`), kept here so every hide has its unhide.
+    holding: bool,
+    /// Whether the first motion since the pointer was held has made sure
+    /// holding it took (`motion`), and the extra hides that did.
+    hold_checked: bool,
+    extra_hides: u32,
+    /// ⌘⇧ is held while captured, so the pointer is the Mac's
+    /// (`shortcut_modifiers`); true once a key came through, which a system
+    /// shortcut's never does.
+    shortcut: Option<bool>,
+    /// Let go for a system shortcut on ⌘⇧ (a screenshot): taken back once
+    /// the stream is under the pointer again (`after_shortcut`).
+    shortcut_released: bool,
 }
 
 impl Handler {
@@ -96,6 +112,11 @@ impl Handler {
             shift: false,
             scroll_residue: (0.0, 0.0),
             swallowed: HashSet::new(),
+            holding: false,
+            hold_checked: false,
+            extra_hides: 0,
+            shortcut: None,
+            shortcut_released: false,
         }
     }
 
@@ -202,6 +223,108 @@ impl Handler {
         true
     }
 
+    /// Hide the Mac's pointer and cut it off from the mouse (the stream has
+    /// it: motion arrives as deltas), or give it back. Back inside the
+    /// window when held, if it was elsewhere: a click must land on the
+    /// stream.
+    fn hold_pointer(&mut self, hold: bool) {
+        if hold == self.holding {
+            return;
+        }
+        self.holding = hold;
+        if hold {
+            if let Some(window) = MainThreadMarker::new()
+                .and_then(|mtm| NSApplication::sharedApplication(mtm).keyWindow())
+            {
+                if !pointer_inside(&window) {
+                    centre_pointer(&window);
+                }
+            }
+            self.hold_checked = false;
+            let _ = CGAssociateMouseAndMouseCursorPosition(false);
+            NSCursor::hide();
+        } else {
+            let _ = CGAssociateMouseAndMouseCursorPosition(true);
+            for _ in 0..=std::mem::take(&mut self.extra_hides) {
+                NSCursor::unhide();
+            }
+        }
+    }
+
+    /// Every screenshot shortcut starts with ⌘⇧ (⌘⇧3/4/5, CleanShot X's), and
+    /// a screenshot tool that comes up over a pointer the stream holds can
+    /// neither show its crosshair nor move it, even once the pointer is let
+    /// go: only letting go before the shortcut works (seen with macOS's and
+    /// CleanShot X's). Neither reliably takes the keyboard from the stream,
+    /// so that is no sign either.
+    ///
+    /// So while ⌘⇧ is held the pointer is the Mac's (shown, free, nothing
+    /// sent to the host). A key that comes through meanwhile was no system
+    /// shortcut -- those never reach an app -- and the stream holds the
+    /// pointer again. Let go of ⌘⇧ with none, and a shortcut took it: the
+    /// stream lets go of the keyboard too, until a click on it (Moonlight's
+    /// way back in).
+    fn shortcut_modifiers(&mut self, held: bool) {
+        match (held, self.shortcut) {
+            (true, None) if self.captured() => {
+                self.shortcut = Some(false);
+                self.hold_pointer(false);
+                tracing::debug!("⌘⇧ held: the pointer is the Mac's");
+            }
+            (false, Some(key_came_through)) => {
+                self.shortcut = None;
+                if !key_came_through {
+                    tracing::info!("a system shortcut on ⌘⇧: the pointer is the Mac's");
+                    set_capture(self, false);
+                    self.shortcut_released = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A screenshot tool that comes up takes the keys from the stream, so
+    /// letting go of ⌘⇧ often never reaches it: the stream would go on
+    /// sending keys and clicks to the host, the pointer the Mac's. So any
+    /// event of the stream's that comes after asks the keyboard itself.
+    fn notice_shortcut_end(&mut self) {
+        if self.shortcut.is_none() {
+            return;
+        }
+        let held = NSEvent::modifierFlags_class();
+        if !(held.contains(NSEventModifierFlags::Command)
+            && held.contains(NSEventModifierFlags::Shift))
+        {
+            self.shortcut_modifiers(false);
+        }
+    }
+
+    /// After a system shortcut, the pointer moved or a key came: the stream
+    /// takes the pointer back once nothing else is under it (the tool is
+    /// done), Ping has the keyboard and is the active app. A click on the
+    /// stream does too.
+    fn after_shortcut(&mut self) {
+        if !self.shortcut_released || self.captured() {
+            return;
+        }
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let app = NSApplication::sharedApplication(mtm);
+        let Some(window) = app.keyWindow() else {
+            return;
+        };
+        let under = NSWindow::windowNumberAtPoint_belowWindowWithWindowNumber(
+            NSEvent::mouseLocation(),
+            0,
+            mtm,
+        );
+        if app.isActive() && under == window.windowNumber() {
+            tracing::info!("the stream is under the pointer again; taking it");
+            set_capture(self, true);
+        }
+    }
+
     /// The Mac's clipboard, typed on the host.
     fn paste_clipboard(&mut self) {
         let Some(text) = clipboard_text() else { return };
@@ -218,6 +341,18 @@ impl Handler {
         let code = event.keyCode();
         if down && event.isARepeat() {
             return;
+        }
+        if down && self.shortcut == Some(false) {
+            // A key came through while ⌘⇧ was held: no system shortcut. Or
+            // after it, unseen: either way the stream's again.
+            self.shortcut = Some(true);
+            if self.captured() {
+                self.hold_pointer(true);
+            }
+            self.notice_shortcut_end();
+        }
+        if down {
+            self.after_shortcut();
         }
         if down && self.hotkey(code) {
             self.swallowed.insert(code);
@@ -245,6 +380,10 @@ impl Handler {
             0x38 | 0x3C => self.shift = flags.contains(NSEventModifierFlags::Shift),
             _ => {}
         }
+        self.shortcut_modifiers(
+            flags.contains(NSEventModifierFlags::Command)
+                && flags.contains(NSEventModifierFlags::Shift),
+        );
         if !self.captured() {
             return;
         }
@@ -258,10 +397,23 @@ impl Handler {
     }
 
     fn motion(&mut self, event: &NSEvent) {
+        self.notice_shortcut_end();
+        self.after_shortcut();
         let (dx, dy) = (event.deltaX(), event.deltaY());
         let mut p = self.pointer.lock();
-        if !p.captured {
+        // Captured but not held: ⌘⇧ is down and the pointer is the Mac's.
+        if !p.captured || !self.holding {
             return;
+        }
+        if !self.hold_checked {
+            // Held while macOS was still handing Ping the front (back from a
+            // screenshot tool), the pointer stayed visible and tied to the
+            // mouse. The first motion is the app's: cut it off and hide it
+            // again then (the extra hide is undone with the rest).
+            self.hold_checked = true;
+            let _ = CGAssociateMouseAndMouseCursorPosition(false);
+            NSCursor::hide();
+            self.extra_hides += 1;
         }
         // Points scaled to pixels; in a game, raw-ish relative motion with
         // the residue kept by the input thread's batcher.
@@ -275,6 +427,7 @@ impl Handler {
     }
 
     fn mouse_button(&mut self, number: isize, down: bool) {
+        self.notice_shortcut_end();
         if !self.captured() {
             if down {
                 // First click into an uncaptured window recaptures (Moonlight).
@@ -348,14 +501,12 @@ pub fn set_capture(h: &mut Handler, captured: bool) {
     p.captured = captured;
     let draw = p.draw();
     drop(p);
-    if captured {
-        let _ = CGAssociateMouseAndMouseCursorPosition(false);
-        NSCursor::hide();
-    } else {
+    h.shortcut = None;
+    h.shortcut_released = false;
+    if !captured {
         h.release_all();
-        let _ = CGAssociateMouseAndMouseCursorPosition(true);
-        NSCursor::unhide();
     }
+    h.hold_pointer(captured);
     h.render.set_cursor(draw);
     tracing::info!(captured, "pointer capture");
 }
@@ -558,16 +709,18 @@ define_class!(
     unsafe impl NSWindowDelegate for WindowDelegate {
         #[unsafe(method(windowDidBecomeKey:))]
         fn window_did_become_key(&self, _n: &NSNotification) {
+            tracing::info!(key = true, "stream window");
             self.ivars().view.with(|h| {
-                set_capture(h, true);
                 if let Some(f) = &h.on_focus {
                     f(true);
                 }
             });
+            capture_when_settled();
         }
 
         #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _n: &NSNotification) {
+            tracing::info!(key = false, "stream window");
             // Cmd+Tab away: never leave keys held on the host or the pointer
             // trapped in a window the user has left.
             self.ivars().view.with(|h| {
@@ -872,6 +1025,45 @@ fn retry_fullscreen(tries: u32) {
     });
 }
 
+/// How long after the stream window takes the keyboard back it takes the
+/// pointer: at once, coming back from a screenshot tool, hiding the pointer
+/// and cutting it off from the mouse did not take, and the Mac's pointer
+/// moved over the stream beside the host's. macOS hands the app the front a
+/// moment after its window is key.
+const CAPTURE_SETTLE: Duration = Duration::from_millis(150);
+
+/// Take the pointer once the stream window has had the keyboard for
+/// `CAPTURE_SETTLE`, if it still has it and Ping is the active app.
+fn capture_when_settled() {
+    let Ok(when) = dispatch2::DispatchTime::try_from(CAPTURE_SETTLE) else {
+        return;
+    };
+    let _ = dispatch2::DispatchQueue::main().after(when, || {
+        for_stream_windows(|window, view, active| {
+            if active && window.isKeyWindow() {
+                view.with(|h| set_capture(h, true));
+            }
+        });
+    });
+}
+
+/// Each stream window, its view, and whether Ping is the active app.
+fn for_stream_windows(mut f: impl FnMut(&NSWindow, &StreamView, bool)) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    let active = app.isActive();
+    for window in app.windows().iter() {
+        if let Some(view) = window
+            .contentView()
+            .and_then(|v| v.downcast::<StreamView>().ok())
+        {
+            f(&window, &view, active);
+        }
+    }
+}
+
 /// Moonlight's Ctrl+Alt+Shift+X: the key stream window into or out of full
 /// screen (a Space of its own).
 pub fn toggle_fullscreen() {
@@ -907,4 +1099,14 @@ pub fn centre_pointer(window: &NSWindow) {
         f.origin.x + f.size.width / 2.0,
         primary - (f.origin.y + f.size.height / 2.0),
     ));
+}
+
+/// Whether the system pointer is over `window` (both in Cocoa's screen
+/// coordinates).
+fn pointer_inside(window: &NSWindow) -> bool {
+    let (p, f) = (NSEvent::mouseLocation(), window.frame());
+    p.x >= f.origin.x
+        && p.x < f.origin.x + f.size.width
+        && p.y >= f.origin.y
+        && p.y < f.origin.y + f.size.height
 }

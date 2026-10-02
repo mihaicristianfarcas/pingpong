@@ -39,6 +39,19 @@ press it again to go back. Against an older Pong, which leaves the
 pointer to the client, Ping draws it and switches between the two modes
 by itself, as earlier versions did.
 
+**Screenshots.** Your computer's screenshot shortcuts stay your
+computer's while you stream, and the tool they open gets the pointer:
+- **Mac:** ⌘⇧3, ⌘⇧4, ⌘⇧5 and tools on ⌘⇧ shortcuts such as CleanShot X.
+  Pressing ⌘⇧ gives the pointer to the Mac (a tool that comes up over the
+  stream's pointer can neither show nor move its crosshair); a key that
+  reaches the stream with them gives it back at once. When the tool is
+  done, the stream takes the pointer back as soon as you move it over the
+  stream, press a key or click.
+
+To use the tool's own window afterwards (the screenshot's thumbnail,
+CleanShot X's overlay), release the pointer first with Ctrl+Alt+Shift+Z
+(Ctrl+Option+Shift+Z on a Mac).
+
 **Controllers** plug in on the host as Xbox 360 pads (Windows, with
 ViGEmBus), one per controller, with rumble; the Xbox/Guide button reaches
 the host too. With **Controller as a mouse** on (Input settings), holding
