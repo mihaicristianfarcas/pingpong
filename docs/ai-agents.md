@@ -129,9 +129,36 @@ agent:
 | Linux | `ping-app mcp` |
 | A build | `ping-agent mcp` |
 
-**Agent setup** adds it to Claude Code and to Codex (**Add**), and copies
-the configuration for Claude Desktop, Cursor and others (**Copy**). By
-hand:
+**Agent setup**, under *Your hosts in other agents*, lists the agents on
+this computer and adds the server to any of them (**Add**), takes it out
+again (**Remove**), or points an entry left by another copy of Ping at this
+one (**Update**). From a terminal, `Ping mcp install` does the same:
+
+```sh
+Ping mcp status                       # each agent, and whether it has the server
+Ping mcp install codex claude-code    # or --all: every agent found here
+Ping mcp uninstall opencode
+```
+
+| Agent | `APP` | Where the entry goes |
+|---|---|---|
+| Claude Code | `claude-code` | `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`) |
+| Codex | `codex` | `~/.codex/config.toml` (or `$CODEX_HOME`) |
+| OpenCode | `opencode` | `~/.config/opencode/opencode.json`, with a 60 s timeout |
+| Gemini CLI | `gemini` | `~/.gemini/settings.json` |
+| Cursor | `cursor` | `~/.cursor/mcp.json` |
+| GitHub Copilot CLI | `copilot` | `~/.copilot/mcp-config.json` |
+| Factory Droid | `droid` | `~/.factory/mcp.json` |
+| Amp | `amp` | `~/.config/amp/settings.json` (`amp.mcpServers`) |
+| Kiro | `kiro` | `~/.kiro/settings/mcp.json` |
+| Claude Desktop | `claude-desktop` | `claude_desktop_config.json` in its settings folder |
+| Diri | `diri` | each of Diri's agent accounts with a settings folder of its own; the others use Claude Code's and Codex's |
+
+The entry is called `pingpong`. The rest of each file stays as it was (its
+keys in their order, Codex's comments). A file with comments in its JSON
+(OpenCode's `opencode.jsonc`) is not rewritten: add the entry there by hand.
+An agent reads its servers when a session starts, so start a new one. By
+hand, in any agent:
 
 ```sh
 claude mcp add --scope user pingpong -- /Applications/Ping.app/Contents/MacOS/Ping mcp
@@ -331,7 +358,10 @@ Not verified yet:
   unit-tested).
 - The real Anthropic and OpenAI APIs (checked against the mock only), and
   paid OpenRouter models.
-- Claude Desktop and Cursor as MCP clients (the configuration is standard).
+- Claude Desktop, Cursor, Gemini CLI, Copilot CLI, Droid, Amp and Kiro as
+  MCP clients: their entries follow each one's documented format, and
+  `Ping mcp install` was run only against Claude Code, Codex and OpenCode
+  (Claude Code and Codex list the entry, and Claude Code connects to it).
 - Sessions with Claude Code (`--session-id`, then `--resume`) and with an
   API key's model: built, not run.
 

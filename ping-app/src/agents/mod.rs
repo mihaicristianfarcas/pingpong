@@ -5,8 +5,8 @@
 //! is one you already have: a Claude or ChatGPT plan through Claude Code or
 //! Codex, or an API key.
 //!
-//! The setup (models, keys, limits, which hosts, other agents through
-//! `Ping mcp`) is a settings page of its own, also here.
+//! The setup (models, keys, limits, which hosts, `Ping mcp` in other
+//! agents' settings) is a settings page of its own, also here.
 
 mod setup;
 
@@ -37,6 +37,9 @@ pub struct AgentsState {
     checked: Option<Instant>,
     key_note: Option<String>,
     mcp_note: Option<String>,
+    /// Other agents on this computer, and whether Ping's MCP server is in
+    /// their settings (looked at with the providers).
+    mcp_apps: Vec<(ping_agent::install::App, ping_agent::install::State)>,
     /// A new session's first message.
     composer: Entity<TextField>,
     key_field: Entity<TextField>,
@@ -111,6 +114,7 @@ impl AgentsState {
             checked: None,
             key_note: None,
             mcp_note: None,
+            mcp_apps: Vec::new(),
             composer,
             key_field,
             base_url,
@@ -175,6 +179,19 @@ impl AgentsState {
             .iter()
             .map(|&p| (p, providers::availability(&self.dir, &self.settings, p)))
             .collect();
+        self.check_mcp_apps();
+    }
+
+    fn check_mcp_apps(&mut self) {
+        use ping_agent::install;
+        let places = install::Places::here();
+        self.mcp_apps = match install::Server::this() {
+            Ok(server) => install::App::ALL
+                .iter()
+                .map(|&a| (a, install::state(a, &places, &server)))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
     }
 
     fn ready(&self, p: Provider) -> Option<&Result<String, String>> {

@@ -1,6 +1,9 @@
 //! `ping-agent`: computer use over pingpong from the command line.
 //!
 //!   ping-agent mcp [--host NAME] [--size WxH] [--image-dir DIR] [--events FILE] [--max-actions N]
+//!   ping-agent mcp install APP ... | --all       the MCP server in other agents' settings
+//!   ping-agent mcp uninstall APP ... | --all     (claude-code, codex, opencode, ...)
+//!   ping-agent mcp status
 //!   ping-agent identity                          the agent's public keys (for `pong add-client --agent`)
 //!   ping-agent hosts                             hosts the agent is paired with
 //!   ping-agent add-host NAME ADDR X25519 MLKEM   pair the agent by hand (see `pong identity`)
@@ -33,6 +36,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: ping-agent mcp [--host NAME] [--size WxH] [--image-dir DIR] [--events \
                     FILE] [--max-actions N]\n\
+                    \x20      ping-agent mcp install APP ... | --all, mcp uninstall APP ..., mcp status\n\
                     \x20      ping-agent identity | hosts | add-host NAME ADDR X25519 MLKEM"
             );
             ExitCode::FAILURE
