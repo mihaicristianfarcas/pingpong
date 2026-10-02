@@ -81,20 +81,32 @@ const EXTENDED_BIT: u16 = 0x8000;
 
 pub struct SendInputSink {
     held: HeldSet,
-    /// Stream pixels -> SendInput's absolute space. Built once at open: a
-    /// session's display geometry does not change under it, and if it does the
-    /// session is torn down anyway (v2 design §6.4).
-    absolute: AbsoluteTransform,
+    /// The stream's size: what the client's absolute positions are in.
+    stream: (u32, u32),
     typist: Typist,
 }
 
 impl SendInputSink {
-    pub fn new(absolute: AbsoluteTransform) -> SendInputSink {
+    /// Positions in a `stream`-sized picture of the primary display.
+    pub fn new(stream: (u32, u32)) -> SendInputSink {
         SendInputSink {
             held: HeldSet::new(),
-            absolute,
+            stream,
             typist: Typist::spawn(),
         }
+    }
+
+    /// Stream pixels -> SendInput's absolute space, from the desktop as it is
+    /// now. Not kept from the session's start: a game changes the display's
+    /// mode under the session (a lower resolution in its settings), and a
+    /// transform from before put every click somewhere else on the screen.
+    /// Six `GetSystemMetrics` reads, per position.
+    fn absolute(&self) -> AbsoluteTransform {
+        AbsoluteTransform::new(
+            VirtualDesktop::current(),
+            DisplayRect::primary(),
+            self.stream,
+        )
     }
 
     /// Now, or behind the text still being typed, so order holds.
@@ -130,7 +142,7 @@ impl SendInputSink {
                 // attached display, so the transform must be built from the
                 // virtual desktop's bounds and the captured display's origin
                 // within it -- not from the captured display's size alone.
-                let (nx, ny) = self.absolute.normalize(x, y);
+                let (nx, ny) = self.absolute().normalize(x, y);
                 out.push(mouse_input(
                     nx,
                     ny,

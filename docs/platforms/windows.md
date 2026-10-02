@@ -73,10 +73,11 @@ one's window.
 - **Sound.** WASAPI loopback of the session's virtual sink, stereo to 7.1,
   Opus as Sunshine configures it.
 - **Input.** `SendInput`: keys by scancode, the mouse relative (the host's
-  pointer speed applies, as with Apollo) or as positions over the virtual
-  desktop. Typed text (an agent's `type`, a
-  pasted clipboard) goes one character every 15 ms: Windows 11's WinUI text
-  fields garble faster Unicode keystrokes.
+  pointer speed applies, as with Apollo) or as positions over the display,
+  mapped from the desktop as it is at each move, so a game that changes the
+  display's resolution does not move every click. Typed text (an agent's
+  `type`, a pasted clipboard) goes one character every 15 ms: Windows 11's
+  WinUI text fields garble faster Unicode keystrokes.
 - **The pointer.** Desktop Duplication reports the pointer beside the
   desktop image, never in it: its place, whether it shows, and its shape.
   Pong draws it into a copy of the desktop on the GPU, as Apollo does, so
