@@ -7,8 +7,9 @@
 //! rules, which know nothing of the screen, catch what it types and the keys
 //! it presses whether it asked or not: a command that deletes for good, what
 //! looks like a password or key, a chord that deletes past the bin or locks
-//! the screen. A click is never judged here: only the model knows what is
-//! under it.
+//! the screen. A click is never judged here: only what sees the screen knows
+//! what is under it -- the model, and clef when the person turned its
+//! checks on (see `judge`).
 
 use crate::computer::Action;
 

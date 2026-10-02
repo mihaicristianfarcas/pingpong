@@ -14,6 +14,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::computer::{Computer, Config};
+use crate::judge::Judge;
 use crate::mcp::SharedComputer;
 use crate::providers::{self, AgentSettings, Confirm, Events, Provider, RunContext, RunEvent};
 
@@ -88,12 +89,12 @@ impl Run {
             "run starts"
         );
         // Steps waiting for the user's yes (the control folder's asks: a
-        // risky action, the model's own request, or every action), put to
-        // `confirm` one at a time.
-        if let Some(dir) = control
-            .clone()
-            .filter(|_| task.settings.approvals != crate::providers::Approvals::Off)
-        {
+        // risky action, the model's own request, every action, or a screen
+        // with personal information), put to `confirm` one at a time.
+        if let Some(dir) = control.clone().filter(|_| {
+            task.settings.approvals != crate::providers::Approvals::Off
+                || task.settings.checks.personal_info
+        }) {
             let (stop, events, confirm) = (stop.clone(), events.clone(), confirm.clone());
             std::thread::Builder::new()
                 .name("agent-asks".into())
@@ -233,6 +234,7 @@ fn run(ctx: &RunContext) -> Result<String, String> {
             config.control = Some((ctx.control_dir(), ctx.settings.approvals));
             config.until = Some(ctx.until_epoch());
             config.hold_wait = crate::computer::HOLD_WAIT;
+            config.judge = Judge::new(&ctx.data_dir, &ctx.settings.checks).map(Arc::new);
             let mut computer = Computer::new(config);
             computer.set_waits(ctx.waits.clone());
             let events = ctx.events.clone();
@@ -267,6 +269,7 @@ fn run_turn(ctx: &RunContext, link: &SessionLink) -> Result<String, String> {
         let mut c = link.computer.lock();
         c.config.session.width = ctx.settings.width;
         c.config.session.height = ctx.settings.height;
+        c.config.judge = Judge::new(&ctx.data_dir, &ctx.settings.checks).map(Arc::new);
         c.begin_turn(
             ctx.settings.max_actions,
             until,

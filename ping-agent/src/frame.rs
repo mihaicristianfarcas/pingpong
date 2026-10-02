@@ -283,6 +283,27 @@ impl Rgb {
         })
     }
 
+    /// A ring of `color`, `width` pixels thick, its inner edge `radius`
+    /// from `centre`: it marks a point and leaves what is at it readable.
+    pub fn ring(&mut self, centre: (u32, u32), radius: u32, width: u32, color: [u8; 3]) {
+        let (cx, cy) = (centre.0 as i64, centre.1 as i64);
+        let (inner, outer) = (radius as i64, (radius + width) as i64);
+        let (x0, x1) = ((cx - outer).max(0), (cx + outer).min(self.width as i64 - 1));
+        let (y0, y1) = (
+            (cy - outer).max(0),
+            (cy + outer).min(self.height as i64 - 1),
+        );
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let d2 = (x - cx).pow(2) + (y - cy).pow(2);
+                if d2 >= inner * inner && d2 < outer * outer {
+                    let i = ((y as u64 * self.width as u64 + x as u64) * 3) as usize;
+                    self.data[i..i + 3].copy_from_slice(&color);
+                }
+            }
+        }
+    }
+
     /// Scaled down so neither side exceeds `max` (thumbnails for a UI).
     pub fn fit(&self, max: u32) -> Rgb {
         let scale = (max as f32 / self.width.max(self.height) as f32).min(1.0);
@@ -496,5 +517,28 @@ mod tests {
         .fit(100);
         assert_eq!((small.width, small.height), (100, 50));
         assert!(small.data.iter().all(|&b| b == 9));
+    }
+
+    #[test]
+    fn a_ring_leaves_its_centre_and_clips_at_the_edges() {
+        let mut img = Rgb {
+            width: 40,
+            height: 30,
+            data: vec![0; 40 * 30 * 3],
+        };
+        let at = |img: &Rgb, x: u32, y: u32| {
+            let i = ((y * img.width + x) * 3) as usize;
+            [img.data[i], img.data[i + 1], img.data[i + 2]]
+        };
+        img.ring((20, 15), 5, 2, [255, 0, 255]);
+        assert_eq!(at(&img, 20, 15), [0, 0, 0]);
+        assert_eq!(at(&img, 25, 15), [255, 0, 255]);
+        assert_eq!(at(&img, 20, 9), [255, 0, 255]);
+        assert_eq!(at(&img, 28, 15), [0, 0, 0]);
+        // Over a corner: only what is on the picture is drawn.
+        img.ring((0, 0), 3, 2, [1, 2, 3]);
+        img.ring((39, 29), 3, 2, [1, 2, 3]);
+        assert_eq!(at(&img, 3, 0), [1, 2, 3]);
+        assert_eq!(at(&img, 39, 25), [1, 2, 3]);
     }
 }
