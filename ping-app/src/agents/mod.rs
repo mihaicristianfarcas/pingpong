@@ -45,6 +45,10 @@ pub struct AgentsState {
     key_field: Entity<TextField>,
     base_url: Entity<TextField>,
     program: Entity<TextField>,
+    /// Clef's Cloudflare account and token (see `ping_agent::judge`).
+    clef_account: Entity<TextField>,
+    clef_token: Entity<TextField>,
+    clef_note: Option<String>,
     /// The open sessions, newest last.
     pub chats: Vec<Chat>,
     next_id: u64,
@@ -106,6 +110,33 @@ impl AgentsState {
             }
         })
         .detach();
+        let clef_account = cx.new(|cx| {
+            let mut f = TextField::new(cx).placeholder("32 characters");
+            f.set_text(settings.checks.account_id.clone(), cx);
+            f
+        });
+        cx.subscribe_in(
+            &clef_account,
+            window,
+            |this: &mut PingApp, f, event, _, cx| {
+                if *event == FieldEvent::Changed {
+                    this.agents.settings.checks.account_id = f.read(cx).text().trim().to_string();
+                    this.agents.save_settings();
+                    cx.notify();
+                }
+            },
+        )
+        .detach();
+        let clef_token = cx.new(|cx| TextField::new(cx).password().placeholder("Paste a token"));
+        cx.subscribe_in(
+            &clef_token,
+            window,
+            |this: &mut PingApp, _, event, _, cx| match event {
+                FieldEvent::Submit => this.agents.save_clef_token(cx),
+                _ => cx.notify(),
+            },
+        )
+        .detach();
         let mut state = AgentsState {
             dir,
             settings,
@@ -119,6 +150,9 @@ impl AgentsState {
             key_field,
             base_url,
             program,
+            clef_account,
+            clef_token,
+            clef_note: None,
             chats: Vec::new(),
             next_id: 1,
         };
@@ -164,6 +198,29 @@ impl AgentsState {
         );
         self.key_field.update(cx, |f, cx| f.set_text("", cx));
         self.checked = None;
+        cx.notify();
+    }
+
+    /// Save (or with None, forget) the Cloudflare token clef runs with.
+    fn set_clef_token(&mut self, token: Option<&str>) {
+        let id = ping_agent::judge::TOKEN_ID;
+        self.clef_note = Some(match providers::secrets::set_named(&self.dir, id, token) {
+            Ok(()) if token.is_some() => {
+                tracing::info!("Cloudflare token saved");
+                "Saved, readable only by you.".into()
+            }
+            Ok(()) => "Forgotten.".into(),
+            Err(e) => e.to_string(),
+        });
+    }
+
+    fn save_clef_token(&mut self, cx: &mut Context<PingApp>) {
+        let token = self.clef_token.read(cx).text().trim().to_string();
+        if token.is_empty() {
+            return;
+        }
+        self.set_clef_token(Some(&token));
+        self.clef_token.update(cx, |f, cx| f.set_text("", cx));
         cx.notify();
     }
 

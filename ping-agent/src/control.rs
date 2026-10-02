@@ -6,8 +6,10 @@
 //! - `pause`: while it exists, actions wait;
 //! - `ask-N.json`: a step waiting for the person's go-ahead
 //!   (`{"n": N, "action": "type \"rm -rf build\"", "why": "…", "from": "rule"}`):
-//!   a risky action a rule caught, one the model asked about
-//!   (`ask_approval`), or any action when every one is to be approved;
+//!   a risky action a rule or clef caught (`rule`), one the model asked
+//!   about (`model`), any action when every one is to be approved
+//!   (`every`), or a screen with personal information the model is to see
+//!   (`screen`, whatever the approvals: see `judge`);
 //! - `answer-N`: `yes` or `no`.
 
 use std::path::{Path, PathBuf};
@@ -113,6 +115,22 @@ impl Control {
         let yes = self.ask(ask, "model", stop, max_wait)?;
         self.covered = yes.then(|| (Instant::now() + COVER_FOR, COVER_ACTIONS));
         Ok(yes)
+    }
+
+    /// Whether the model may see a screen clef finds personal information
+    /// on (see `judge`): asked whatever the approvals, since it is about
+    /// what leaves the computer, not what the agent does. Nobody answering
+    /// in time is a no; only a stop is an error.
+    pub fn show(
+        &mut self,
+        ask: &Ask,
+        stop: &dyn Fn() -> Option<String>,
+        max_wait: Duration,
+    ) -> Result<bool, String> {
+        match self.ask(ask, "screen", stop, max_wait) {
+            Err(why) if stop().is_some() => Err(why),
+            answer => Ok(answer.unwrap_or(false)),
+        }
     }
 
     /// A yes to the model's request still covers a risky action (using it).
@@ -351,6 +369,25 @@ mod tests {
                 WAIT
             )
             .unwrap());
+    }
+
+    #[test]
+    fn a_screen_is_asked_about_whatever_the_approvals_and_silence_is_a_no() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().to_path_buf();
+        let mut c = Control::new(d.clone(), Approvals::Off);
+        let ask = Ask {
+            what: "Show the model this screen".into(),
+            why: "Clef finds payment or bank details on it.".into(),
+        };
+        let none = || None;
+        let person = answerer(d.clone(), vec![true]);
+        assert!(c.show(&ask, &none, WAIT).unwrap());
+        assert_eq!(person.join().unwrap(), vec![ask.clone()]);
+        assert!(!c.show(&ask, &none, Duration::from_millis(50)).unwrap());
+        assert!(pending(&d).is_empty());
+        let e = c.show(&ask, &|| Some("Stopped.".into()), WAIT).unwrap_err();
+        assert_eq!(e, "Stopped.");
     }
 
     #[test]

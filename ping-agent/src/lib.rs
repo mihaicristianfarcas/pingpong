@@ -8,6 +8,8 @@
 //!   each answered with the settled screen.
 //! - [`mcp`]: those actions as an MCP server, for any agent that speaks MCP;
 //!   [`install`] adds it to other agents' settings.
+//! - [`judge`]: Cloudflare's clef, a decision model, looks at the screen
+//!   before risky clicks and typing, and before the model sees a screen.
 //! - [`providers`] and [`runner`]: running an agent on a task from Ping
 //!   itself -- through Claude Code or Codex (the user's subscription), or
 //!   straight to Anthropic's, OpenAI's or an OpenAI-compatible API (a key).
@@ -19,6 +21,7 @@ pub mod decode;
 pub mod frame;
 pub mod headless;
 pub mod install;
+pub mod judge;
 pub mod keys;
 pub mod mcp;
 pub mod providers;

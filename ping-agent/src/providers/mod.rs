@@ -181,6 +181,8 @@ pub struct AgentSettings {
     pub height: u16,
     /// Which steps wait for the user's yes.
     pub approvals: Approvals,
+    /// What clef checks on the screen (see `judge`).
+    pub checks: crate::judge::Checks,
     /// Settings saved before `approvals`: every action waited (read, then
     /// `approvals` says it).
     #[serde(skip_serializing)]
@@ -201,6 +203,7 @@ impl Default for AgentSettings {
             width: 1280,
             height: 800,
             approvals: Approvals::Risky,
+            checks: crate::judge::Checks::default(),
             confirm_actions: false,
         }
     }
@@ -573,23 +576,37 @@ pub mod secrets {
 
     /// The key for `provider`: its environment variable, else the saved one.
     pub fn key(data_dir: &Path, provider: Provider) -> Option<String> {
-        provider
-            .key_env()
-            .and_then(|k| std::env::var(k).ok())
-            .filter(|k| !k.trim().is_empty())
-            .or_else(|| load(data_dir).remove(provider.id()))
-            .map(|k| k.trim().to_string())
+        named(data_dir, provider.id(), provider.key_env())
     }
 
     /// Save (or with None, forget) the key for `provider`.
     pub fn set(data_dir: &Path, provider: Provider, key: Option<&str>) -> std::io::Result<()> {
+        set_named(data_dir, provider.id(), key)
+    }
+
+    /// Whether a key is saved (not counting the environment).
+    pub fn saved(data_dir: &Path, provider: Provider) -> bool {
+        saved_named(data_dir, provider.id())
+    }
+
+    /// A key saved as `id` that is not a provider's (clef's token: see
+    /// `judge`): `env`, when set, else the saved one.
+    pub fn named(data_dir: &Path, id: &str, env: Option<&str>) -> Option<String> {
+        env.and_then(|k| std::env::var(k).ok())
+            .filter(|k| !k.trim().is_empty())
+            .or_else(|| load(data_dir).remove(id))
+            .map(|k| k.trim().to_string())
+    }
+
+    /// Save (or with None, forget) the key saved as `id`.
+    pub fn set_named(data_dir: &Path, id: &str, key: Option<&str>) -> std::io::Result<()> {
         let mut all = load(data_dir);
         match key.map(str::trim).filter(|k| !k.is_empty()) {
             Some(k) => {
-                all.insert(provider.id().to_string(), k.to_string());
+                all.insert(id.to_string(), k.to_string());
             }
             None => {
-                all.remove(provider.id());
+                all.remove(id);
             }
         }
         let p = path(data_dir);
@@ -600,9 +617,9 @@ pub mod secrets {
         pingpong_transport::identity::write_private(&p, text.as_bytes())
     }
 
-    /// Whether a key is saved (not counting the environment).
-    pub fn saved(data_dir: &Path, provider: Provider) -> bool {
-        load(data_dir).contains_key(provider.id())
+    /// Whether a key is saved as `id` (not counting the environment).
+    pub fn saved_named(data_dir: &Path, id: &str) -> bool {
+        load(data_dir).contains_key(id)
     }
 }
 

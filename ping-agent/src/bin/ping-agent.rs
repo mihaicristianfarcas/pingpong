@@ -13,6 +13,9 @@
 //!                  MESSAGE [--then MESSAGE ...]  a conversation: each message a turn, one connection
 //!   ping-agent providers                         what can run here
 //!   ping-agent set-key PROVIDER                  save an API key (read from stdin)
+//!   ping-agent set-key cloudflare                save the Cloudflare API token clef runs with
+//!   ping-agent check SCREEN.png --click X,Y | --enter | --typing N | --personal
+//!                                                clef's answer about a screenshot (see judge.rs)
 
 use std::process::ExitCode;
 
@@ -24,6 +27,7 @@ fn main() -> ExitCode {
         Some("converse") => converse(&args[1..]),
         Some("providers") => providers(),
         Some("set-key") => set_key(&args),
+        Some("check") => check(&args[1..]),
         Some("identity") => identity(),
         Some("hosts") => {
             for h in ping_agent::headless::agent_hosts(&ping_core::store::data_dir()) {
@@ -83,14 +87,37 @@ fn providers() -> ExitCode {
 }
 
 fn set_key(args: &[String]) -> ExitCode {
+    if args.get(1).map(String::as_str) == Some(ping_agent::judge::TOKEN_ID) {
+        let mut token = String::new();
+        let _ = std::io::stdin().read_line(&mut token);
+        let token = token.trim();
+        let dir = ping_core::store::data_dir();
+        let id = ping_agent::judge::TOKEN_ID;
+        return match ping_agent::providers::secrets::set_named(
+            &dir,
+            id,
+            (!token.is_empty()).then_some(token),
+        ) {
+            Ok(()) => {
+                let what = if token.is_empty() {
+                    "forgotten"
+                } else {
+                    "saved"
+                };
+                println!("{id} token {what}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(e),
+        };
+    }
     let Some(p) = args
         .get(1)
         .and_then(|a| ping_agent::providers::Provider::parse(a))
         .filter(|p| !p.is_subscription())
     else {
         eprintln!(
-            "usage: ping-agent set-key anthropic|openai|openrouter|custom  (the key on stdin; \
-                empty forgets it)"
+            "usage: ping-agent set-key anthropic|openai|openrouter|custom|cloudflare  (the key on \
+                stdin; empty forgets it)"
         );
         return ExitCode::FAILURE;
     };
@@ -106,6 +133,107 @@ fn set_key(args: &[String]) -> ExitCode {
         }
         Err(e) => fail(e),
     }
+}
+
+/// Ask clef what it makes of a screenshot, as a check during a run would:
+/// how the checks are measured on real screens (`judge::HOLD_AT`). Uses the
+/// account and token of Agent setup, whichever checks are on there.
+fn check(args: &[String]) -> ExitCode {
+    use ping_agent::judge::{self, Judge, Subject};
+    const USAGE: &str =
+        "usage: ping-agent check SCREEN.png --click X,Y | --enter | --typing N | --personal";
+    let (Some(file), Some(what)) = (args.first(), args.get(1)) else {
+        return fail(USAGE);
+    };
+    let point = |v: Option<&String>| {
+        let (x, y) = v?.split_once(',')?;
+        Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+    };
+    let subject = match what.as_str() {
+        "--click" => match point(args.get(2)) {
+            Some(at) => Some(Subject::Click { at, doing: "click" }),
+            None => return fail(USAGE),
+        },
+        "--enter" => Some(Subject::Enter),
+        "--typing" => Some(Subject::Typing {
+            chars: args.get(2).and_then(|n| n.parse().ok()).unwrap_or(8),
+        }),
+        "--personal" => None,
+        _ => return fail(USAGE),
+    };
+    let screen = match std::fs::read(file)
+        .map_err(|e| e.to_string())
+        .and_then(|png| decode_png(&png))
+    {
+        Ok(s) => s,
+        Err(e) => return fail(format!("{file}: {e}")),
+    };
+    let dir = ping_core::store::data_dir();
+    let mut checks = ping_agent::providers::AgentSettings::load(&dir).checks;
+    (checks.clicks, checks.secret_fields, checks.personal_info) = (true, true, true);
+    let judge = Judge::new(&dir, &checks).expect("a check is on");
+    let started = std::time::Instant::now();
+    let body = match &subject {
+        Some(s) => Ok(judge.request(&screen, s)),
+        None => judge.personal_request(&ping_agent::computer::Shot {
+            png: screen.png(),
+            width: screen.width,
+            height: screen.height,
+        }),
+    };
+    let reply = match body.and_then(|b| judge.ask(&b)) {
+        Ok(r) => r,
+        Err(e) => return fail(e),
+    };
+    let Some(answers) = judge::answers(&reply) else {
+        return fail(format!("no answers in {reply}"));
+    };
+    let verdict = match subject {
+        Some(Subject::Typing { .. }) => judge::typing_verdict(answers),
+        Some(_) => judge::effect_verdict(answers),
+        None => judge::personal_verdict(answers).map(|found| {
+            (!found.is_empty()).then(|| format!("It shows {}.", judge::describe_all(&found)))
+        }),
+    };
+    println!(
+        "{}",
+        serde_json::to_string_pretty(answers).unwrap_or_default()
+    );
+    println!(
+        "{} in {} ms: {}",
+        judge.model(),
+        started.elapsed().as_millis(),
+        match verdict {
+            Ok(Some(why)) => format!("holds. {why}"),
+            Ok(None) => "lets it through.".into(),
+            Err(e) => e,
+        }
+    );
+    ExitCode::SUCCESS
+}
+
+/// An 8-bit RGB or RGBA PNG (what screenshot tools save) as RGB.
+fn decode_png(png: &[u8]) -> Result<ping_agent::frame::Rgb, String> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let mut buf = vec![0; reader.output_buffer_size().ok_or("the PNG is too large")?];
+    let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
+    let data = match info.color_type {
+        png::ColorType::Rgb => buf[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgba => buf[..info.buffer_size()]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|p| [p[0], p[1], p[2]])
+            .collect(),
+        other => return Err(format!("{other:?} PNGs are not read here: save it as RGB")),
+    };
+    Ok(ping_agent::frame::Rgb {
+        width: info.width,
+        height: info.height,
+        data,
+    })
 }
 
 fn identity() -> ExitCode {
