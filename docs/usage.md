@@ -47,6 +47,10 @@ computer's while you stream, and the tool they open gets the pointer:
   reaches the stream with them gives it back at once. When the tool is
   done, the stream takes the pointer back as soon as you move it over the
   stream, press a key or click.
+- **Windows:** Print Screen with any modifiers, Win+Shift+S and
+  Win+Shift+R (the Snipping Tool) go to Windows rather than to the host.
+  The tool takes the focus, and the stream takes the pointer back when it
+  has the focus again, or at a click.
 
 To use the tool's own window afterwards (the screenshot's thumbnail,
 CleanShot X's overlay), release the pointer first with Ctrl+Alt+Shift+Z

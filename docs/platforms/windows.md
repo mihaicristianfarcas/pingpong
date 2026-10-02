@@ -140,7 +140,10 @@ As Moonlight does it on Windows:
   per refresh on DXGI's vblank.
 - **Keyboard and mouse.** While captured, a low-level keyboard hook takes
   every key — the Windows key and Alt+Tab included, full screen — as SDL's
-  keyboard grab does for Moonlight. The pointer is confined to the window
+  keyboard grab does for Moonlight, except the screenshot shortcuts (Print
+  Screen, Win+Shift+S, Win+Shift+R): those are handed back to Windows
+  whole, sent with `SendInput` and marked so the hook lets them through.
+  The pointer is confined to the window
   and hidden (the host draws its own into the picture); raw input's
   relative motion goes to the host, or the pointer's position after
   Ctrl+Alt+Shift+M.
