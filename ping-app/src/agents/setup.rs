@@ -237,9 +237,8 @@ impl PingApp {
             .child(section(short(p), t).child(rows(needs, t)))
             .when(p == Provider::Openrouter, |d| {
                 d.child(pingpong_ui::footnote(
-                    "OpenRouter reaches hundreds of models with one key, TypeSafe's Jev \
-                        Router (typesafe/jev-router) among them: it picks a model per \
-                        step. Models ending in :free cost nothing.",
+                    "OpenRouter reaches hundreds of models with one key. Models \
+                        ending in :free cost nothing.",
                     t,
                 ))
             })

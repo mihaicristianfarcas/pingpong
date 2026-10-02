@@ -7,8 +7,8 @@
 //!   through their makers' programs, as their terms want;
 //! - an **API key**: Anthropic's computer toolset ([`anthropic`]), OpenAI's
 //!   computer tool ([`openai`]), or any OpenAI-compatible endpoint with
-//!   function calling and images -- OpenRouter (hundreds of models, TypeSafe's
-//!   Jev Router among them), a local Ollama or LM Studio ([`chat`]).
+//!   function calling and images -- OpenRouter (hundreds of models), a local
+//!   Ollama or LM Studio ([`chat`]).
 
 pub mod anthropic;
 pub mod chat;
@@ -99,7 +99,6 @@ impl Provider {
                 "openai/gpt-5.6-sol",
                 "google/gemma-4-31b-it:free",
                 "qwen/qwen3.8-27b:free",
-                "typesafe/jev-router",
             ],
             Provider::Custom => &[""],
         }
