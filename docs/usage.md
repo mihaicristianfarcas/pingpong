@@ -67,7 +67,7 @@ Windows and Linux) opens them.
 |---|---|---|
 | General | Look for updates | New releases (the default for a packaged release), releases and main (the default for a build from a checkout: also commits on `main` newer than the build's), or off. See [Updates](#updates) |
 | | Check for Updates | Asks GitHub now, whatever the setting |
-| Video | Resolution | This display's native size (the default), the scaled desktop size (Mac), or a custom size |
+| Video | Resolution | This display's native size (the default), the scaled desktop size (Mac), or a custom size. Each is fitted to the nearest standard aspect ratio (16:10, 16:9, 21:9...): a size between them makes games draw a smaller picture with strips around it, which a Windows host does not refresh. Below a MacBook's notch that is 16:10, 3024 × 1890 on a 14" |
 | | Frame rate | Frames per second the host sends; up to this display's maximum |
 | | Video codec | Automatic (HEVC when both ends can), HEVC, or H.264 |
 | | Display mode | Full screen or a window |
