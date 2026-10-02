@@ -20,8 +20,11 @@ ctrlc = { version = "3", features = ["termination"] }
 parking_lot = "0.12"
 png = "0.18"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order: settings files of other agents are rewritten with their keys
+# in the order they had (src/install.rs).
+serde_json = { version = "1", features = ["preserve_order"] }
 toml = "0.8"
+toml_edit = "0.22"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ureq = { version = "3", features = ["json"] }

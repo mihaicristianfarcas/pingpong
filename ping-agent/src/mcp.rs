@@ -852,6 +852,13 @@ impl Server {
 /// [--max-actions N] [--no-auto-screenshot]`: what `Ping mcp` and
 /// `ping-agent mcp` run. Logs go to stderr (stdout is the protocol's).
 pub fn main(args: &[String]) -> std::process::ExitCode {
+    // `mcp install codex`: this server in other agents' settings.
+    if matches!(
+        args.first().map(String::as_str),
+        Some("install" | "uninstall" | "add" | "remove" | "status")
+    ) {
+        return crate::install::cli(args);
+    }
     let _ = tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_ansi(false)

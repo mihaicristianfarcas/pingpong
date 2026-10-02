@@ -1,9 +1,11 @@
 //! Agent setup, a settings page: the model and what it needs, limits, which
-//! hosts the agent may use, and `Ping mcp` for other agents.
+//! hosts the agent may use, and `Ping mcp` in other agents' settings (see
+//! `ping_agent::install`).
 
 use gpui::{
     div, prelude::*, px, AnyElement, ClipboardItem, Context, ElementId, SharedString, Window,
 };
+use ping_agent::install::{self, State};
 use ping_agent::providers::{self, AgentSettings, Approvals, Provider};
 use pingpong_ui::{
     button, chip, field, rows, section, select, setting, stepper, IconName, Ink, Theme, Type,
@@ -18,39 +20,6 @@ pub(super) fn home_short(s: &str) -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() => s.replace(&home, "~"),
         _ => s.to_string(),
-    }
-}
-
-/// Register Ping's MCP server with a CLI agent (the user asked, by a click).
-pub(super) fn add_mcp(cmd: &[&str], exe: &str, settings: &AgentSettings, claude: bool) -> String {
-    let program = if claude {
-        providers::cli::claude_program(settings).map(|p| p.display().to_string())
-    } else {
-        providers::cli::codex_program(settings).map(|p| p.path.display().to_string())
-    };
-    let program = match program {
-        Ok(p) => p,
-        Err(e) => return e,
-    };
-    let out = std::process::Command::new(&program)
-        .args(&cmd[1..])
-        .arg(exe)
-        .arg("mcp")
-        .stdin(std::process::Stdio::null())
-        .output();
-    match out {
-        Ok(o) if o.status.success() => {
-            format!(
-                "Added: {} can use your hosts now (as the tools of the \"pingpong\" server).",
-                if claude { "Claude Code" } else { "Codex" }
-            )
-        }
-        Ok(o) => format!(
-            "{} said: {}",
-            cmd[0],
-            String::from_utf8_lossy(&o.stderr).trim()
-        ),
-        Err(e) => e.to_string(),
     }
 }
 
@@ -251,12 +220,15 @@ impl PingApp {
             });
         });
 
-        let exe = std::env::current_exe()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "Ping".into());
-        let mcp_line = format!("\"{exe}\" mcp");
+        let server = install::Server::this().unwrap_or_else(|_| install::Server {
+            command: "Ping".into(),
+            args: vec!["mcp".into()],
+        });
+        let mcp_line = std::iter::once(format!("\"{}\"", server.command))
+            .chain(server.args.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ");
         let copy_line = mcp_line.clone();
-        let config_exe = exe.clone();
         div()
             .flex()
             .flex_col()
@@ -294,28 +266,10 @@ impl PingApp {
             )))
             .child(section("Hosts the agent may use", t).child(self.agent_host_rows(t, cx)))
             .child(section("Your hosts in other agents", t).child(rows(
-                [
-                    setting("Claude Code", Some("Adds Ping as the \"pingpong\" MCP server, \
-                        for you everywhere.".into()), button("mcp-claude", "Add", t).on_click(cx.listener({
-                        let exe = exe.clone();
-                        move |this, _, _, cx| {
-                            this.agents.mcp_note = Some(add_mcp(&["claude", "mcp", "add", "--scope", "user", "pingpong", "--"], &exe, &this.agents.settings, true));
-                            cx.notify();
-                        }
-                    })), t)
-                    .into_any_element(),
-                    setting("Codex", Some("The same, for Codex.".into()), button("mcp-codex", "Add", t).on_click(cx.listener({
-                        let exe = exe.clone();
-                        move |this, _, _, cx| {
-                            this.agents.mcp_note = Some(add_mcp(&["codex", "mcp", "add", "pingpong", "--"], &exe, &this.agents.settings, false));
-                            cx.notify();
-                        }
-                    })), t)
-                    .into_any_element(),
-                    setting("Claude Desktop, Cursor and others", Some("Copies the server's \
-                        settings, to paste into claude_desktop_config.json or \
-                        ~/.cursor/mcp.json.".into()), button("mcp-copy", "Copy", t).icon(IconName::Copy).on_click(cx.listener(move |this, _, _, cx| {
-                        let config = serde_json::json!({"mcpServers": {"pingpong": {"command": config_exe, "args": ["mcp"]}}});
+                self.mcp_app_rows(t, cx).into_iter().chain([
+                    setting("Others", Some("Copies the server's settings, to paste where \
+                        another agent keeps its MCP servers.".into()), button("mcp-copy", "Copy", t).icon(IconName::Copy).on_click(cx.listener(move |this, _, _, cx| {
+                        let config = serde_json::json!({"mcpServers": {install::NAME: {"command": server.command, "args": server.args}}});
                         cx.write_to_clipboard(ClipboardItem::new_string(serde_json::to_string_pretty(&config).unwrap_or_default()));
                         this.agents.mcp_note = Some("Copied.".into());
                         cx.notify();
@@ -330,10 +284,98 @@ impl PingApp {
                         .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().font_family(pingpong_ui::mono_font()).text_size(px(Type::META)).text_color(t.secondary).child(mcp_line))
                         .child(pingpong_ui::icon_button("copy-mcp-line", IconName::Copy, "Copy the command", t).on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy_line.clone()))))
                         .into_any_element(),
-                ],
+                ]),
                 t,
             )))
+            .children(self.mcp_missing_note(t))
             .children(self.agents.mcp_note.clone().map(|n| pingpong_ui::footnote(n, t)))
             .into_any_element()
+    }
+
+    /// A row for each agent on this computer: is Ping's server in its
+    /// settings, and the button that changes that.
+    fn mcp_app_rows(&mut self, t: Theme, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let places = install::Places::here();
+        self.agents
+            .mcp_apps
+            .clone()
+            .into_iter()
+            .filter(|(_, state)| *state != State::Missing)
+            .map(|(app, state)| {
+                let files = install::files(app, &places)
+                    .iter()
+                    .map(|f| install::tilde(f, &places.home))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let (detail, chip_, action): (String, Option<AnyElement>, Option<(&str, bool)>) =
+                    match &state {
+                        State::Absent => {
+                            (format!("Adds it to {files}."), None, Some(("Add", true)))
+                        }
+                        State::Added { current: true } => (
+                            format!("In {files}: its new sessions have your hosts as tools."),
+                            Some(chip("Added", t.ink(Ink::FRESH), t).into_any_element()),
+                            Some(("Remove", false)),
+                        ),
+                        State::Added { current: false } => (
+                            format!("In {files}, for another copy of Ping."),
+                            Some(chip("Elsewhere", t.ink(Ink::ATTENTION), t).into_any_element()),
+                            Some(("Update", true)),
+                        ),
+                        State::Unreadable(e) => (e.clone(), None, None),
+                        State::Shared(why) => (why.to_string(), None, None),
+                        State::Missing => (String::new(), None, None),
+                    };
+                let control = div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .children(chip_)
+                    .children(action.map(|(label, adds)| {
+                        button(
+                            ElementId::Name(format!("mcp-{}", app.id()).into()),
+                            label,
+                            t,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let places = install::Places::here();
+                            let done = if adds {
+                                install::Server::this()
+                                    .and_then(|server| install::add(app, &places, &server))
+                            } else {
+                                install::remove(app, &places)
+                            };
+                            this.agents.mcp_note = Some(done.unwrap_or_else(|e| e));
+                            this.agents.check_mcp_apps();
+                            cx.notify();
+                        }))
+                    }));
+                setting(app.name(), Some(detail.into()), control, t).into_any_element()
+            })
+            .collect()
+    }
+
+    /// What was done last, or the agents this looks for that are not here.
+    fn mcp_missing_note(&self, t: Theme) -> Option<gpui::Div> {
+        if let Some(note) = &self.agents.mcp_note {
+            return Some(pingpong_ui::footnote(note.clone(), t));
+        }
+        let missing: Vec<&str> = self
+            .agents
+            .mcp_apps
+            .iter()
+            .filter(|(_, s)| *s == State::Missing)
+            .map(|(a, _)| a.name())
+            .collect();
+        (!missing.is_empty()).then(|| {
+            pingpong_ui::footnote(
+                format!(
+                    "Not on this computer: {}. Ping mcp install, from a terminal, does \
+                        the same.",
+                    missing.join(", ")
+                ),
+                t,
+            )
+        })
     }
 }

@@ -81,6 +81,9 @@ Administrators, so these commands need an administrator's terminal there.
 | `ping-agent run --host NAME [FLAGS] TASK` | Run one task, printing each action |
 | `ping-agent converse --host NAME [FLAGS] MESSAGE [--then MESSAGE ...]` | A conversation: each message a turn, on one connection |
 | `ping-agent mcp [FLAGS]` | The MCP server on stdin/stdout (what `Ping mcp` runs) |
+| `ping-agent mcp status` | Each agent this computer has (Claude Code, Codex, OpenCode, ...), and whether the server is in its settings |
+| `ping-agent mcp install APP ... \| --all` | Add the server to those agents' settings (`claude-code`, `codex`, `opencode`, `gemini`, `cursor`, `copilot`, `droid`, `amp`, `kiro`, `claude-desktop`, `diri`); `--all`: every one found here |
+| `ping-agent mcp uninstall APP ... \| --all` | Take it out again |
 
 `run` and `converse` flags: `--host NAME` (the default: the only host the
 agent may use), `--provider codex|claude-code|anthropic|openai|openrouter|custom`,
@@ -101,7 +104,10 @@ run started by Ping.
 
 ## The apps
 
-- `Ping mcp` (or `ping-app mcp`) runs the MCP server, as `ping-agent mcp`.
+- `Ping mcp` (or `ping-app mcp`) runs the MCP server, as `ping-agent mcp`;
+  `Ping mcp install`, `uninstall` and `status` add it to other agents'
+  settings, as `ping-agent mcp install` does (see
+  [ai-agents.md](ai-agents.md#3-or-use-your-hosts-from-another-agent-mcp)).
 - On Linux, `ping-app --ping-stream` is the stream's own process, started by
   the app.
 - `Pong Control --background` (`pong-app --background`) starts Pong's window
