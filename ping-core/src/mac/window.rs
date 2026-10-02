@@ -898,8 +898,13 @@ pub fn toggle_fullscreen() {
 /// somewhere sensible when released.
 pub fn centre_pointer(window: &NSWindow) {
     let f = window.frame();
+    // Cocoa's screen coordinates rise from the bottom of the primary
+    // display; the warp's fall from its top.
+    let primary = MainThreadMarker::new()
+        .and_then(|mtm| NSScreen::screens(mtm).firstObject())
+        .map_or(f.size.height, |s| s.frame().size.height);
     let _ = CGWarpMouseCursorPosition(CGPoint::new(
         f.origin.x + f.size.width / 2.0,
-        f.origin.y + f.size.height / 2.0,
+        primary - (f.origin.y + f.size.height / 2.0),
     ));
 }
