@@ -1,7 +1,9 @@
 //! What a Mac host needs macOS to allow: Screen Recording, to capture at all,
 //! and Accessibility, for the client's keyboard and mouse to act. Both are
 //! granted per app in System Settings > Privacy & Security, to Pong.app, or,
-//! run from a terminal, to the terminal.
+//! run from a terminal, to the terminal. Sound in surround (a Core Audio
+//! tap, see `sound`) needs System Audio Recording besides, asked for the
+//! first time a client wants surround.
 //!
 //! Checked at start. As Pong.app, missing ones are asked for with macOS's own
 //! prompts; from a terminal, only reported (the prompt would be for the
@@ -63,4 +65,91 @@ pub fn check() {
                 (System Settings > Privacy & Security > Accessibility)"
         );
     }
+}
+
+/// What the person said to letting Pong record the system's sound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Consent {
+    Granted,
+    Denied,
+    NotAsked,
+}
+
+/// `TCCAccessPreflight` and `TCCAccessRequest`, from the private TCC
+/// framework: macOS has no public way to ask about System Audio Recording
+/// before making a tap (which records silence without it). Looked up at
+/// run time, so a macOS without them only loses the question.
+fn tcc() -> Option<&'static (usize, usize)> {
+    static TCC: std::sync::OnceLock<Option<(usize, usize)>> = std::sync::OnceLock::new();
+    TCC.get_or_init(|| {
+        // SAFETY: dlopen and dlsym with NUL-terminated names; the handle
+        // stays open for the process.
+        unsafe {
+            let lib = libc::dlopen(
+                c"/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC".as_ptr(),
+                libc::RTLD_NOW,
+            );
+            if lib.is_null() {
+                return None;
+            }
+            let preflight = libc::dlsym(lib, c"TCCAccessPreflight".as_ptr());
+            let request = libc::dlsym(lib, c"TCCAccessRequest".as_ptr());
+            (!preflight.is_null() && !request.is_null())
+                .then_some((preflight as usize, request as usize))
+        }
+    })
+    .as_ref()
+}
+
+const AUDIO_CAPTURE: &str = "kTCCServiceAudioCapture";
+
+/// Whether macOS lets this process record the system's sound.
+pub fn audio_capture() -> Consent {
+    let Some(&(preflight, _)) = tcc() else {
+        // Not knowable: let the tap try.
+        return Consent::Granted;
+    };
+    let service = CFString::from_static_str(AUDIO_CAPTURE);
+    // SAFETY: TCCAccessPreflight(CFStringRef, CFDictionaryRef) -> int, found
+    // above; the string lives for the call.
+    let answer = unsafe {
+        let f: extern "C" fn(*const CFString, *const std::ffi::c_void) -> i32 =
+            std::mem::transmute(preflight);
+        f(&*service, std::ptr::null())
+    };
+    match answer {
+        0 => Consent::Granted,
+        1 => Consent::Denied,
+        _ => Consent::NotAsked,
+    }
+}
+
+/// Ask for System Audio Recording with macOS's own prompt: as Pong.app
+/// only, as `check` asks for the others. The answer is for the next
+/// session.
+pub fn ask_audio_capture() {
+    let bundled = bundled() && std::env::var_os("PONG_NO_PROMPTS").is_none();
+    let Some(&(_, request)) = tcc().filter(|_| bundled) else {
+        tracing::warn!(
+            "sound in surround needs the System Audio Recording permission (System Settings > \
+                Privacy & Security > Screen & System Audio Recording)"
+        );
+        return;
+    };
+    let service = CFString::from_static_str(AUDIO_CAPTURE);
+    let answered = block2::RcBlock::new(|granted: u8| {
+        tracing::info!(granted = granted != 0, "System Audio Recording answered");
+    });
+    // SAFETY: TCCAccessRequest(CFStringRef, CFDictionaryRef, void (^)(Boolean)),
+    // found above; it copies the block and the string lives for the call.
+    unsafe {
+        let f: extern "C" fn(*const CFString, *const std::ffi::c_void, *mut std::ffi::c_void) =
+            std::mem::transmute(request);
+        f(
+            &*service,
+            std::ptr::null(),
+            block2::RcBlock::as_ptr(&answered).cast(),
+        );
+    }
+    tracing::info!("asked for System Audio Recording, for sound in surround");
 }

@@ -36,6 +36,7 @@ sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+block2 = "0.6"
 ctrlc = { version = "3", features = ["termination"] }
 pingpong-audio = { path = "../pingpong-audio" }
 objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFString", "CFDictionary", "CFNumber"] }

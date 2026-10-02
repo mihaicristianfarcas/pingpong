@@ -42,7 +42,7 @@ Linux.
 
 | | Client | Host |
 |---|---|---|
-| macOS 14+ | Ping.app: in daily use | Pong.app: works; stereo sound, no controllers |
+| macOS 14+ | Ping.app: in daily use | Pong.app: works; stereo, or 5.1/7.1 with a surround output ([macOS](docs/platforms/macos.md#sound-in-surround)); no controllers yet |
 | Windows 10/11 | Ping.exe: works; less tested than macOS | PongService: in daily use (NVIDIA GPU and SudoVDA required) |
 | Linux | works under X11 and Wayland; tested in a container | works under X11 and Wayland (portal); scaled, no virtual display |
 

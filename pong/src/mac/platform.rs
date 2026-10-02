@@ -1,8 +1,9 @@
 //! The Mac host's side of a session (see `session`): a CGVirtualDisplay at
 //! the client's mode, made the desktop (the Mac's own displays mirroring it
 //! unless the client keeps them); ScreenCaptureKit of it; CoreGraphics
-//! events for input; the system's sound in stereo. No controllers (macOS has
-//! no virtual gamepad API).
+//! events for input; the system's sound, in surround where the Mac has it
+//! (`sound`). No controllers yet: macOS makes virtual ones only for a
+//! program signed with an entitlement Apple grants on request.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -190,7 +191,8 @@ impl Platform {
         }
     }
 
-    /// The system's sound, in stereo, with its channel count.
+    /// The system's sound, and its channel count: in surround when the
+    /// client asks and the Mac can (see `sound`), else in stereo.
     pub fn audio(
         &self,
         d: &Display,
@@ -199,32 +201,7 @@ impl Platform {
         endpoint: Arc<Endpoint>,
         peer: Arc<Peer>,
     ) -> Option<(AudioHandle, u8)> {
-        if req.audio_channels == 0 {
-            return None;
-        }
-        let bitrate = pingpong_audio::bitrate_bps(crate::audio::CHANNELS, bitrate_kbps);
-        let display = d.id;
-        let open = move |tx: crossbeam_channel::Sender<Vec<f32>>| {
-            pingpong_capture::sck::SckAudio::new(
-                display,
-                Box::new(move |pcm, channels| {
-                    let stereo: Vec<f32> = match channels {
-                        2 => pcm.to_vec(),
-                        1 => pcm.iter().flat_map(|&s| [s, s]).collect(),
-                        n => pcm.chunks_exact(n).flat_map(|f| [f[0], f[1]]).collect(),
-                    };
-                    let _ = tx.try_send(stereo);
-                }),
-            )
-            .map_err(|e| e.to_string())
-        };
-        match AudioHandle::start(open, bitrate, endpoint, peer) {
-            Ok(a) => Some((a, crate::audio::CHANNELS)),
-            Err(e) => {
-                tracing::warn!(error = %e, "audio unavailable; streaming video only");
-                None
-            }
-        }
+        crate::sound::start(d.id, req, bitrate_kbps, endpoint, peer)
     }
 
     /// The session's pipeline is up, just before the client hears so.

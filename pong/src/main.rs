@@ -62,6 +62,9 @@ mod sender;
 #[cfg(windows)]
 mod service;
 mod session;
+#[cfg(target_os = "macos")]
+#[path = "mac/sound.rs"]
+mod sound;
 #[cfg(windows)]
 mod video;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
