@@ -17,7 +17,7 @@
 //!   the clipboard, +D minimises (Moonlight's chords).
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -37,8 +37,10 @@ use windows::Win32::System::Power::{
 };
 use windows::Win32::UI::HiDpi::{AdjustWindowRectExForDpi, GetDpiForWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    VK_ESCAPE, VK_F4, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
-    VK_RWIN, VK_TAB,
+    MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+    KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC, VIRTUAL_KEY, VK_ESCAPE, VK_F4,
+    VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
+    VK_SNAPSHOT, VK_TAB,
 };
 use windows::Win32::UI::Input::{
     GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
@@ -48,8 +50,13 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::render::{Layout, RenderShared};
 use crate::input::InputSender;
+use crate::keyboard::{self, Modifiers};
 use crate::keymap;
 use crate::pointer::PointerState;
+
+/// `dwExtraInfo` of the keys this window sends Windows itself (a screenshot
+/// shortcut handed back): its own hook lets them through.
+const PING_INJECTED: usize = 0x5049_4E47;
 
 const WM_APP_QUIT: u32 = WM_APP + 1;
 const WM_APP_FULLSCREEN: u32 = WM_APP + 2;
@@ -75,9 +82,14 @@ pub struct Handler {
     ctrl: [bool; 2],
     alt: [bool; 2],
     shift: [bool; 2],
+    win: [bool; 2],
     /// Keys swallowed as the last key of a hotkey chord: their key-up must
     /// not be forwarded either.
     swallowed: HashSet<u16>,
+    /// Keys of a screenshot shortcut handed to Windows (by virtual key), and
+    /// where their release goes: to Windows (true: a modifier it was sent
+    /// down) or nowhere (the shortcut's key, sent down and up already).
+    handed: HashMap<u32, bool>,
 }
 
 impl Handler {
@@ -99,7 +111,9 @@ impl Handler {
             ctrl: [false; 2],
             alt: [false; 2],
             shift: [false; 2],
+            win: [false; 2],
             swallowed: HashSet::new(),
+            handed: HashMap::new(),
         }
     }
 
@@ -220,7 +234,18 @@ impl Handler {
                 self.alt[i] = down;
             } else if let Some(i) = side(VK_LSHIFT.0, VK_RSHIFT.0) {
                 self.shift[i] = down;
+            } else if let Some(i) = side(VK_LWIN.0, VK_RWIN.0) {
+                self.win[i] = down;
             }
+        }
+        if !down {
+            if let Some(to_windows) = self.handed.remove(&vk) {
+                return !to_windows;
+            }
+        }
+        if down && self.captured() && keyboard::windows_screenshot(vk, self.modifiers()) {
+            self.hand_to_windows(vk);
+            return true;
         }
         let extended = kb.flags.0 & LLKHF_EXTENDED.0 != 0;
         let Some(sc) = keymap::windows_scancode(kb.scanCode, extended, vk) else {
@@ -253,6 +278,68 @@ impl Handler {
         }
         self.send_key(sc, down);
         true
+    }
+
+    fn modifiers(&self) -> Modifiers {
+        Modifiers {
+            ctrl: self.ctrl.iter().any(|&d| d),
+            alt: self.alt.iter().any(|&d| d),
+            shift: self.shift.iter().any(|&d| d),
+            win: self.win.iter().any(|&d| d),
+        }
+    }
+
+    /// A screenshot shortcut (`keyboard::windows_screenshot`): Windows', not
+    /// the host's. The hook held its modifiers back from Windows and sent
+    /// them to the host; the host lets go of everything, and Windows gets
+    /// the whole shortcut from here. The tool it opens takes the focus, and
+    /// with it the pointer (`WM_ACTIVATE`); the stream takes both back when
+    /// the tool is done.
+    fn hand_to_windows(&mut self, vk: u32) {
+        const SUPER_LEFT: u16 = 0x8000 | 0x5B;
+        const SUPER_RIGHT: u16 = 0x8000 | 0x5C;
+        const CTRL_LEFT: u16 = 0x1D;
+        if self
+            .held_keys
+            .iter()
+            .any(|&sc| sc == SUPER_LEFT || sc == SUPER_RIGHT)
+        {
+            // Let go of alone, the Windows key opens the host's Start menu:
+            // a Ctrl tap in between makes it a shortcut.
+            self.input.send(InputEvent::KeyDown(CTRL_LEFT));
+            self.input.send(InputEvent::KeyUp(CTRL_LEFT));
+        }
+        self.release_all();
+        let mut inputs = Vec::new();
+        for (held, modifier) in [
+            (self.ctrl, [VK_LCONTROL, VK_RCONTROL]),
+            (self.alt, [VK_LMENU, VK_RMENU]),
+            (self.shift, [VK_LSHIFT, VK_RSHIFT]),
+            (self.win, [VK_LWIN, VK_RWIN]),
+        ] {
+            for (down, key) in held.into_iter().zip(modifier) {
+                if down {
+                    inputs.push(key_input(key.0 as u32, false));
+                    self.handed.insert(key.0 as u32, true);
+                }
+            }
+        }
+        inputs.push(key_input(vk, false));
+        inputs.push(key_input(vk, true));
+        self.handed.insert(vk, false);
+        // SAFETY: a slice of fully initialised keyboard INPUTs, with their
+        // size.
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        tracing::info!(vk, sent, "a screenshot shortcut, handed to Windows");
+    }
+
+    /// Focus went elsewhere: the keys held here are no longer seen.
+    fn forget_local_keys(&mut self) {
+        self.ctrl = [false; 2];
+        self.alt = [false; 2];
+        self.shift = [false; 2];
+        self.win = [false; 2];
+        self.handed.clear();
     }
 
     fn mouse_button(&mut self, n: u8, down: bool) -> bool {
@@ -662,6 +749,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             if !active || how != WA_CLICKACTIVE || s.fullscreen.get() {
                 set_capture(s, active);
             }
+            if !active {
+                if let Ok(mut h) = s.handler.try_borrow_mut() {
+                    h.forget_local_keys();
+                }
+            }
             if let Some(f) = &s.handler.borrow().on_focus {
                 f(active);
             }
@@ -825,8 +917,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
 unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
         if let Some(s) = state() {
-            if unsafe { GetForegroundWindow() } == s.hwnd {
-                let kb = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+            let kb = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+            if kb.dwExtraInfo != PING_INJECTED && unsafe { GetForegroundWindow() } == s.hwnd {
                 let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
                 // Busy (a modal loop inside the window procedure): let it be.
                 if let Ok(mut h) = s.handler.try_borrow_mut() {
@@ -838,6 +930,34 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARA
         }
     }
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+/// A key event for `SendInput`, marked as this window's own.
+fn key_input(vk: u32, up: bool) -> INPUT {
+    // Right Ctrl and Alt, the Windows keys and Print Screen are E0 keys.
+    let extended = [VK_RCONTROL, VK_RMENU, VK_LWIN, VK_RWIN, VK_SNAPSHOT]
+        .iter()
+        .any(|k| k.0 as u32 == vk);
+    let mut flags = KEYBD_EVENT_FLAGS(0);
+    if extended {
+        flags |= KEYEVENTF_EXTENDEDKEY;
+    }
+    if up {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(vk as u16),
+                // SAFETY: a pure lookup in the active layout.
+                wScan: unsafe { MapVirtualKeyW(vk, MAPVK_VK_TO_VSC) } as u16,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: PING_INJECTED,
+            },
+        },
+    }
 }
 
 fn register_raw_mouse(hwnd: Option<HWND>) {

@@ -120,6 +120,35 @@ impl Keyboard {
     }
 }
 
+/// Modifiers held on this computer, either side.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    /// The Windows key.
+    pub win: bool,
+}
+
+/// Whether the key with virtual-key code `vk`, pressed with `held`, is one
+/// of Windows' screenshot shortcuts: Print Screen with any modifiers
+/// (Windows 11 opens the Snipping Tool on it; Alt: the window; Win: saved
+/// to a file; Win+Alt: the Game Bar; ShareX and Greenshot take it too), and
+/// Win+Shift+S and Win+Shift+R (the Snipping Tool's picture and
+/// recording). These stay this computer's while streaming, as ⌘⇧3/4/5 do
+/// on a Mac, which never sends them to the host: a screenshot of the
+/// stream is a screenshot of this screen.
+pub fn windows_screenshot(vk: u32, held: Modifiers) -> bool {
+    const VK_SNAPSHOT: u32 = 0x2C;
+    const VK_R: u32 = 0x52;
+    const VK_S: u32 = 0x53;
+    match vk {
+        VK_SNAPSHOT => true,
+        VK_S | VK_R => held.win && held.shift && !held.ctrl && !held.alt,
+        _ => false,
+    }
+}
+
 fn hotkey(sc: u16) -> Option<Hotkey> {
     Some(match sc {
         0x10 => Hotkey::Quit,
@@ -137,6 +166,48 @@ fn hotkey(sc: u16) -> Option<Hotkey> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn print_screen_is_a_screenshot_with_any_modifiers() {
+        let alt = Modifiers {
+            alt: true,
+            ..Default::default()
+        };
+        let win_alt = Modifiers {
+            win: true,
+            alt: true,
+            ..Default::default()
+        };
+        for held in [Modifiers::default(), alt, win_alt] {
+            assert!(windows_screenshot(0x2C, held), "{held:?}");
+        }
+    }
+
+    #[test]
+    fn win_shift_s_is_the_snipping_tool_and_shift_s_is_a_key() {
+        let win_shift = Modifiers {
+            win: true,
+            shift: true,
+            ..Default::default()
+        };
+        assert!(windows_screenshot(0x53, win_shift));
+        assert!(windows_screenshot(0x52, win_shift), "its recording");
+        let shift = Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        assert!(!windows_screenshot(0x53, shift));
+        let chord = Modifiers {
+            ctrl: true,
+            alt: true,
+            shift: true,
+            win: false,
+        };
+        assert!(
+            !windows_screenshot(0x53, chord),
+            "Ctrl+Alt+Shift+S: statistics"
+        );
+    }
 
     fn sender() -> (InputSender, crossbeam_channel::Receiver<InputEvent>) {
         InputSender::for_test()
