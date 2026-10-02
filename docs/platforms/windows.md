@@ -120,6 +120,9 @@ An asleep or switched-off monitor is still on the cable, and Windows spends
   (up to ~26 s measured); a client connecting meanwhile waits.
 - **AV1** needs an NVIDIA GPU that encodes it (RTX 40 series and later).
 - HDR and YUV 4:4:4 are not built.
+- **Not code-signed.** Pong and Ping for Windows are not signed:
+  SmartScreen asks before each first start, and Smart App Control, where
+  it is on, blocks them ([../install.md](../install.md#on-windows)).
 
 ## Ping, the client
 
