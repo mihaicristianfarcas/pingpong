@@ -6,7 +6,10 @@ use gpui::{
     div, prelude::*, px, AnyElement, Context, ElementId, FontWeight, MouseButton, MouseDownEvent,
     SharedString, Window,
 };
-use pingpong_ui::{button, icon, icon_button, spinner, IconName, Ink, Radius, Theme, Type};
+use pingpong_ui::{
+    button, icon, icon_button, rows, section, setting, spinner, IconName, Ink, Metrics, Radius,
+    Theme, Type,
+};
 
 use crate::app::{page_body, toolbar, Page, PingApp};
 use crate::model::Item;
@@ -295,73 +298,81 @@ impl PingApp {
             )
     }
 
+    /// No host yet: the page as it is with hosts, its rows saying how to
+    /// get one.
     fn empty(&mut self, t: Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let searching = self.model.searching;
-        div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .pb(px(60.0))
-            .gap(px(10.0))
-            .child(
-                div()
-                    .size(px(64.0))
-                    .rounded(px(Radius::SHEET + 4.0))
-                    .bg(t.primary.alpha(0.05))
-                    .border_1()
-                    .border_color(t.card_stroke)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(icon(IconName::Devices, 30.0, t.secondary)),
-            )
-            .child(
-                div()
-                    .pt(px(6.0))
-                    .text_size(px(Type::TITLE + 2.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(if searching {
-                        "Looking for hosts…"
-                    } else {
-                        "No hosts yet"
-                    }),
-            )
-            .child(
-                div()
-                    .max_w(px(380.0))
-                    .text_center()
-                    .text_size(px(Type::BODY))
-                    .line_height(px(19.0))
-                    .text_color(t.tertiary)
-                    .child(
-                        "Install Pong on the PC or Mac you want to stream from. It \
-                            shows up here once it is on the same network; anywhere else, add \
-                            it by its address.",
+        let look: AnyElement = if searching {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(7.0))
+                .text_size(px(Type::META + 0.5))
+                .text_color(t.tertiary)
+                .child(spinner("empty-searching", 11.0, t.tertiary))
+                .child("Looking…")
+                .into_any_element()
+        } else {
+            button("empty-refresh", "Look Again", t)
+                .on_click(cx.listener(|this, _, _, cx| this.refresh(cx)))
+                .into_any_element()
+        };
+        page_body(
+            "hosts-page",
+            1100.0,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(22.0))
+                .child(pingpong_ui::page_header(
+                    "Hosts",
+                    Some(
+                        if searching {
+                            "None yet. Looking on your network…"
+                        } else {
+                            "None yet."
+                        }
+                        .into(),
                     ),
-            )
-            .child(
-                div()
-                    .pt(px(10.0))
-                    .flex()
-                    .gap(px(8.0))
-                    .child(
-                        button("empty-add", "Add Host…", t)
-                            .solid()
-                            .large()
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.show_add_host(window, cx)),
-                            ),
-                    )
-                    .when(!searching, |d| {
-                        d.child(
-                            button("empty-refresh", "Look Again", t)
-                                .large()
-                                .on_click(cx.listener(|this, _, _, cx| this.refresh(cx))),
-                        )
-                    }),
-            )
+                    None,
+                    t,
+                ))
+                .child(
+                    section("Your first host", t)
+                        .max_w(px(Metrics::FORM))
+                        .child(rows(
+                            [
+                                setting(
+                                    "On this network",
+                                    Some(
+                                        "Install Pong on the PC or Mac you want to stream \
+                                            from: it shows up here by itself."
+                                            .into(),
+                                    ),
+                                    look,
+                                    t,
+                                )
+                                .into_any_element(),
+                                setting(
+                                    "Anywhere else",
+                                    Some(
+                                        "Add it by its address or name. It pairs with a \
+                                            PIN, as a host found on the network does."
+                                            .into(),
+                                    ),
+                                    button("empty-add", "Add Host…", t).solid().on_click(
+                                        cx.listener(|this, _, window, cx| {
+                                            this.show_add_host(window, cx)
+                                        }),
+                                    ),
+                                    t,
+                                )
+                                .into_any_element(),
+                            ],
+                            t,
+                        )),
+                ),
+        )
     }
 }
 

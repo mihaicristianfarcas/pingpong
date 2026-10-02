@@ -2,19 +2,19 @@
 
 use gpui::{div, prelude::*, px, AnyElement, Context, FontWeight};
 use pingpong_ui::{
-    button, chip, icon, label_stack, live_dot, rows, section, spinner, stat, IconName, Ink, Radius,
-    Theme, Type,
+    button, chip, icon, label_stack, live_dot, rows, section, stat, IconName, Ink, Radius, Theme,
+    Type,
 };
 
 use crate::api::{LogEntry, Status};
 use crate::worker::Cmd;
 
-use super::{ago, centered, device_word, duration, info_row, now_ms, page, Confirm, Page, PongApp};
+use super::{ago, device_word, duration, info_row, now_ms, page, Confirm, Page, PongApp};
 
 impl PongApp {
     pub(super) fn overview(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         let Some(s) = self.snap.status.clone() else {
-            return centered(spinner("status", 14.0, t.tertiary));
+            return super::signin::waiting("overview-page", "Asking Pong how it is…", t);
         };
         let subtitle = match &s.session {
             Some(sess) if sess.agent.is_some() => format!(

@@ -132,6 +132,9 @@ pub struct Model {
     paused: Arc<AtomicBool>,
     /// Ping is the app in front: the list is polled at `POLL_EVERY`.
     foreground: Arc<AtomicBool>,
+    /// Hosts found on the network are left out (PING_UI_DEMO's `alone`, so
+    /// the page with no hosts can be seen on a network that has some).
+    pub alone: bool,
 }
 
 impl Model {
@@ -178,6 +181,7 @@ impl Model {
             polled,
             paused,
             foreground,
+            alone: false,
         };
         model.rebuild();
         model
@@ -251,7 +255,7 @@ impl Model {
                 }
             })
             .collect();
-        for (f, _) in self.seen.values() {
+        for (f, _) in self.seen.values().filter(|_| !self.alone) {
             if !list.iter().any(|i| i.id == f.id) {
                 list.push(Item {
                     id: f.id.clone(),

@@ -74,10 +74,8 @@ fn ago(unix: u64) -> String {
     }
 }
 
-/// What the sheet says: a mark, a title, a line or two under it.
+/// What the sheet says: a title, a line or two under it.
 struct Said {
-    glyph: IconName,
-    tint: gpui::Rgba,
     title: String,
     text: String,
 }
@@ -85,8 +83,6 @@ struct Said {
 fn said(app: &UpdateApp, status: &Status) -> Said {
     match (&status.update, &status.error) {
         (Some(update), _) => Said {
-            glyph: IconName::Download,
-            tint: Ink::ACCENT,
             title: update.headline(app.name),
             text: format!(
                 "This is {} {}. {}",
@@ -96,14 +92,10 @@ fn said(app: &UpdateApp, status: &Status) -> Said {
             ),
         },
         (None, Some(error)) => Said {
-            glyph: IconName::Warning,
-            tint: Ink::ATTENTION,
             title: "Couldn't check for updates".into(),
             text: format!("{error}. Check the connection and try again."),
         },
         (None, None) if status.checked_unix == 0 => Said {
-            glyph: IconName::Refresh,
-            tint: Ink::IDLE,
             title: "Not checked yet".into(),
             text: format!(
                 "This is {} {}. GitHub has not been asked whether there is a newer one.",
@@ -112,8 +104,6 @@ fn said(app: &UpdateApp, status: &Status) -> Said {
             ),
         },
         (None, None) => Said {
-            glyph: IconName::CheckCircle,
-            tint: Ink::FRESH,
             title: format!("{} is up to date", app.name),
             text: format!(
                 "{} {} is the newest there is. Checked {}.",
@@ -125,6 +115,15 @@ fn said(app: &UpdateApp, status: &Status) -> Said {
     }
 }
 
+/// A sheet's title, as Ping's and Pong's own sheets set theirs.
+fn sheet_title(text: impl Into<SharedString>, t: Theme) -> gpui::Div {
+    div()
+        .text_size(px(17.0))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(t.primary)
+        .child(text.into())
+}
+
 /// The sheet's content: what the check found and what to do about it.
 /// `on_check` asks GitHub again, `on_close` puts the sheet away.
 pub fn sheet_body(
@@ -134,17 +133,18 @@ pub fn sheet_body(
     on_check: impl Fn(&mut Window, &mut App) + 'static,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> gpui::Div {
-    let body = div().flex().flex_col().items_center().gap(px(10.0));
+    let body = div().flex().flex_col().gap(px(10.0));
     if status.checking {
-        return body
-            .py(px(10.0))
-            .child(spinner("update-checking", 22.0, t.tertiary))
-            .child(
-                div()
-                    .text_size(px(Type::BODY))
-                    .text_color(t.secondary)
-                    .child("Asking GitHub…"),
-            );
+        return body.child(sheet_title("Checking for updates", t)).child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(7.0))
+                .text_size(px(Type::BODY))
+                .text_color(t.secondary)
+                .child(spinner("update-checking", 12.0, t.tertiary))
+                .child("Asking GitHub…"),
+        );
     }
     let said = said(app, status);
     let update = status.update.clone();
@@ -156,21 +156,19 @@ pub fn sheet_body(
             matches!(u, Update::Release { .. }) && pingpong_update::installed_by_homebrew(app.cask)
         })
         .map(|_| format!("brew upgrade --cask {}", app.cask));
-    let mut actions = div().pt(px(8.0)).flex().gap(px(8.0));
+    let mut actions = div().pt(px(8.0)).flex().justify_end().gap(px(8.0));
     match &update {
         Some(update) => {
             let url = update.url().to_string();
             actions = actions
                 .child(
                     button("update-close", "Later", t)
-                        .large()
                         .on_click(move |_, window, cx| on_close(window, cx)),
                 )
                 .child(
                     button("update-open", update.link_label(), t)
                         .icon(IconName::ExternalLink)
                         .solid()
-                        .large()
                         .on_click(move |_, _, cx| cx.open_url(&url)),
                 );
         }
@@ -179,29 +177,18 @@ pub fn sheet_body(
                 .child(
                     button("update-again", "Check Again", t)
                         .icon(IconName::Refresh)
-                        .large()
                         .on_click(move |_, window, cx| on_check(window, cx)),
                 )
                 .child(
                     button("update-close", "OK", t)
                         .solid()
-                        .large()
                         .on_click(move |_, window, cx| on_close(window, cx)),
                 );
         }
     }
-    body.child(icon(said.glyph, 34.0, t.ink(said.tint)))
+    body.child(sheet_title(said.title, t))
         .child(
             div()
-                .text_center()
-                .text_size(px(17.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(t.primary)
-                .child(said.title),
-        )
-        .child(
-            div()
-                .text_center()
                 .text_size(px(Type::BODY))
                 .line_height(px(18.0))
                 .text_color(t.secondary)
