@@ -29,6 +29,10 @@
 	<!-- A background host: no Dock icon, no menu bar. -->
 	<key>LSUIElement</key>
 	<true/>
+	<!-- Asked the first time a client wants sound in surround: a Core
+	     Audio tap of the output device (pong/src/mac/sound.rs). -->
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Pong streams this Mac's sound in surround to the device you stream to.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Pong streams this Mac to the devices you pair with it on your network.</string>
 	<key>NSBonjourServices</key>

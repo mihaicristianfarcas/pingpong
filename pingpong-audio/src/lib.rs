@@ -1,9 +1,10 @@
 //! Audio for pingpong, as Sunshine and Moonlight do it: the host captures what
-//! it plays (WASAPI loopback), encodes 5 ms Opus packets, and sends each at
+//! it plays (WASAPI loopback; on a Mac in surround, a Core Audio tap), encodes 5 ms Opus packets, and sends each at
 //! once with Reed-Solomon parity per block of four (wire format in
 //! `pingpong_proto::audio`); the client reorders, recovers or conceals losses,
 //! and plays through a small, self-trimming buffer.
 
+pub mod channels;
 pub mod opus;
 pub mod player;
 
@@ -11,6 +12,8 @@ pub mod player;
 pub mod coreaudio;
 #[cfg(target_os = "linux")]
 pub mod cpal_out;
+#[cfg(target_os = "macos")]
+pub mod tap;
 #[cfg(windows)]
 pub mod wasapi;
 

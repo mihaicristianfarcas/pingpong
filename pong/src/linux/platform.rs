@@ -286,14 +286,14 @@ impl Platform {
             return None;
         }
         let bitrate = pingpong_audio::bitrate_bps(crate::audio::CHANNELS, bitrate_kbps);
-        let open = |tx: crossbeam_channel::Sender<Vec<f32>>| {
+        let open = |chunks: crate::audio::Chunks| {
             PulseCapture::new(
                 FRAME_SAMPLES,
-                Box::new(move |pcm| drop(tx.try_send(pcm.to_vec()))),
+                Box::new(move |pcm| chunks.send(|buf| buf.extend_from_slice(pcm))),
             )
             .map_err(|e| e.to_string())
         };
-        match AudioHandle::start(open, bitrate, endpoint, peer) {
+        match AudioHandle::start(open, crate::audio::CHANNELS, bitrate, endpoint, peer) {
             Ok(a) => Some((a, crate::audio::CHANNELS)),
             Err(e) => {
                 tracing::warn!(error = %e, "audio unavailable; streaming video only");

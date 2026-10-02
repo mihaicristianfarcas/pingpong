@@ -47,7 +47,7 @@ says which system the host runs (so Ping forwards Command as Command).
 | Capture | Desktop Duplication | ScreenCaptureKit, NV12 video range, BT.709 |
 | Colour conversion | D3D11 shaders | none (ScreenCaptureKit delivers NV12) |
 | Encoder | NVENC, reference invalidation | VideoToolbox hardware HEVC/H.264, low-latency rate control, recovery from long-term references |
-| Sound | WASAPI loopback of a virtual sink, up to 7.1 | ScreenCaptureKit's system mix, stereo |
+| Sound | WASAPI loopback of a virtual sink, up to 7.1 | ScreenCaptureKit's system mix in stereo; up to 7.1 from a Core Audio tap of a surround output |
 | Input | `SendInput` | CoreGraphics events at the HID tap |
 | Pointer | drawn by the client from cursor state | drawn by the client, the shape matched against the standard cursors |
 | Keeping awake | `SetThreadExecutionState` | IOKit power assertions (an asleep display cannot be captured) |
@@ -78,7 +78,9 @@ Pong needs **Screen Recording** (to capture) and **Accessibility** (to
 inject the keyboard and mouse). As an app (`tools/build-pong-app`) it asks
 for both in its own name at start. From a terminal, the terminal needs them.
 Without Accessibility, Pong tells the client, and Ping shows that the host
-is ignoring its keyboard and mouse.
+is ignoring its keyboard and mouse. Sound in surround needs **System Audio
+Recording** besides (below): Pong asks for it the first time a client wants
+5.1 or 7.1, and that session streams stereo while you answer.
 
 macOS ties these permissions to the app's signature. An ad hoc signature
 changes with every build, so each rebuild would lose them;
@@ -86,6 +88,42 @@ changes with every build, so each rebuild would lose them;
 build scripts sign with, so permissions survive rebuilds. Releases are
 signed with the project's Developer ID, the same from one release to the
 next, and notarized.
+
+### Sound in surround
+
+ScreenCaptureKit, which Pong captures the screen with, mixes the system's
+sound down to stereo whatever it is asked for (2 channels at 48 kHz when
+asked for 6 or 8, measured on macOS 26.5). A client that asks for 5.1 or 7.1
+gets it from a Core Audio tap instead (macOS 14.2 and later), which hears
+what apps play to an output device in that device's own channels. Apps play
+surround only to an output that has the speakers for it, so the Mac needs
+one:
+
+- **A receiver or TV with surround on HDMI**, set to 5.1 or 7.1 in Audio
+  MIDI Setup (**Configure Speakers**). Pong taps it while it stays the
+  default output, and keeps the sound off it unless the client asks for the
+  sound on the host too (`--host-audio`), as the Windows host does.
+- **A loopback device**, as Sunshine uses on a Mac: install
+  [BlackHole](https://github.com/ExistentialAudio/BlackHole) 16ch
+  (`brew install --cask blackhole-16ch`). For each surround session Pong
+  makes it the default output, sets its speakers to the session's 5.1 or
+  7.1, and puts back the previous output and speakers when the session
+  ends, as the Windows host does with Steam Streaming Speakers. The Mac
+  plays nothing aloud meanwhile; with `--host-audio` Pong leaves the output
+  alone and the session is stereo.
+
+The channels go into the stream in Moonlight's order whatever order the
+device has them in, and a device that does not run at 48 kHz is resampled
+(set it to 48 kHz in Audio MIDI Setup for the best sound). Measured with
+BlackHole 16ch, streaming the Mac to itself: a test file sounding one
+channel at a time came out of the client's decoder in the same channel,
+for 5.1 and for 7.1, each at its level (a 5.1 file's back pair 3 dB lower:
+macOS plays its rear speakers into the 5.1 device's surround pair). With
+neither, or without the permission, sessions are stereo and Pong's log
+says why.
+`cargo run -p pingpong-audio --example mac-outputs` lists the outputs and
+what each can carry; `-- --tap 5` also listens to the default one for five
+seconds and prints each channel's level.
 
 ### Measured (M4 Pro, client and host on one Mac)
 
@@ -128,9 +166,12 @@ next, and notarized.
 
 ### Limits
 
-- Sound is stereo: ScreenCaptureKit's system mix.
-- No controllers: macOS has no virtual gamepad API short of a DriverKit
-  driver.
+- Sound is stereo unless the Mac has a surround output and Pong may record
+  the system's sound (see [Sound in surround](#sound-in-surround)).
+- No controllers yet: macOS makes virtual controllers only for a program
+  signed with the HID Virtual Device entitlement
+  (`com.apple.developer.hid.virtual.device`), which Apple grants on
+  request.
 - Streaming a Mac to itself (a loopback test) reports no presented frames:
   the client's window sits on the display being streamed, which reports no
   presentation times.

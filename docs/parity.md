@@ -41,7 +41,7 @@ reason), **n/a** (does not apply).
 
 | Moonlight + Apollo | Ping + Pong | Status |
 |---|---|---|
-| Stereo, 5.1, 7.1 | Same, Opus multistream in Moonlight's channel order | done |
+| Stereo, 5.1, 7.1 | Same, Opus multistream in Moonlight's channel order; a Mac host from a Core Audio tap of a surround output, as Sunshine's from BlackHole | done (Mac host: through BlackHole 16ch) |
 | Sound only on the client (host muted) | Virtual sink for the session, default device restored after | done |
 | Mute when Moonlight is in the background | Same | done |
 

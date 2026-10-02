@@ -155,6 +155,7 @@ normal use.
 | `PINGPONG_UPDATE_API=URL` | The update check asks this instead of `https://api.github.com` (the paths are GitHub's) |
 | `PINGPONG_COMMIT=SHA`, `PINGPONG_RELEASE=1` | At build time: the commit the update check compares with `main` (else the checkout's), and a release build (follows releases only). `cargo run -p pingpong-update --example check [releases\|main]` asks GitHub as the apps would |
 | `PONG_NO_PROMPTS=1` | A bundled Mac host does not ask for permissions at start |
+| `PONG_TEST_TAP_ONLY=PID[,PID]` | A Mac host's surround capture hears only these processes (a test signal's player): a client streaming the Mac to itself would otherwise send its own playback round again |
 | `PING_AGENT_MCP="CMD … mcp"` | Agent runs start this MCP server instead of their own (e.g. one inside the Linux container) |
 | `PING_AGENT_PATH_MAP=LOCAL=REMOTE` | Rewrites paths passed to such a server |
 | `PING_AGENT_FREE_ONLY=1` | OpenRouter runs use free models only |

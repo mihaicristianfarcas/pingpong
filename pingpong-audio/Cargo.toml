@@ -6,7 +6,7 @@ rust-version.workspace = true
 repository.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "pingpong audio: Opus, WASAPI loopback capture (host), CoreAudio playback (client)"
+description = "pingpong audio: Opus, WASAPI loopback and Core Audio tap capture (host), playback (client)"
 
 [dependencies]
 pingpong-proto = { path = "../pingpong-proto" }
@@ -30,6 +30,13 @@ windows = { version = "0.61", features = [
     "Win32_Devices_FunctionDiscovery",
     "Win32_UI_Shell_PropertiesSystem",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["std", "NSArray", "NSDictionary", "NSString", "NSValue", "NSUUID", "NSObject"] }
+objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFString", "CFDictionary"] }
+objc2-core-audio = { version = "0.3", default-features = false, features = ["std", "AudioHardware", "objc2", "objc2-foundation", "objc2-core-audio-types"] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 cpal = "0.18"

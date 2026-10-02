@@ -72,7 +72,7 @@ Windows and Linux) opens them.
 | | Performance statistics | The statistics from the start of each stream |
 | | Connection warnings | The note in the corner |
 | | Import from Moonlight | Copies Moonlight's own settings (its preferences on macOS, the registry on Windows, its `.conf` on Linux; never its keys) |
-| Audio | Stream audio, Channels | Play the host's sound here: stereo, 5.1 or 7.1 |
+| Audio | Stream audio, Channels | Play the host's sound here: stereo, 5.1 or 7.1 (a Mac host has surround only with a surround output: see [platforms/macos.md](platforms/macos.md#sound-in-surround)) |
 | | Play on the host too | Otherwise the host's speakers stay quiet during a session (Windows host with Steam Streaming Speakers) |
 | | Mute in the background | Silence the stream while its window is not in front |
 | Input | Use ⌘ as the Windows key | On a Mac: Command reaches a Windows host as the Windows key (a Mac host always gets Command) |
