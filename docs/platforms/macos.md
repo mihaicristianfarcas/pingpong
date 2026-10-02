@@ -19,7 +19,12 @@ measurements here are from an M4 Pro).
 - **Keyboard and mouse.** While captured, the pointer is locked and hidden,
   and its relative motion goes to the host (or its position, after
   Ctrl+Option+Shift+M); the pointer you see is the host's, in the picture.
-  Command can be forwarded as the Windows key
+  Pressing ⌘⇧ gives the pointer to the Mac, shown and free, so a
+  screenshot shortcut's crosshair can show and move; a key that reaches the
+  stream with them was no system shortcut and gives the pointer back. The
+  tool usually takes the release of ⌘⇧, so the stream reads the keyboard's
+  state on its next event, and takes the pointer back once no other window
+  is under it. Command can be forwarded as the Windows key
   (**Settings > Input**); against a Mac host it always is.
 - **Controllers.** GameController, with the Xbox button read from the pad's
   HID reports, as Moonlight does; rumble through the pad's haptics. macOS
