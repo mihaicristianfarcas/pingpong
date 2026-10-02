@@ -19,6 +19,8 @@ interface Panel {
   /** HTML: the steps hold names in bold, paths and links. */
   steps: string[];
   commands: { label: string; lines: string[] }[];
+  /** What the system may do about the download, under its buttons. */
+  caveat?: string;
 }
 
 const roles: { app: App; icon: string; who: string; what: string }[] = [
@@ -37,6 +39,10 @@ const mac = [
   { arch: 'x86_64', label: 'Intel' },
 ];
 const one = [{ arch: 'x86_64', label: 'Download' }];
+// Windows 11's Smart App Control blocks unsigned programs it does not know,
+// with no way to allow one.
+const smartAppControl =
+  'Where Smart App Control is on, as on some new Windows 11 PCs, Windows blocks programs that are not signed, these among them.';
 const unpack = (app: App) => [
   `curl -L ${archive(app, 'linux', 'x86_64').url} | tar xz`,
   `${app}-*-linux-x86_64/install.sh`,
@@ -73,10 +79,11 @@ const panels: Panel[] = [
     files: one,
     steps: [
       'Extract the zip into a folder of its own: Ping.exe needs the DLLs beside it.',
-      'Open <strong>Ping.exe</strong>. It is not signed, so SmartScreen asks first: choose <strong>More info</strong>, then <strong>Run anyway</strong>.',
+      'Open <strong>Ping.exe</strong>. It is not signed yet, so SmartScreen asks first: choose <strong>More info</strong>, then <strong>Run anyway</strong>.',
       'Let Ping on private networks when Windows Firewall asks.',
     ],
     commands: [],
+    caveat: smartAppControl,
   },
   {
     app: 'Pong',
@@ -85,10 +92,11 @@ const panels: Panel[] = [
     files: one,
     steps: [
       'Install <a href="https://github.com/SudoMaker/SudoVDA">SudoVDA</a>, the virtual display driver, and a current NVIDIA driver: Pong encodes with NVENC. If Apollo is installed, it brought SudoVDA; stop its service while Pong runs.',
-      'Extract the zip, double-click <strong>Install Pong.cmd</strong> and let it make changes. Pong then runs as a service from startup, before anyone signs in.',
+      'Extract the zip and double-click <strong>Install Pong.cmd</strong>. It is not signed yet, so Windows asks whether to run it, then whether PowerShell may make changes. Pong then runs as a service from startup, before anyone signs in.',
       'Open <strong>Pong</strong> from the Start menu to see the host and pair devices.',
     ],
     commands: [],
+    caveat: smartAppControl,
   },
   {
     app: 'Ping',
@@ -191,6 +199,7 @@ const steps = [
                     );
                   })}
                 </div>
+                {p.caveat && <p class="caveat note">{p.caveat}</p>}
               </div>
               <ol class="then">
                 {p.steps.map((s) => (
@@ -398,6 +407,11 @@ const steps = [
   .size:not(:empty) {
     font-weight: 400;
     opacity: 0.7;
+  }
+
+  .caveat {
+    max-width: 30rem;
+    margin-top: 16px;
   }
 
   .files [data-missing] {
