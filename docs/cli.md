@@ -22,12 +22,13 @@ The same streaming code as the app, with a window of the platform's own.
 | `ping stream NAME [FLAGS]` | Stream a paired host |
 | `ping watch NAME [FLAGS]` | Watch the AI agent working on a host |
 
-`ping stream` flags (the defaults come from this display, at 60 fps and
-Moonlight's bitrate for the mode):
+`ping stream` flags (the defaults come from this display, fitted to the
+nearest standard aspect ratio as in the app, at 60 fps and Moonlight's
+bitrate for the mode):
 
 | Flag | |
 |---|---|
-| `--size WxH` | Stream resolution |
+| `--size WxH` | Stream resolution, exactly as given |
 | `--fps N` | Frame rate |
 | `--mbps N` | Bitrate (otherwise automatic) |
 | `--codec h264\|hevc` | Only this codec |

@@ -131,7 +131,8 @@ impl StreamRequest {
     }
 }
 
-/// The display a stream would fill, as Moonlight's "native" resolution.
+/// The display a stream would fill, as Moonlight's "native" resolution, at
+/// a standard aspect ratio (`aspect`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NativeMode {
     /// The panel's pixels (on a Mac, below the notch).
@@ -154,8 +155,31 @@ impl Default for NativeMode {
     }
 }
 
-/// The main display's native mode. On a Mac, call on the main thread.
+impl NativeMode {
+    /// The sizes fitted to the standard aspect ratios games are made for.
+    fn fitted(self) -> NativeMode {
+        let (width, height) = crate::aspect::fit_standard_ratio(self.width, self.height);
+        let desktop = self
+            .desktop
+            .map(|(w, h)| crate::aspect::fit_standard_ratio(w, h))
+            .filter(|d| *d != (width, height));
+        NativeMode {
+            width,
+            height,
+            desktop,
+            ..self
+        }
+    }
+}
+
+/// The main display's native mode, at a standard aspect ratio. On a Mac,
+/// call on the main thread.
 pub fn native_mode() -> NativeMode {
+    display_mode().fitted()
+}
+
+/// The main display's own mode, whatever its aspect ratio.
+fn display_mode() -> NativeMode {
     #[cfg(target_os = "macos")]
     {
         let Some(mtm) = objc2::MainThreadMarker::new() else {

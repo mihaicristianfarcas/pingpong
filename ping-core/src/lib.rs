@@ -6,6 +6,7 @@
 //! the same code. The platform's window, decoder and presenter are in `mac`
 //! and `win`, behind [`session::Session`].
 
+pub mod aspect;
 pub mod input;
 pub mod keyboard;
 pub mod keymap;

@@ -13,8 +13,9 @@
 //!   default), or positions after +M; an older host gets positions on its
 //!   desktop, with the pointer drawn here in the shape it reports, and
 //!   relative motion while a game has the mouse;
-//! - the picture fills the area below the notch exactly (the requested stream
-//!   mode is that size), so there are no bars;
+//! - the picture fills the area below the notch, at the nearest standard
+//!   aspect ratio (`aspect`): exactly at the Mac's default scaling, with 5
+//!   rows of black above and below in a scaled desktop;
 //! - Ctrl+Option+Shift+Q quits, +S toggles statistics, +Z releases/recaptures
 //!   the mouse, +M switches mouse mode, +X full screen, +V types the
 //!   clipboard, +D minimises (Moonlight's chords, Option standing for Alt).
@@ -685,8 +686,10 @@ impl ScreenInfo {
         })
     }
 
-    /// The panel's pixels below the notch, as Moonlight's native resolution:
-    /// 3024x1890 on a 14" MacBook Pro, whatever the scaling.
+    /// The panel's pixels below the notch: 3024x1890 on a 14" MacBook Pro
+    /// at the default scaling, 3024x1900 in "More Space" (its menu bar is
+    /// taller in panel pixels). `session::native_mode` fits it to a standard
+    /// aspect ratio, which is Moonlight's 3024x1890 in both.
     pub fn native_mode(&self) -> (u16, u16) {
         let Some((pw, ph)) = self.panel else {
             return self.desktop_mode();

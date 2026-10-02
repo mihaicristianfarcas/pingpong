@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use ping_core::aspect::fit_standard_ratio;
 use ping_core::session::{NativeMode, StreamRequest};
 use pingpong_proto::control::{app, codec};
 use pingpong_update::{Build, Channel};
@@ -122,7 +123,8 @@ impl Prefs {
             || RESOLUTIONS.iter().any(|r| r.0 == self.resolution)
     }
 
-    /// The mode a stream will ask for.
+    /// The mode a stream will ask for: always at a standard aspect ratio
+    /// (`ping_core::aspect`), a custom size included.
     pub fn mode(&self, native: &NativeMode) -> (u16, u16, u32) {
         let (mut w, mut h) = (native.width, native.height);
         if self.resolution == "desktop" {
@@ -130,7 +132,7 @@ impl Prefs {
                 (w, h) = d;
             }
         } else if let Some((rw, rh)) = parse_size(&self.resolution) {
-            (w, h) = (rw, rh);
+            (w, h) = fit_standard_ratio(rw, rh);
         }
         (
             w,

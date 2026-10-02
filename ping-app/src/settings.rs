@@ -198,6 +198,7 @@ impl PingApp {
         }
         if !p.is_listed_resolution() {
             let (w, h) = parse_size(&p.resolution).unwrap_or_default();
+            let (w, h) = ping_core::aspect::fit_standard_ratio(w, h);
             values.push(p.resolution.clone());
             choices.push(Choice::new(format!("Custom ({w} × {h})")));
         }
