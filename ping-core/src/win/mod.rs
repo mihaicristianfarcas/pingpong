@@ -220,7 +220,7 @@ impl Session {
                 Event::Started(ack) => {
                     // Renegotiated after an interruption: the notice is over.
                     render.set_notice(None);
-                    pointer.lock().resize(ack.width as u32, ack.height as u32);
+                    pointer.lock().started(&ack);
                     cursor_changed();
                 }
                 Event::Status(text) => {
@@ -293,7 +293,7 @@ impl Session {
                 crate::pad::PadMouse {
                     pointer: pointer.clone(),
                     show: Arc::new(move |d| {
-                        if d.visible {
+                        if d.absolute {
                             window::place_pointer(hwnd, &render, d.x, d.y);
                         }
                     }),

@@ -49,6 +49,12 @@ pub mod features {
     /// Video comes in `LAN_PAYLOAD_LEN` shards while the client is on the
     /// host's local network.
     pub const LAN_SHARDS: u8 = 2;
+    /// The pointer is in the picture, drawn by the host where the host's
+    /// desktop shows it, as Apollo draws it (`display_vram.cpp`). The client
+    /// draws none, and the mouse mode is the user's: relative motion unless
+    /// they switch (Moonlight's default). Hosts without it leave drawing the
+    /// pointer to the client and steer its mode with `CursorState`.
+    pub const POINTER_IN_PICTURE: u8 = 4;
 }
 
 /// Client -> host: start (or re-describe) the session.
@@ -218,9 +224,11 @@ impl CursorShape {
     }
 }
 
-/// What the host's foreground application is doing with the pointer. The
-/// client follows it: hidden or clipped means the app has taken the mouse
-/// (lock, send relative); otherwise draw this shape and send absolute.
+/// What the host's foreground application is doing with the pointer, from a
+/// host that leaves drawing it to the client: hidden or clipped means the
+/// app has taken the mouse (lock, send relative); otherwise draw this shape
+/// and send absolute. A client that the ack tells
+/// `features::POINTER_IN_PICTURE` ignores it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorState {
     pub visible: bool,
@@ -230,6 +238,19 @@ pub struct CursorState {
     /// the pointer by itself.
     pub x: u16,
     pub y: u16,
+}
+
+impl CursorState {
+    /// What a host that draws the pointer into the picture tells a client
+    /// that does not know `features::POINTER_IN_PICTURE`: draw no pointer,
+    /// send relative motion.
+    pub const IN_PICTURE: CursorState = CursorState {
+        visible: false,
+        clipped: false,
+        shape: CursorShape::Arrow,
+        x: 0,
+        y: 0,
+    };
 }
 
 /// Client -> host, about once a second: what arrived. The host's bitrate

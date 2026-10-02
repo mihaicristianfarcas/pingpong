@@ -50,8 +50,9 @@ reason), **n/a** (does not apply).
 | Moonlight + Apollo | Ping + Pong | Status |
 |---|---|---|
 | Keyboard and mouse capture, Ctrl-Alt-Shift-Z | Same | done |
-| "Optimize mouse for remote desktop" (manual) | Automatic: absolute on the desktop, relative when a game takes the mouse | done |
-| Mouse mode toggle (Ctrl-Alt-Shift-M) | Same, as an override of the automatic choice; press again to follow the host | done |
+| The host's pointer drawn into the picture (Apollo, from Desktop Duplication) | Same, on every host (Desktop Duplication's pointer drawn in on the GPU, ScreenCaptureKit's, XFixes') | done |
+| Relative mouse by default; "Optimize mouse for remote desktop" sends positions | Relative by default; positions with the mode toggle | done |
+| Mouse mode toggle (Ctrl-Alt-Shift-M) | Same | done |
 | Command as the Windows key (option) | Same; always Command on a Mac host | done |
 | Paste the clipboard (Ctrl-Alt-Shift-V) | Same, Unicode, survives 10% burst loss | done |
 | (Moonlight has none) Clipboard shared both ways | Text, images, files and folders; password managers' copies stay put ([usage.md](usage.md#sharing-the-clipboard)) | done, beyond parity |

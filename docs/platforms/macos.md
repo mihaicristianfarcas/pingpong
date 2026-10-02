@@ -16,9 +16,10 @@ measurements here are from an M4 Pro).
   (`CVMetalTextureCache`). Without frame pacing the newest frame is drawn at
   once; with it, Moonlight's pacer draws one frame per display refresh on a
   `CVDisplayLink` tick.
-- **Keyboard and mouse.** While captured, the pointer is locked and hidden
-  (relative motion for games) or free and drawn by Ping in the host's
-  pointer shape (the desktop). Command can be forwarded as the Windows key
+- **Keyboard and mouse.** While captured, the pointer is locked and hidden,
+  and its relative motion goes to the host (or its position, after
+  Ctrl+Option+Shift+M); the pointer you see is the host's, in the picture.
+  Command can be forwarded as the Windows key
   (**Settings > Input**); against a Mac host it always is.
 - **Controllers.** GameController, with the Xbox button read from the pad's
   HID reports, as Moonlight does; rumble through the pad's haptics. macOS
@@ -49,7 +50,7 @@ says which system the host runs (so Ping forwards Command as Command).
 | Encoder | NVENC, reference invalidation | VideoToolbox hardware HEVC/H.264, low-latency rate control, recovery from long-term references |
 | Sound | WASAPI loopback of a virtual sink, up to 7.1 | ScreenCaptureKit's system mix in stereo; up to 7.1 from a Core Audio tap of a surround output |
 | Input | `SendInput` | CoreGraphics events at the HID tap |
-| Pointer | drawn by the client from cursor state | drawn by the client, the shape matched against the standard cursors |
+| Pointer | Desktop Duplication's, drawn into the picture | ScreenCaptureKit draws it into the picture |
 | Keeping awake | `SetThreadExecutionState` | IOKit power assertions (an asleep display cannot be captured) |
 
 Everything after the encoder is shared with the other hosts: the paced
@@ -155,14 +156,8 @@ seconds and prints each channel's level.
   200 ms pass with no loss reported for it, and acknowledges it to the
   encoder; after a loss the next frame refreshes from an acknowledged one. A
   wrong guess costs a keyframe, as before.
-- **The pointer** is read 20 times a second (`NSCursor.currentSystemCursor`,
-  matched against the standard cursors by hot spot, size and image count)
-  and drawn by the client. An app's own cursor is drawn as the arrow. The
-  pointer is always reported visible (a Mac hides it while you type, which
-  must not flip the client into game mode); Ctrl+Option+Shift+M switches the
-  mouse mode for a game that takes the mouse.
-  `cargo run -p pingpong-input --example mac-cursor-probe` shows what the
-  watcher reads.
+- **The pointer** is in the picture: ScreenCaptureKit draws it, in its
+  real shape, and hides it when an app does.
 
 ### Limits
 

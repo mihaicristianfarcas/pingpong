@@ -11,10 +11,6 @@
 
 use pingpong_proto::input::{Button, InputEvent};
 
-/// Reading the foreground app's pointer state, which is what makes the mouse
-/// mode automatic. The decision rule is pure; only the reading is Windows.
-pub mod cursor;
-
 #[cfg(windows)]
 pub mod windows;
 
@@ -28,30 +24,6 @@ pub mod macos;
 pub mod evdev;
 #[cfg(target_os = "linux")]
 pub mod x11;
-
-/// When a mouse button was last injected, process-wide: the cursor watcher
-/// keeps its hands off the input queues around clicks (see `cursor`).
-static LAST_BUTTON_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-fn process_ms() -> u64 {
-    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    START
-        .get_or_init(std::time::Instant::now)
-        .elapsed()
-        .as_millis() as u64
-        + 1
-}
-
-/// A sink injected a mouse button (down or up).
-pub fn note_button() {
-    LAST_BUTTON_MS.store(process_ms(), std::sync::atomic::Ordering::Relaxed);
-}
-
-/// How long ago a mouse button was injected, if ever.
-pub fn since_last_button() -> Option<std::time::Duration> {
-    let at = LAST_BUTTON_MS.load(std::sync::atomic::Ordering::Relaxed);
-    (at != 0).then(|| std::time::Duration::from_millis(process_ms().saturating_sub(at)))
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputError {

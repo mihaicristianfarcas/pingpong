@@ -48,7 +48,7 @@ it is, and what was measured on the way, is in the
 | `pingpong-encode` | Video encoders: NVENC with a D3D11 colour converter (Windows), VideoToolbox (macOS), FFmpeg (Linux) |
 | `pingpong-decode` | Video decoders: VideoToolbox (macOS), FFmpeg with D3D11VA (Windows) or VA-API (Linux) |
 | `pingpong-audio` | Opus, the client's jitter buffer and playback, WASAPI capture on Windows |
-| `pingpong-input` | Input injection on the host: `SendInput`, CoreGraphics events, XTest; the host's pointer state |
+| `pingpong-input` | Input injection on the host: `SendInput`, CoreGraphics events, XTest |
 | `pingpong-clipboard` | Sharing the clipboard both ways during a session |
 | `pingpong-ui` | The design system both windows use (GPUI): theme, icons, controls, Markdown; and what they need of the desktop: menus, the tray icon, one running copy, starting at login |
 | `pingpong-update` | Whether a newer release, or newer commits on `main`, exist: GitHub's public API, once a day |
@@ -199,9 +199,10 @@ bytes 16-19 frame_id
 
 Input is sent unreliably on purpose: a retransmission would hold every later
 event back by a round trip. Keys travel as physical scancodes (the host's
-layout applies, as games expect); the pointer as absolute stream pixels on
-the desktop, or relative motion when a game hides the pointer — the host
-tells the client which, so the mouse mode is automatic.
+layout applies, as games expect); the mouse as relative motion, or
+absolute stream pixels when the user switches to positions. The host draws
+its pointer into the picture, as Apollo does, so the pointer the client
+sees is the host's own.
 
 ## Pairing and trust
 

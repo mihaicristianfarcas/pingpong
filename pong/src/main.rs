@@ -200,9 +200,6 @@ fn run_host(dir: std::path::PathBuf) -> ExitCode {
     {
         #[cfg(target_os = "macos")]
         permissions::check();
-        // The pointer's shape is read through AppKit.
-        #[cfg(target_os = "macos")]
-        pingpong_input::cursor::prepare();
         let h = host.clone();
         if let Err(e) = ctrlc::set_handler(move || {
             tracing::info!("asked to stop");
