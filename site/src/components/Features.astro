@@ -18,7 +18,15 @@ const features = [
   },
   {
     title: 'Your screen’s exact mode',
-    text: 'Windows and macOS hosts create a virtual display at your screen’s resolution and refresh rate for the session, so nothing is scaled or letterboxed.',
+    text: 'Windows and macOS hosts create a virtual display at your screen’s resolution and refresh rate for the session, so nothing is scaled.',
+  },
+  {
+    title: 'Sizes games fill',
+    text: 'Ping asks for your screen’s size at the nearest standard aspect ratio, 16:10 below a MacBook’s notch, so a game fills the picture instead of leaving strips around it.',
+  },
+  {
+    title: 'The host’s own pointer',
+    text: 'The host draws its pointer into the picture, as Apollo does, and Ping sends the mouse’s relative motion, as Moonlight does: menus take the mouse, and a game that hides the pointer hides it.',
   },
   {
     title: 'A clipboard shared both ways',
@@ -26,7 +34,11 @@ const features = [
   },
   {
     title: 'Surround sound and controllers',
-    text: 'Stereo, 5.1 or 7.1 sound. Controllers reach a Windows host as Xbox 360 pads, and rumble comes back about 7 ms after the host sets it.',
+    text: 'Stereo, 5.1 or 7.1 sound, from a Mac host too when it has a surround output. Controllers reach a Windows host as Xbox 360 pads, and rumble comes back about 7 ms after the host sets it.',
+  },
+  {
+    title: 'Screenshots of your own screen',
+    text: 'Your computer’s screenshot shortcuts stay yours while you stream, ⌘⇧4 and CleanShot X on a Mac, Print Screen and the Snipping Tool on Windows, with a pointer you can move.',
   },
 ];
 ---
