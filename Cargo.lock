@@ -5748,7 +5748,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "ping-agent"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "crossbeam-channel",
@@ -5773,7 +5773,7 @@ dependencies = [
 
 [[package]]
 name = "ping-app"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "block2 0.6.2",
  "crossbeam-channel",
@@ -5801,7 +5801,7 @@ dependencies = [
 
 [[package]]
 name = "ping-core"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "ab_glyph",
  "arboard",
@@ -6047,7 +6047,7 @@ dependencies = [
 
 [[package]]
 name = "pingpong-update"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
@@ -6197,7 +6197,7 @@ dependencies = [
 
 [[package]]
 name = "pong"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "argon2",
  "ashpd",
@@ -6240,7 +6240,7 @@ dependencies = [
 
 [[package]]
 name = "pong-app"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "crossbeam-channel",
  "futures",
