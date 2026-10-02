@@ -6,9 +6,11 @@ use gpui::{
     div, prelude::*, px, AnyElement, ClipboardItem, Context, ElementId, SharedString, Window,
 };
 use ping_agent::install::{self, State};
+use ping_agent::judge::{self, Checks};
 use ping_agent::providers::{self, AgentSettings, Approvals, Provider};
 use pingpong_ui::{
-    button, chip, field, rows, section, select, setting, stepper, IconName, Ink, Theme, Type,
+    button, chip, field, rows, section, select, setting, stepper, switch, IconName, Ink, Theme,
+    Type,
 };
 
 use crate::app::PingApp;
@@ -237,9 +239,8 @@ impl PingApp {
             .child(section(short(p), t).child(rows(needs, t)))
             .when(p == Provider::Openrouter, |d| {
                 d.child(pingpong_ui::footnote(
-                    "OpenRouter reaches hundreds of models with one key, TypeSafe's Jev \
-                        Router (typesafe/jev-router) among them: it picks a model per \
-                        step. Models ending in :free cost nothing.",
+                    "OpenRouter reaches hundreds of models with one key. Models \
+                        ending in :free cost nothing.",
                     t,
                 ))
             })
@@ -264,6 +265,12 @@ impl PingApp {
                 ],
                 t,
             )))
+            .child(section("Screen checks", t).child(rows(self.clef_rows(t, cx), t)))
+            .child(pingpong_ui::footnote(
+                "Clef, Cloudflare's decision model, looks at the screen before the step it \
+                    checks: each check sends the screen to Cloudflare.",
+                t,
+            ))
             .child(section("Hosts the agent may use", t).child(self.agent_host_rows(t, cx)))
             .child(section("Your hosts in other agents", t).child(rows(
                 self.mcp_app_rows(t, cx).into_iter().chain([
@@ -290,6 +297,147 @@ impl PingApp {
             .children(self.mcp_missing_note(t))
             .children(self.agents.mcp_note.clone().map(|n| pingpong_ui::footnote(n, t)))
             .into_any_element()
+    }
+
+    /// Clef's account, token and model, and a switch for each of its checks
+    /// (see `ping_agent::judge`): the switches wait for an account and a
+    /// token.
+    fn clef_rows(&mut self, t: Theme, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let checks = self.agents.settings.checks.clone();
+        let account = !checks.account_id.trim().is_empty()
+            || std::env::var(judge::ACCOUNT_ENV).is_ok_and(|a| !a.trim().is_empty());
+        let saved = providers::secrets::saved_named(&self.dir, judge::TOKEN_ID);
+        let token =
+            providers::secrets::named(&self.dir, judge::TOKEN_ID, Some(judge::TOKEN_ENV)).is_some();
+        let has_text = !self.agents.clef_token.read(cx).text().trim().is_empty();
+        let token_detail = self.agents.clef_note.clone().unwrap_or_else(|| {
+            if saved {
+                format!(
+                    "Saved, readable only by you. {} works too.",
+                    judge::TOKEN_ENV
+                )
+            } else {
+                format!(
+                    "A Workers AI API token (Create a Workers AI API Token, on the same page). \
+                        Saved readable only by you, or set {}.",
+                    judge::TOKEN_ENV
+                )
+            }
+        });
+        let this = cx.weak_entity();
+        let toggle = move |id: &'static str, on: bool, set: fn(&mut Checks, bool)| {
+            let this = this.clone();
+            switch(id, on, t)
+                .disabled(!(account && token) && !on)
+                .on_toggle(move |on, _, cx| {
+                    let _ = this.update(cx, |app, cx| {
+                        set(&mut app.agents.settings.checks, on);
+                        app.agents.save_settings();
+                        cx.notify();
+                    });
+                })
+        };
+        let this = cx.weak_entity();
+        let model = select(
+            "clef-model",
+            ["clef", "clef-flash"],
+            judge::MODELS.iter().position(|m| *m == checks.model),
+            t,
+        )
+        .width(140.0)
+        .on_select(move |i, _, cx| {
+            let _ = this.update(cx, |app, cx| {
+                app.agents.settings.checks.model = judge::MODELS[i].to_string();
+                app.agents.save_settings();
+                cx.notify();
+            });
+        });
+        vec![
+            setting(
+                "Cloudflare account ID",
+                Some(
+                    "The account whose Workers AI runs clef: on the dashboard's Workers AI \
+                    page."
+                        .into(),
+                ),
+                div()
+                    .w(px(240.0))
+                    .child(field(&self.agents.clef_account, t)),
+                t,
+            )
+            .into_any_element(),
+            setting(
+                "API token",
+                Some(token_detail.into()),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(div().w(px(180.0)).child(field(&self.agents.clef_token, t)))
+                    .child(
+                        button("clef-token-save", "Save", t)
+                            .disabled(!has_text)
+                            .on_click(
+                                cx.listener(|this, _, _, cx| this.agents.save_clef_token(cx)),
+                            ),
+                    )
+                    .when(saved, |d| {
+                        d.child(button("clef-token-forget", "Forget", t).danger().on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.agents.set_clef_token(None);
+                                cx.notify();
+                            }),
+                        ))
+                    }),
+                t,
+            )
+            .into_any_element(),
+            setting(
+                "Clicks",
+                Some(
+                    "Before a click, a drop or Enter: if it deletes, spends, sends, changes \
+                    settings or installs, it waits for your go-ahead, as risky steps do."
+                        .into(),
+                ),
+                toggle("clef-clicks", checks.clicks, |c, on| c.clicks = on),
+                t,
+            )
+            .into_any_element(),
+            setting(
+                "Typing a secret",
+                Some(
+                    "Before the agent types: if the field takes a password, a PIN or a key, \
+                    it waits for your go-ahead. What is typed is never sent."
+                        .into(),
+                ),
+                toggle("clef-secret-fields", checks.secret_fields, |c, on| {
+                    c.secret_fields = on
+                }),
+                t,
+            )
+            .into_any_element(),
+            setting(
+                "Personal information",
+                Some(
+                    "Before the model sees a screen with passwords, payment details, ID \
+                    numbers, health records, private messages or addresses, you choose: on a \
+                    no it sees a blank screen."
+                        .into(),
+                ),
+                toggle("clef-personal-info", checks.personal_info, |c, on| {
+                    c.personal_info = on
+                }),
+                t,
+            )
+            .into_any_element(),
+            setting(
+                "Model",
+                Some("Clef is the more careful; clef-flash is faster and costs less.".into()),
+                model,
+                t,
+            )
+            .into_any_element(),
+        ]
     }
 
     /// A row for each agent on this computer: is Ping's server in its
