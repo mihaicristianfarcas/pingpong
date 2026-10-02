@@ -224,7 +224,15 @@ tools/package-macos
 
 Without the API key the apps are signed but not notarized; without
 `PINGPONG_SIGN_IDENTITY` they are signed as a development build is (below).
-The Windows programs are not signed.
+
+The Windows programs are not signed. Signing them takes a code-signing
+certificate whose key stays with its issuer (every new one's must, in a
+hardware module or the issuer's cloud): for a person rather than a
+company, Certum's open-source certificate in its cloud is one, while
+Microsoft's Artifact Signing issues to individuals only in the US and
+Canada. The signing goes in `tools/package-windows.ps1`, on Ping.exe,
+pong.exe and Pong Control.exe before they are zipped, with the issuer's
+credentials as repository secrets, as the Developer ID's are.
 
 `main` takes changes only through pull requests: work on a branch, push it,
 and open one (`gh pr create`).

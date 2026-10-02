@@ -41,14 +41,26 @@ Pong**, as in [Pong on macOS](#pong-on-macos).
 
 ### On Windows
 
+The programs are not code-signed yet, so Windows asks before it first runs
+each one, and names its publisher as unknown.
+
 - **Ping**: extract the zip into a folder of its own (Ping.exe needs
-  FFmpeg's DLLs beside it) and open **Ping.exe**. It is not signed, so
-  SmartScreen asks first: **More info**, then **Run anyway**.
+  FFmpeg's DLLs beside it) and open **Ping.exe**. SmartScreen asks first:
+  **More info**, then **Run anyway**.
 - **Pong**: the host needs what [Pong on Windows](#pong-on-windows) lists
   first (an NVIDIA GPU, SudoVDA). Extract the zip and double-click
-  **Install Pong.cmd**: it asks Windows for an administrator, then does
-  what `host-deploy.ps1` does there (PongService, the Start menu entry, the
+  **Install Pong.cmd**. Windows asks whether to run it, then whether
+  Windows PowerShell may make changes as an administrator. It does what
+  `host-deploy.ps1` does there (PongService, the Start menu entry, the
   icon at sign-in). Run it from a newer download to update.
+
+SmartScreen judges an unsigned program by the file itself, so it may ask
+again after an update: each build is a new file. On a PC where **Smart
+App Control** is on (some new installations of Windows 11), the programs
+do not run at all: it blocks unsigned programs it does not know, with no
+way to allow one. They run there only with Smart App Control turned off
+(Windows Security > App & browser control > Smart App Control settings),
+which is for whoever owns the PC to decide.
 
 ### On Linux
 
