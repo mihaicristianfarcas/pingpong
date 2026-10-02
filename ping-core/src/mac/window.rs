@@ -8,10 +8,11 @@
 //!   auto-hidden), so nothing drops down when the pointer reaches the top
 //!   edge;
 //! - the system pointer is captured and hidden while streaming, so hot corners
-//!   (Quick Note, Mission Control) and screen edges never trigger. On a
-//!   desktop the client draws the host application's cursor itself at a
-//!   virtual position and sends absolute coordinates -- no lag; in a game that
-//!   has taken the mouse it sends raw relative motion;
+//!   (Quick Note, Mission Control) and screen edges never trigger. The host
+//!   draws its pointer into the picture and gets relative motion (Moonlight's
+//!   default), or positions after +M; an older host gets positions on its
+//!   desktop, with the pointer drawn here in the shape it reports, and
+//!   relative motion while a game has the mouse;
 //! - the picture fills the area below the notch exactly (the requested stream
 //!   mode is that size), so there are no bars;
 //! - Ctrl+Option+Shift+Q quits, +S toggles statistics, +Z releases/recaptures

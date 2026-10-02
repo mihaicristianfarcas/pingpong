@@ -6,10 +6,12 @@
 //! - while captured, the keyboard is the host's: a low-level hook takes every
 //!   key, the Windows key and Alt+Tab included (in a window, those stay
 //!   Windows'), as SDL's keyboard grab does;
-//! - the pointer is confined to the window. On the desktop it is Windows' own
-//!   pointer in the host application's shape -- the hardware cursor, no lag
-//!   -- and its position goes to the host; in a game that has taken the
-//!   mouse it is hidden and raw relative motion goes instead;
+//! - the pointer is confined to the window and hidden: the host draws its
+//!   own into the picture, and raw relative motion goes to it (Moonlight's
+//!   default), or, after +M, the pointer's position. Against an older host
+//!   that leaves the pointer to the client, it is Windows' own pointer in
+//!   the host application's shape on the desktop, and hidden only while a
+//!   game has taken the mouse;
 //! - Ctrl+Alt+Shift+Q quits, +S toggles statistics, +Z releases/recaptures
 //!   the mouse and keyboard, +M switches mouse mode, +X full screen, +V types
 //!   the clipboard, +D minimises (Moonlight's chords).
@@ -503,8 +505,8 @@ fn set_capture(s: &State, captured: bool) {
     tracing::info!(captured, "pointer capture");
 }
 
-/// Confine the pointer to the window while captured, and show it in the
-/// host's shape (desktop) or hide it (a game has the mouse).
+/// Confine the pointer to the window while captured, and hide it -- or,
+/// for an older host on its desktop, show it in the host's shape.
 fn apply_pointer(s: &State) {
     let h = s.handler.borrow();
     let p = *h.pointer.lock();
@@ -526,7 +528,7 @@ fn apply_pointer(s: &State) {
 }
 
 fn cursor_for(p: &PointerState) -> Option<HCURSOR> {
-    if p.captured && p.is_relative() {
+    if p.captured && (p.is_relative() || p.host_draws) {
         return None;
     }
     let id = match p.shape {

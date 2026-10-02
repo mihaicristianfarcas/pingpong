@@ -56,6 +56,11 @@ pub mod dda;
 pub mod gpu;
 #[cfg(target_os = "linux")]
 mod image;
+#[cfg(windows)]
+mod overlay;
+/// The pointer drawn into the picture (Windows), the part tested anywhere.
+#[cfg(any(windows, test))]
+pub mod pointer;
 #[cfg(target_os = "macos")]
 pub mod sck;
 #[cfg(target_os = "linux")]

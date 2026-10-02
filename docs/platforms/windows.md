@@ -72,16 +72,17 @@ one's window.
   keyframe.
 - **Sound.** WASAPI loopback of the session's virtual sink, stereo to 7.1,
   Opus as Sunshine configures it.
-- **Input.** `SendInput`: keys by scancode, the pointer absolute over the
-  virtual desktop or relative for games. Typed text (an agent's `type`, a
+- **Input.** `SendInput`: keys by scancode, the mouse relative (the host's
+  pointer speed applies, as with Apollo) or as positions over the virtual
+  desktop. Typed text (an agent's `type`, a
   pasted clipboard) goes one character every 15 ms: Windows 11's WinUI text
   fields garble faster Unicode keystrokes.
-- **The pointer.** The foreground application's pointer shape and state are
-  sent to the client, which draws the pointer itself (no round trip of lag)
-  and switches between desktop and game mode on its own. The global cursor
-  is read first; the foreground thread's input queue is joined only when
-  that says nothing, and never near a click, because joining resets the
-  queue's double-click state.
+- **The pointer.** Desktop Duplication reports the pointer beside the
+  desktop image, never in it: its place, whether it shows, and its shape.
+  Pong draws it into a copy of the desktop on the GPU, as Apollo does, so
+  the client sees the pointer the host's screen shows, hidden whenever a
+  game hides it. A pointer that moves over a still desktop makes a new
+  frame.
 - **Controllers.** ViGEm pads, one per client pad, with rumble sent back.
 - **Clipboard.** A helper runs as the signed-in user for the session
   (`pong clipboard-agent`): SYSTEM sees only part of the user's clipboard,
@@ -138,10 +139,10 @@ As Moonlight does it on Windows:
   per refresh on DXGI's vblank.
 - **Keyboard and mouse.** While captured, a low-level keyboard hook takes
   every key — the Windows key and Alt+Tab included, full screen — as SDL's
-  keyboard grab does for Moonlight. On the desktop the pointer is Windows'
-  own in the host application's shape (the hardware cursor: no lag),
-  confined to the window; when a game takes the mouse, raw input's relative
-  motion goes instead.
+  keyboard grab does for Moonlight. The pointer is confined to the window
+  and hidden (the host draws its own into the picture); raw input's
+  relative motion goes to the host, or the pointer's position after
+  Ctrl+Alt+Shift+M.
 - **Controllers.** XInput, slot for slot; the Guide button through
   `XInputGetStateEx`; rumble through `XInputSetState`.
 - **Sound.** WASAPI shared mode on the default device, following it when it

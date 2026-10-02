@@ -551,6 +551,8 @@ impl SessionManager {
         if lan_shards {
             features |= control::features::LAN_SHARDS;
         }
+        // Every host draws the pointer into the picture (`video`).
+        features |= control::features::POINTER_IN_PICTURE;
         let ack = SessionAck {
             status: AckStatus::Ok,
             codec: codec_bit(codec),
@@ -1022,7 +1024,15 @@ impl SessionManager {
             }
         }
         let second = self.last_stats.elapsed() >= Duration::from_secs(1);
-        for msg in self.platform.tick(&mut a.display, Instant::now(), second) {
+        let mut out = self.platform.tick(&mut a.display, Instant::now(), second);
+        if second {
+            // The pointer is in the picture. A client older than
+            // `features::POINTER_IN_PICTURE` (or one watching an agent,
+            // joining later) hears it this way, once a second: control
+            // messages are not retransmitted.
+            out.push(Control::CursorState(control::CursorState::IN_PICTURE));
+        }
+        for msg in out {
             send_control(&self.endpoint, &a.peer, msg);
             for w in a.agent.iter().flat_map(|r| r.watchers.iter()) {
                 send_control(&self.endpoint, &w.peer, msg);

@@ -24,15 +24,20 @@ and a key (Ctrl+Option+Shift on a Mac keyboard):
 | Ctrl+Alt+Shift+X | Switch between full screen and a window |
 | Ctrl+Alt+Shift+D | Minimise the stream |
 | Ctrl+Alt+Shift+S | Show or hide the statistics |
-| Ctrl+Alt+Shift+M | Switch the mouse between game and desktop mode |
+| Ctrl+Alt+Shift+M | Switch the mouse between game mode (relative motion) and remote desktop mode (positions) |
 | Ctrl+Alt+Shift+V | Type this computer's clipboard on the host |
 | Ctrl+Alt+Shift+T | Watching an AI agent: take over its keyboard and mouse, or hand them back |
 
-**The mouse is automatic.** On the desktop the pointer is yours, drawn by
-Ping in the host's pointer shape and sent as positions; when a game hides
-the pointer and takes the mouse, Ping switches to relative motion (what
-games read), and back when the game lets go. Ctrl+Alt+Shift+M overrides
-that for a game that needs it; press it again to follow the host.
+**The mouse works as in Moonlight.** The pointer you see is the host's
+own, drawn into the picture by the host where its screen shows it: hidden
+when a game hides it, wherever a game, the Steam overlay or a controller
+puts it. Ping sends the mouse's relative motion, which is what games read,
+and the host's pointer follows it with the host's own pointer speed.
+Ctrl+Alt+Shift+M switches to sending positions instead (Moonlight's
+"remote desktop" mouse), which suits the desktop and breaks most games;
+press it again to go back. Against an older Pong, which leaves the
+pointer to the client, Ping draws it and switches between the two modes
+by itself, as earlier versions did.
 
 **Controllers** plug in on the host as Xbox 360 pads (Windows, with
 ViGEmBus), one per controller, with rumble; the Xbox/Guide button reaches

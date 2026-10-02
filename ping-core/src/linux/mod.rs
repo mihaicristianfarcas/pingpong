@@ -434,7 +434,7 @@ impl StreamApp {
                 }
                 Event::Started(ack) => {
                     render.set_notice(None);
-                    pointer.lock().resize(ack.width as u32, ack.height as u32);
+                    pointer.lock().started(&ack);
                     let _ = proxy.send_event(UserEvent::Cursor);
                 }
                 Event::Status(text) => {
@@ -483,7 +483,7 @@ impl StreamApp {
                     pointer: pointer.clone(),
                     show: Arc::new(move |d| {
                         if let (true, Some(((vx, vy, vw, vh), (sw, sh)))) =
-                            (d.visible, render.video_rect())
+                            (d.absolute, render.video_rect())
                         {
                             let p = PhysicalPosition::new(
                                 vx + d.x as f64 * vw / sw,
@@ -573,7 +573,9 @@ fn apply_pointer(r: &Running) {
         if w.set_cursor_grab(grab).is_err() {
             let _ = w.set_cursor_grab(CursorGrabMode::Confined);
         }
-        w.set_cursor_visible(!relative);
+        // The host draws its pointer into the picture; an older host leaves
+        // it to us on its desktop.
+        w.set_cursor_visible(!relative && !p.host_draws);
         w.set_cursor(cursor_icon(p.shape));
     } else {
         let _ = w.set_cursor_grab(CursorGrabMode::None);

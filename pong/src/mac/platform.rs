@@ -59,8 +59,6 @@ pub struct Display {
     /// retransmitted, so a few times over.
     told: u32,
     input_blocked: bool,
-    /// The pointer's shape and place, for the client to draw.
-    cursor: pingpong_input::cursor::CursorWatcher,
 }
 
 pub struct Platform;
@@ -148,7 +146,6 @@ impl Platform {
             _awake: awake,
             told: 0,
             input_blocked,
-            cursor: pingpong_input::cursor::CursorWatcher::new(id, (width as u32, height as u32)),
         })
     }
 
@@ -167,8 +164,6 @@ impl Platform {
                 ..encoder
             },
             pace_mbps: cfg.pace_mbps.max(10),
-            // The client draws the pointer (`CursorWatcher`): none in the picture.
-            cursor: false,
         }
     }
 
@@ -210,16 +205,10 @@ impl Platform {
     /// The session runs.
     pub fn started(&mut self, _req: &SessionStart) {}
 
-    /// Once a second while streaming, the first few seconds: the pointer is
-    /// in the picture, so the client must not draw one; and whether input
+    /// Once a second while streaming, the first few seconds: whether input
     /// reaches anything.
-    pub fn tick(&mut self, d: &mut Display, now: Instant, second: bool) -> Vec<Control> {
-        let mut out: Vec<Control> = d
-            .cursor
-            .poll(now)
-            .map(Control::CursorState)
-            .into_iter()
-            .collect();
+    pub fn tick(&mut self, d: &mut Display, _now: Instant, second: bool) -> Vec<Control> {
+        let mut out = Vec::new();
         if second && d.told < 3 {
             d.told += 1;
             if d.input_blocked {
@@ -244,14 +233,15 @@ impl Platform {
     pub fn idle(&mut self) {}
 }
 
-/// The session's capture of its display, and an encoder at its size
+/// The session's capture of its display, with the pointer drawn in
+/// (`features::POINTER_IN_PICTURE`), and an encoder at its size
 /// (ScreenCaptureKit scales to it and hands over NV12: no conversion step).
 pub fn open_video(params: &VideoParams) -> Result<(SckCapture, VtEncoder), String> {
     let e = params.encoder;
     // A display just woken takes a moment to be offered for capture.
     let woken_by = Instant::now() + Duration::from_secs(4);
     let cap = loop {
-        match SckCapture::new(params.source, e.width, e.height, e.fps, params.cursor) {
+        match SckCapture::new(params.source, e.width, e.height, e.fps, true) {
             Ok(c) => break c,
             Err(pingpong_capture::CaptureError::NoSuchOutput(_)) if Instant::now() < woken_by => {
                 std::thread::sleep(Duration::from_millis(200));

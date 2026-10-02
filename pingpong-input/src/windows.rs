@@ -138,14 +138,8 @@ impl SendInputSink {
                     0,
                 ));
             }
-            InputEvent::ButtonDown(b) => {
-                crate::note_button();
-                out.push(button_input(b, false));
-            }
-            InputEvent::ButtonUp(b) => {
-                crate::note_button();
-                out.push(button_input(b, true));
-            }
+            InputEvent::ButtonDown(b) => out.push(button_input(b, false)),
+            InputEvent::ButtonUp(b) => out.push(button_input(b, true)),
             InputEvent::Wheel { dv, dh } => {
                 if dv != 0 {
                     out.push(mouse_input(0, 0, MOUSEEVENTF_WHEEL.0, dv as i32));

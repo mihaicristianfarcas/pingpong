@@ -22,7 +22,7 @@ use pingpong_encode::{Codec, EncodeError, EncodedFrame, EncoderConfig};
 use pingpong_input::x11::XTestSink;
 use pingpong_input::{InputError, InputSink};
 use pingpong_proto::audio::FRAME_SAMPLES;
-use pingpong_proto::control::{self, AckStatus, Control, CursorShape, CursorState, SessionStart};
+use pingpong_proto::control::{self, AckStatus, Control, SessionStart};
 use pingpong_proto::input::InputEvent;
 use pingpong_transport::{Endpoint, Peer};
 
@@ -89,9 +89,6 @@ pub struct Display {
     portal: Option<SharedScreen>,
     /// X11: the screen kept on.
     _awake: Option<Awake>,
-    /// Cursor state told so many times (control messages are not
-    /// retransmitted).
-    told: u32,
 }
 
 /// A screen the desktop shares through its portal.
@@ -208,7 +205,6 @@ impl Platform {
                     input: granted.input,
                 }),
                 _awake: None,
-                told: 0,
             });
         }
         let (conn, screen) = x11rb::connect(None).map_err(|e| {
@@ -224,7 +220,6 @@ impl Platform {
             picture,
             portal: None,
             _awake: Some(Awake::hold()),
-            told: 0,
         })
     }
 
@@ -242,8 +237,6 @@ impl Platform {
                 ..encoder
             },
             pace_mbps: cfg.pace_mbps.max(10),
-            // The client draws no pointer of its own (see `cursor_state`).
-            cursor: true,
         }
     }
 
@@ -308,20 +301,9 @@ impl Platform {
     /// The session runs.
     pub fn started(&mut self, _req: &SessionStart) {}
 
-    /// The first few seconds: the pointer is in the picture, so the client
-    /// must not draw one.
-    pub fn tick(&mut self, d: &mut Display, _now: Instant, second: bool) -> Vec<Control> {
-        if !second || d.told >= 3 {
-            return Vec::new();
-        }
-        d.told += 1;
-        vec![Control::CursorState(CursorState {
-            visible: false,
-            clipped: false,
-            shape: CursorShape::Arrow,
-            x: 0,
-            y: 0,
-        })]
+    /// Every tick while streaming: nothing more to tell the client.
+    pub fn tick(&mut self, _d: &mut Display, _now: Instant, _second: bool) -> Vec<Control> {
+        Vec::new()
     }
 
     /// The session is over (its portal session closes with it).
@@ -449,8 +431,10 @@ impl Encoder {
 /// The screen's capture, and an encoder at the stream's size.
 pub fn open_video(params: &VideoParams) -> Result<(Capture, Encoder), String> {
     let cap = match &params.source {
+        // The pointer drawn in (`features::POINTER_IN_PICTURE`); the portal's
+        // stream has it embedded.
         VideoSource::X11 => Capture::X11(Box::new(
-            X11Capture::new(None, params.cursor).map_err(|e| e.to_string())?,
+            X11Capture::new(None, true).map_err(|e| e.to_string())?,
         )),
         VideoSource::PipeWire { fd, node } => {
             let fd = fd

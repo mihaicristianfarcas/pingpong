@@ -46,9 +46,6 @@ pub struct VideoParams {
     pub source: crate::platform::VideoSource,
     pub encoder: EncoderConfig,
     pub pace_mbps: u32,
-    /// Draw the pointer into the picture (until the client draws it from
-    /// cursor state, as it does against a Windows host).
-    pub cursor: bool,
 }
 
 /// Start capturing and encoding. Blocks until the encoder is running (or

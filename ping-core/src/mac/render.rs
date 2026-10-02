@@ -161,6 +161,7 @@ impl RenderShared {
             new_frame: AtomicBool::new(false),
             cursor: Mutex::new(CursorDraw {
                 visible: false,
+                absolute: false,
                 x: 0.0,
                 y: 0.0,
                 shape: CursorShape::Arrow,

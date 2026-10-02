@@ -146,7 +146,7 @@ impl Session {
                         forward_command.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
                     let mut p = pointer.lock();
-                    p.resize(ack.width as u32, ack.height as u32);
+                    p.started(&ack);
                     render.set_cursor(p.draw());
                 }
                 Event::Status(text) => {

@@ -1,7 +1,7 @@
 //! The Windows host's side of a session (see `session`): a SudoVDA virtual
 //! display at the client's mode, made the whole desktop; Desktop Duplication
-//! of it; SendInput; WASAPI loopback; ViGEm pads; the app a session opens;
-//! the host application's cursor, told to the client.
+//! of it, the pointer drawn in; SendInput; WASAPI loopback; ViGEm pads; the
+//! app a session opens.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 use pingpong_display::windows::WindowsDisplay;
 use pingpong_display::{DisplayControl, DisplayMode};
 use pingpong_encode::{Codec, EncoderConfig};
-use pingpong_input::cursor::CursorWatcher;
 use pingpong_input::{AbsoluteTransform, DisplayRect, SendInputSink, VirtualDesktop};
 use pingpong_proto::control::{self, AckStatus, Control, SessionStart};
 use pingpong_transport::{Endpoint, Peer};
@@ -36,7 +35,6 @@ const LINGER: Duration = Duration::from_secs(60);
 pub struct Display {
     gdi_name: String,
     rect: DisplayRect,
-    cursor: CursorWatcher,
 }
 
 pub struct Platform {
@@ -126,14 +124,9 @@ impl Platform {
             Ok(active) => {
                 // Input goes to the display just made primary (with the host
                 // monitors off, the whole desktop).
-                let rect = DisplayRect::primary();
                 Ok(Display {
                     gdi_name: active.gdi_name,
-                    rect,
-                    cursor: CursorWatcher::new(
-                        (width as u32, height as u32),
-                        (rect.width, rect.height),
-                    ),
+                    rect: DisplayRect::primary(),
                 })
             }
             Err(e) => {
@@ -249,14 +242,9 @@ impl Platform {
         }
     }
 
-    /// Every tick while streaming: what the client should hear (the host
-    /// application's cursor, when it changed).
-    pub fn tick(&mut self, d: &mut Display, now: Instant, _second: bool) -> Vec<Control> {
-        d.cursor
-            .poll(now)
-            .map(Control::CursorState)
-            .into_iter()
-            .collect()
+    /// Every tick while streaming: nothing more to tell the client.
+    pub fn tick(&mut self, _d: &mut Display, _now: Instant, _second: bool) -> Vec<Control> {
+        Vec::new()
     }
 
     /// The session is over (`ran`: it had started). The virtual display
