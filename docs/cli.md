@@ -77,7 +77,8 @@ Administrators, so these commands need an administrator's terminal there.
 | Command | Does |
 |---|---|
 | `ping-agent providers` | What can run here, and which provider is chosen |
-| `ping-agent set-key PROVIDER` | Save an API key (`anthropic`, `openai`, `openrouter`, `custom`), read from stdin; an empty line forgets it |
+| `ping-agent set-key PROVIDER` | Save an API key (`anthropic`, `openai`, `openrouter`, `custom`, or `cloudflare`: the token clef's [screen checks](ai-agents.md#screen-checks-cloudflare-clef) use), read from stdin; an empty line forgets it |
+| `ping-agent check SCREEN.png --click X,Y \| --enter \| --typing N \| --personal` | What clef makes of a screenshot, as a screen check would: its answers, and whether the step would wait |
 | `ping-agent identity` | The agent's public keys (for `pong add-client --agent`) |
 | `ping-agent hosts` | Hosts the agent is paired with |
 | `ping-agent add-host NAME ADDR X25519 MLKEM` | Pair the agent by hand |
@@ -131,6 +132,7 @@ For everyone:
 | `PONG_DATA_DIR` | Pong, Pong's window | Pong's data folder |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `PING_AGENT_API_KEY` (a custom endpoint) | agents | API keys; win over saved keys |
 | `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | agents | Point the API loops at a gateway or proxy |
+| `CLOUDFLARE_AUTH_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | agents | The Workers AI token and account clef's screen checks use; win over Agent setup's |
 | `PINGPONG_APPEARANCE` | the apps | `light` or `dark`, whatever the system says |
 | `PINGPONG_UPDATE_API` | the apps | Where the update check asks instead of `https://api.github.com` (a mirror, or a test) |
 | `PING_SOFTWARE_DECODE` | Ping on Linux | Decode in software even where VA-API is available |
