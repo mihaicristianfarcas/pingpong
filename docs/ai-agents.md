@@ -87,7 +87,7 @@ menu):
 | Claude Code (Claude plan) | `claude -p`, with pingpong's tools only | Claude Code installed and signed in |
 | Anthropic API key | Ping drives Claude's computer toolset itself | a key (`ANTHROPIC_API_KEY`, or saved in Agent setup) |
 | OpenAI API key | Ping drives OpenAI's computer tool itself | a key (`OPENAI_API_KEY`, or saved) |
-| OpenRouter API key | the actions offered as functions | a key; any model with tools and images (`:free` models cost nothing; Jev Router picks a model per request) |
+| OpenRouter API key | the actions offered as functions | a key; any model with tools and images (`:free` models cost nothing) |
 | OpenAI-compatible endpoint | the same, against your URL | Ollama, LM Studio, a gateway |
 
 A turn stops after **60 actions or 15 minutes** by default; both, the
