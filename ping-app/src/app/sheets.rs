@@ -5,11 +5,11 @@ use gpui::{
     anchored, deferred, div, prelude::*, px, AnyElement, App, ClickEvent, Context, FontWeight,
     Window,
 };
-use pingpong_ui::{button, field, icon, spinner, IconName, Ink, Radius, Theme};
+use pingpong_ui::{button, field, spinner, IconName, Radius, Theme};
 
 use crate::model::{Item, PairState};
 
-use super::{device_word, sheet_text, sheet_title, PingApp};
+use super::{device_word, sheet_buttons, sheet_text, sheet_title, PingApp};
 
 /// The PIN, one rounded box per digit.
 pub(super) fn pin_digits(pin: &str, t: Theme) -> impl IntoElement {
@@ -60,43 +60,34 @@ impl PingApp {
                 PairState::Paired(name) => div()
                     .flex()
                     .flex_col()
-                    .items_center()
                     .gap(px(10.0))
-                    .child(icon(IconName::CheckCircle, 40.0, t.ink(Ink::FRESH)))
                     .child(sheet_title(format!("Paired with {name}"), t))
+                    .child(sheet_text(
+                        "It is in your hosts now: click it to start streaming.",
+                        t,
+                    ))
                     .child(
-                        sheet_text("It is in your hosts now: click it to start streaming.", t)
-                            .text_center(),
-                    )
-                    .child(
-                        div().pt(px(10.0)).child(
-                            button("pair-done", "Done", t)
-                                .solid()
-                                .large()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.pairing = None;
-                                    cx.notify();
-                                })),
-                        ),
+                        sheet_buttons().child(button("pair-done", "Done", t).solid().on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.pairing = None;
+                                cx.notify();
+                            }),
+                        )),
                     )
                     .into_any_element(),
                 PairState::Failed(error) => div()
                     .flex()
                     .flex_col()
-                    .items_center()
                     .gap(px(10.0))
-                    .child(icon(IconName::Warning, 36.0, t.ink(Ink::ATTENTION)))
                     .child(sheet_title("Pairing didn't work", t))
-                    .child(sheet_text(error.clone(), t).text_center())
+                    .child(sheet_text(error.clone(), t))
                     .child(
-                        div().pt(px(10.0)).child(
-                            button("pair-close", "Close", t)
-                                .large()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.pairing = None;
-                                    cx.notify();
-                                })),
-                        ),
+                        sheet_buttons().child(button("pair-close", "Close", t).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.pairing = None;
+                                cx.notify();
+                            }),
+                        )),
                     )
                     .into_any_element(),
                 PairState::Connecting | PairState::Waiting => {
@@ -105,17 +96,12 @@ impl PingApp {
                     div()
                         .flex()
                         .flex_col()
-                        .items_center()
-                        .gap(px(14.0))
+                        .gap(px(12.0))
                         .child(sheet_title(title, t))
-                        .child(
-                            sheet_text(
-                                "Enter this PIN on the host to let this device \
-                                    connect.",
-                                t,
-                            )
-                            .text_center(),
-                        )
+                        .child(sheet_text(
+                            "Enter this PIN on the host to let this device connect.",
+                            t,
+                        ))
                         .child(pin_digits(&p.pin, t))
                         .child(
                             div()
@@ -131,19 +117,13 @@ impl PingApp {
                                     "Connecting…"
                                 }),
                         )
+                        .child(sheet_text(
+                            "On the host, open Pong: the request is at the top of \
+                                Devices. Pong's web UI works too, under Pair a device.",
+                            t,
+                        ))
                         .child(
-                            sheet_text(
-                                "On the host, open Pong: the request is at the top of \
-                                    Devices. Pong's web UI works too, under Pair a device.",
-                                t,
-                            )
-                            .text_center(),
-                        )
-                        .child(
-                            div()
-                                .pt(px(4.0))
-                                .flex()
-                                .gap(px(8.0))
+                            sheet_buttons()
                                 .when_some(web, |d, url| {
                                     d.child(
                                         button("pair-web", "Open Pong's Web UI", t)
@@ -182,11 +162,7 @@ impl PingApp {
                 ))
                 .child(field(&f, t))
                 .child(
-                    div()
-                        .pt(px(6.0))
-                        .flex()
-                        .justify_end()
-                        .gap(px(8.0))
+                    sheet_buttons()
                         .child(button("add-cancel", "Cancel", t).on_click(cx.listener(
                             |this, _, _, cx| {
                                 this.add_host = None;
@@ -223,11 +199,7 @@ impl PingApp {
                         t,
                     ))
                     .child(
-                        div()
-                            .pt(px(8.0))
-                            .flex()
-                            .justify_end()
-                            .gap(px(8.0))
+                        sheet_buttons()
                             .child(button("unpair-cancel", "Cancel", t).on_click(cx.listener(
                                 |this, _, _, cx| {
                                     this.confirm_unpair = None;
@@ -246,27 +218,21 @@ impl PingApp {
             return Some(pingpong_ui::sheet("unpair", 360.0, t, body).into_any_element());
         }
         if let Some(a) = &self.alert {
-            let body =
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap(px(10.0))
-                    .child(icon(IconName::Warning, 32.0, t.ink(Ink::ATTENTION)))
-                    .child(sheet_title(a.title.clone(), t))
-                    .child(sheet_text(a.message.clone(), t).text_center())
-                    .child(
-                        div().pt(px(8.0)).child(
-                            button("alert-ok", "OK", t)
-                                .solid()
-                                .large()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.alert = None;
-                                    cx.notify();
-                                })),
-                        ),
-                    );
-            return Some(pingpong_ui::sheet("alert", 340.0, t, body).into_any_element());
+            let body = div()
+                .flex()
+                .flex_col()
+                .gap(px(10.0))
+                .child(sheet_title(a.title.clone(), t))
+                .child(sheet_text(a.message.clone(), t))
+                .child(
+                    sheet_buttons().child(button("alert-ok", "OK", t).solid().on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.alert = None;
+                            cx.notify();
+                        }),
+                    )),
+                );
+            return Some(pingpong_ui::sheet("alert", 360.0, t, body).into_any_element());
         }
         if self.update_sheet {
             let (check, close) = (cx.weak_entity(), cx.weak_entity());

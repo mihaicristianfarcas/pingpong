@@ -759,6 +759,11 @@ pub fn sheet_text(text: impl Into<SharedString>, t: Theme) -> gpui::Div {
         .child(text.into())
 }
 
+/// A sheet's buttons, at its bottom right, the one that acts last.
+pub fn sheet_buttons() -> gpui::Div {
+    div().pt(px(8.0)).flex().justify_end().gap(px(8.0))
+}
+
 fn info(label: &'static str, value: String, t: Theme) -> AnyElement {
     div()
         .min_h(px(38.0))

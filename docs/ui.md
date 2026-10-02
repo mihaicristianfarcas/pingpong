@@ -150,7 +150,9 @@ PONG_UI_DEMO=sample,devices,snapshot=/tmp/devices.png,quit target/debug/pong-app
 Ping's steps: `settings[=general|video|audio|input|agents]`,
 `agents[=setup|sample|sample-live|sample-ask]`, `chat=MESSAGE` (to the open
 session, or a new one on the first host the agent may use), `login`,
-`pair=HOST:PORT`, `add`, `menu=NAME`, `unpair=NAME`, `stream=NAME`,
+`pair=HOST:PORT`, `add`, `alone` (hosts found on the network are left
+out: the Hosts page as it is with none), `size=WxH` (the window that size,
+in points, to see a long page whole), `menu=NAME`, `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
 `wait=SECS`, `close-login`, `vanish-login`, `step=N`, `panel-end`,
 `update` and `update-main` (the update check says there is a newer release,

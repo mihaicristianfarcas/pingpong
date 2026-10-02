@@ -23,9 +23,7 @@ use gpui::{
     SharedString, Window,
 };
 use pingpong_ui::updates::UpdateApp;
-use pingpong_ui::{
-    button, icon, sheet, spinner, FieldEvent, IconName, Ink, Metrics, TextField, Theme, Type,
-};
+use pingpong_ui::{button, sheet, FieldEvent, IconName, Ink, Metrics, TextField, Theme, Type};
 use pingpong_update::{Build, Checker};
 use serde_json::{json, Value};
 
@@ -436,15 +434,7 @@ impl PongApp {
 
     fn body(&mut self, t: Theme, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.snap.conn.clone() {
-            Conn::Connecting => centered(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .text_color(t.tertiary)
-                    .child(spinner("connecting", 14.0, t.tertiary))
-                    .child("Connecting to Pong…"),
-            ),
+            Conn::Connecting => signin::waiting("connecting-page", "Connecting to Pong…", t),
             Conn::NotRunning => self.not_running(t, cx),
             Conn::SignIn { setup } => self.sign_in_page(setup, t, window, cx),
             Conn::Ready => match self.page {
@@ -626,31 +616,6 @@ fn page(
             ),
         )
         .into_any_element()
-}
-
-fn centered(content: impl IntoElement) -> AnyElement {
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .pb(px(40.0))
-        .child(content)
-        .into_any_element()
-}
-
-fn mark(name: IconName, t: Theme) -> impl IntoElement {
-    div()
-        .size(px(56.0))
-        .rounded(px(16.0))
-        .bg(t.primary.alpha(0.05))
-        .border_1()
-        .border_color(t.card_stroke)
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(icon(name, 26.0, t.secondary))
 }
 
 fn info_row(label: &'static str, value: String, mono: bool, t: Theme) -> AnyElement {

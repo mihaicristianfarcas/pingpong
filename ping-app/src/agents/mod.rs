@@ -13,11 +13,11 @@ mod setup;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use gpui::{div, prelude::*, px, AnyElement, Context, ElementId, Entity, FontWeight, Window};
+use gpui::{div, prelude::*, px, AnyElement, Context, ElementId, Entity, Window};
 use ping_agent::providers::{self, AgentSettings, Approvals, Provider};
 use pingpong_ui::{
     button, chip, field, icon, rows, section, select, setting, Choice, FieldEvent, IconName, Ink,
-    Radius, TextField, Theme, Type,
+    Metrics, Radius, TextField, Theme, Type,
 };
 
 use crate::app::{page_body, toolbar, Page, PingApp};
@@ -318,7 +318,7 @@ impl PingApp {
         let body = if hosts.is_empty() {
             self.agents_first_host(t, cx)
         } else {
-            self.agents_hero(&hosts, t, window, cx)
+            self.agents_new_session(&hosts, t, window, cx)
         };
         div()
             .size_full()
@@ -333,36 +333,40 @@ impl PingApp {
     fn agents_first_host(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         page_body(
             "agents-first",
-            560.0,
+            Metrics::FORM,
             div()
-                .pt(px(40.0))
                 .flex()
                 .flex_col()
-                .gap(px(18.0))
-                .child(hero_mark(t))
+                .gap(px(22.0))
                 .child(pingpong_ui::page_header(
-                    "Let an agent use a host",
+                    "Agents",
                     Some(
                         "An AI agent works a host as you would through Ping: it sees the \
-                            screen and uses the keyboard and mouse. It pairs with a key of its \
-                            own, so the host knows it is an agent and holds it to the agent \
-                            rules: never over a person, never on a secure screen."
+                            screen and uses the keyboard and mouse."
                             .into(),
                     ),
                     None,
                     t,
                 ))
-                .child(section("Your hosts", t).child(self.agent_host_rows(t, cx)))
-                .child(pingpong_ui::footnote(
-                    "You type a PIN in Pong, as when you paired \
-                        Ping. What the agent may do there is set in Pong, per agent.",
-                    t,
-                )),
+                .child(
+                    section("Let it use a host", t)
+                        .child(self.agent_host_rows(t, cx))
+                        .child(pingpong_ui::footnote(
+                            "It pairs with a key of its own, so the host knows it is an \
+                                agent and holds it to the agent rules: never over a person, \
+                                never on a secure screen. You type a PIN in Pong, as when you \
+                                paired Ping; what the agent may do there is set in Pong, per \
+                                agent.",
+                            t,
+                        )),
+                ),
         )
         .into_any_element()
     }
 
-    fn agents_hero(
+    /// A new session: its first message, at the top as every page's
+    /// content is.
+    fn agents_new_session(
         &mut self,
         hosts: &[(String, String)],
         t: Theme,
@@ -371,53 +375,41 @@ impl PingApp {
     ) -> AnyElement {
         let host = self.agents.host.clone();
         let existing = self.agents.chats.iter().any(|c| c.host == host);
-        div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .px(px(32.0))
-            .pb(px(56.0))
-            .gap(px(14.0))
-            .child(
-                div()
-                    .text_size(px(Type::DISPLAY))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("What can the agent do for you?"),
-            )
-            .child(
-                div()
-                    .max_w(px(500.0))
-                    .text_center()
-                    .text_size(px(Type::BODY))
-                    .line_height(px(19.0))
-                    .text_color(t.tertiary)
-                    .child(format!(
-                        "A session with an agent that works {host} with you: ask it \
-                            things, hand it chores, log in whenever you want to watch or \
-                            take over. It stays in the sidebar until you end it."
-                    )),
-            )
-            .child(
-                div()
-                    .pt(px(8.0))
-                    .w_full()
-                    .max_w(px(640.0))
-                    .child(self.new_session_composer(hosts, t, window, cx)),
-            )
-            .when(existing, |d| {
-                d.child(
+        page_body(
+            "agents-new",
+            Metrics::FORM,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(22.0))
+                .child(pingpong_ui::page_header(
+                    "Agents",
+                    Some(
+                        format!(
+                            "Ask an agent to work {host} with you: questions, chores, \
+                                anything you would do there. The session stays in the sidebar \
+                                until you end it; log in to watch or take over."
+                        )
+                        .into(),
+                    ),
+                    None,
+                    t,
+                ))
+                .child(
                     div()
-                        .text_size(px(Type::META + 0.5))
-                        .text_color(t.tertiary)
-                        .child(format!(
-                            "{host} already has a session: this message goes there."
-                        )),
-                )
-            })
-            .into_any_element()
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.0))
+                        .child(self.new_session_composer(hosts, t, window, cx))
+                        .when(existing, |d| {
+                            d.child(pingpong_ui::footnote(
+                                format!("{host} already has a session: this message goes there."),
+                                t,
+                            ))
+                        }),
+                ),
+        )
+        .into_any_element()
     }
 
     /// The first message, and what runs the session: the host, the model,
@@ -732,17 +724,4 @@ impl PingApp {
 
     // -----------------------------------------------------------------------
     // Agent setup (a settings page)
-}
-
-fn hero_mark(t: Theme) -> impl IntoElement {
-    div()
-        .size(px(52.0))
-        .rounded(px(16.0))
-        .bg(Ink::ACCENT.alpha(if t.dark { 0.14 } else { 0.12 }))
-        .border_1()
-        .border_color(Ink::ACCENT.alpha(0.25))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(icon(IconName::Agent, 26.0, t.ink(Ink::ACCENT)))
 }

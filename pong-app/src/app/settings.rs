@@ -9,11 +9,11 @@ use std::time::Instant;
 use gpui::{div, prelude::*, px, AnyElement, Context, ElementId};
 use pingpong_ui::login::LoginItem;
 use pingpong_ui::{
-    field, notice, rows, section, select, setting, spinner, stepper, switch, IconName, Ink, Theme,
+    field, notice, rows, section, select, setting, stepper, switch, IconName, Ink, Theme,
 };
 use serde_json::json;
 
-use super::{centered, page, Page, PongApp, UPDATE_APP};
+use super::{page, Page, PongApp, UPDATE_APP};
 
 /// The app at login: in the tray, without its window.
 const AT_LOGIN: LoginItem = LoginItem {
@@ -31,7 +31,7 @@ pub(super) fn starts_at_login() -> bool {
 impl PongApp {
     pub(super) fn settings(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         if self.config().is_none() {
-            return centered(spinner("config", 14.0, t.tertiary));
+            return super::signin::waiting("settings-page", "Reading the settings…", t);
         }
         let mac = self.os() == "macos";
         let restart = if mac {

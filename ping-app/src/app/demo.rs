@@ -11,8 +11,9 @@ use super::{Page, PingApp};
 
 /// PING_UI_DEMO drives the UI for automated checks and screenshots, a
 /// comma-separated list: `pair=HOST[:PORT]` opens the pairing sheet, `add`
-/// the add-host sheet, `unpair=NAME` its confirmation, `menu=NAME` a host's
-/// menu, `settings[=video|audio|input|agents]` a settings page,
+/// the add-host sheet, `alone` leaves out the hosts found on the network,
+/// `size=WxH` makes the window that size (points), to see a long page
+/// whole, `unpair=NAME` its confirmation, `menu=NAME` a host's menu, `settings[=video|audio|input|agents]` a settings page,
 /// `agents[=setup|sample|sample-live|sample-ask]` the Agents page (the setup page or a
 /// sample session), `chat=MESSAGE` a message to the agent session (a new one
 /// on the first agent host; each waits for the turn before it), `stream=NAME` streams from that host,
@@ -188,6 +189,15 @@ impl PingApp {
                 self.pair_with(address.to_string(), address.to_string(), None, false, cx);
             } else if action == "add" {
                 self.show_add_host(window, cx);
+            } else if action == "alone" {
+                self.model.alone = true;
+                self.model.rebuild();
+            } else if let Some((w, h)) = action
+                .strip_prefix("size=")
+                .and_then(|v| v.split_once('x'))
+                .and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?)))
+            {
+                window.resize(gpui::size(gpui::px(w), gpui::px(h)));
             } else if let Some(name) = action.strip_prefix("unpair=") {
                 match self.model.items.iter().find(|i| i.name == name).cloned() {
                     Some(item) => self.confirm_unpair(&item, cx),
