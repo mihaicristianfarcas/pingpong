@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use pingpong_display::windows::WindowsDisplay;
 use pingpong_display::{DisplayControl, DisplayMode};
 use pingpong_encode::{Codec, EncoderConfig};
-use pingpong_input::{AbsoluteTransform, DisplayRect, SendInputSink, VirtualDesktop};
+use pingpong_input::SendInputSink;
 use pingpong_proto::control::{self, AckStatus, Control, SessionStart};
 use pingpong_transport::{Endpoint, Peer};
 
@@ -34,7 +34,6 @@ const LINGER: Duration = Duration::from_secs(60);
 /// A session's display, while it streams.
 pub struct Display {
     gdi_name: String,
-    rect: DisplayRect,
 }
 
 pub struct Platform {
@@ -121,14 +120,9 @@ impl Platform {
             refresh_mhz: req.refresh_mhz,
         };
         match self.display.activate(mode) {
-            Ok(active) => {
-                // Input goes to the display just made primary (with the host
-                // monitors off, the whole desktop).
-                Ok(Display {
-                    gdi_name: active.gdi_name,
-                    rect: DisplayRect::primary(),
-                })
-            }
+            Ok(active) => Ok(Display {
+                gdi_name: active.gdi_name,
+            }),
             Err(e) => {
                 tracing::error!(error = %e, "virtual display unavailable; refusing the session");
                 Err(AckStatus::VddUnavailable)
@@ -159,12 +153,10 @@ impl Platform {
         let _ = self.display.restore();
     }
 
-    pub fn input_sink(&self, d: &Display, width: u16, height: u16) -> Sink {
-        SendInputSink::new(AbsoluteTransform::new(
-            VirtualDesktop::current(),
-            d.rect,
-            (width as u32, height as u32),
-        ))
+    /// Input goes to the display just made primary (with the host monitors
+    /// off, the whole desktop), whatever mode a game gives it meanwhile.
+    pub fn input_sink(&self, _d: &Display, width: u16, height: u16) -> Sink {
+        SendInputSink::new((width as u32, height as u32))
     }
 
     /// Input for the session is over.
