@@ -39,12 +39,14 @@ license = "GPL-3.0-only"
 publish = false
 
 # GPUI (Zed's UI framework) draws Ping's and Pong's windows, pinned to one Zed
-# revision. Its Metal shaders are compiled ahead by Xcode's Metal toolchain, or when the
+# revision: zed#62743 or later, whose line wrapping keeps closing punctuation
+# with its word (before it, a paragraph could end on a line holding only
+# ")."). Its Metal shaders are compiled ahead by Xcode's Metal toolchain, or when the
 # app starts with the apps' `runtime-shaders` feature (the default, so a build
 # needs only the Command Line Tools; the app bundles use Xcode when it is there).
 [workspace.dependencies]
-gpui = { git = "https://github.com/zed-industries/zed.git", rev = "dc2a339d5d043da448a3f7ddc7c0a85c63864aad" }
-gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "dc2a339d5d043da448a3f7ddc7c0a85c63864aad", features = ["font-kit", "wayland", "x11"] }
+gpui = { git = "https://github.com/zed-industries/zed.git", rev = "4278ff36ef76916c719dfdd1557efd4401206985" }
+gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "4278ff36ef76916c719dfdd1557efd4401206985", features = ["font-kit", "wayland", "x11"] }
 
 [patch."https://github.com/zed-industries/zed.git"]
 # GPUI's sum_tree names Zed's GPL-licensed profiling shim though profiling is
