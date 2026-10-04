@@ -133,6 +133,25 @@ impl PongApp {
                         t,
                         cx,
                     ));
+                    encoder.push(self.toggle(
+                        "nvidia_max_power",
+                        "Full GPU power for Pong",
+                        "The NVIDIA driver keeps its clocks up for Pong instead of \
+                            lowering them between frames, which slows the encoder. \
+                            Applies after Pong restarts.",
+                        t,
+                        cx,
+                    ));
+                    encoder.push(self.toggle(
+                        "nvidia_dxgi_present",
+                        "OpenGL and Vulkan through DXGI",
+                        "Full-screen OpenGL and Vulkan games are captured at their full \
+                            frame rate. Changes the driver's setting for every program \
+                            while Pong runs, and puts it back when it stops. Applies \
+                            after Pong restarts.",
+                        t,
+                        cx,
+                    ));
                 }
                 encoder.push(self.toggle(
                     "allow_hevc",

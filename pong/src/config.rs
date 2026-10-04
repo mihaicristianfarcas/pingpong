@@ -72,6 +72,14 @@ pub struct HostConfig {
     pub nvenc_preset: u8,
     /// Two-pass rate control at quarter resolution.
     pub nvenc_two_pass: bool,
+    /// The NVIDIA driver runs the GPU at full power for Pong (a driver
+    /// profile of Pong's own), as Sunshine's `nvenc_latency_over_power`.
+    pub nvidia_max_power: bool,
+    /// OpenGL and Vulkan games present through DXGI while Pong runs (a
+    /// system-wide driver setting, put back when Pong stops), so they are
+    /// captured at their full frame rate: Sunshine's
+    /// `nvenc_opengl_vulkan_on_dxgi`.
+    pub nvidia_dxgi_present: bool,
     /// Cap on what a client may request, kbit/s (0 = no cap).
     pub max_bitrate_kbps: u32,
     /// Cap on the stream frame rate (0 = the client decides).
@@ -117,6 +125,8 @@ impl Default for HostConfig {
             web_port: DEFAULT_WEB_PORT,
             nvenc_preset: 1,
             nvenc_two_pass: true,
+            nvidia_max_power: true,
+            nvidia_dxgi_present: true,
             max_bitrate_kbps: 0,
             max_fps: 0,
             allow_hevc: true,

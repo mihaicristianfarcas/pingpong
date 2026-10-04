@@ -251,6 +251,8 @@ fn sample(s: &mut Snapshot) {
             "web_port": 47802,
             "nvenc_preset": 1,
             "nvenc_two_pass": true,
+            "nvidia_max_power": true,
+            "nvidia_dxgi_present": true,
             "max_bitrate_kbps": 0,
             "max_fps": 0,
             "allow_hevc": true,
