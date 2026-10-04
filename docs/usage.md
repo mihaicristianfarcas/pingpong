@@ -28,6 +28,13 @@ and a key (Ctrl+Option+Shift on a Mac keyboard):
 | Ctrl+Alt+Shift+V | Type this computer's clipboard on the host |
 | Ctrl+Alt+Shift+T | Watching an AI agent: take over its keyboard and mouse, or hand them back |
 
+**A held key repeats** on the host as it does on your keyboard: Ping sends
+the key once and tells the host your keyboard's repeat delay and rate (System
+Settings > Keyboard on a Mac, the Keyboard control panel on Windows), and a
+Windows or Mac host repeats the key at that pace until you let go, as
+Sunshine does with its own fixed timings. A Linux host's desktop repeats
+keys itself.
+
 **The mouse works as in Moonlight.** The pointer you see is the host's
 own, drawn into the picture by the host where its screen shows it: hidden
 when a game hides it, wherever a game, the Steam overlay or a controller

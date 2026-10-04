@@ -9,6 +9,53 @@ use pingpong_proto::input::InputEvent;
 
 use crate::input::InputSender;
 
+/// This computer's keyboard repeat (delay, then interval), sent with the
+/// session: the host repeats a held key with it, so a key held in the
+/// stream repeats as it does here (`pingpong_input::repeat`). `None` where
+/// the system does not say (Linux: the host's own settings apply).
+pub fn repeat_rate() -> Option<pingpong_proto::repeat::RepeatRate> {
+    #[cfg(target_os = "macos")]
+    {
+        let delay = objc2_app_kit::NSEvent::keyRepeatDelay();
+        let interval = objc2_app_kit::NSEvent::keyRepeatInterval();
+        pingpong_proto::repeat::RepeatRate::from_millis(
+            (delay * 1000.0).round().clamp(0.0, 65535.0) as u16,
+            (interval * 1000.0).round().clamp(0.0, 65535.0) as u16,
+        )
+    }
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SystemParametersInfoW, SPI_GETKEYBOARDDELAY, SPI_GETKEYBOARDSPEED,
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+        };
+        let (mut delay, mut speed) = (0u32, 0u32);
+        // SAFETY: each call writes one u32 through a pointer to a live local.
+        let read = unsafe {
+            let none = SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0);
+            SystemParametersInfoW(
+                SPI_GETKEYBOARDDELAY,
+                0,
+                Some(&mut delay as *mut u32 as *mut _),
+                none,
+            )
+            .is_ok()
+                && SystemParametersInfoW(
+                    SPI_GETKEYBOARDSPEED,
+                    0,
+                    Some(&mut speed as *mut u32 as *mut _),
+                    none,
+                )
+                .is_ok()
+        };
+        read.then(|| pingpong_proto::repeat::RepeatRate::from_windows(delay, speed))
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        None
+    }
+}
+
 /// Moonlight's chords, Ctrl+Alt+Shift and a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hotkey {

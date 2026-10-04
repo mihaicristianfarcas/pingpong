@@ -79,6 +79,12 @@ pub struct SessionStart {
     /// What to show: `app::DESKTOP`, or an app the host starts for the
     /// session (Apollo's apps). Absent on the wire from older clients.
     pub app: u8,
+    /// The client's keyboard repeat: a held key repeats after this many
+    /// milliseconds, then every `repeat_interval_ms`. The host makes the
+    /// repeats where its system does not (`pingpong_input::repeat`); 0 =
+    /// unknown, the host's own settings. Absent from older clients.
+    pub repeat_delay_ms: u16,
+    pub repeat_interval_ms: u16,
 }
 
 /// Apps a session can start with (Apollo's defaults).
@@ -516,6 +522,8 @@ impl Control {
                 w.u8(s.slices);
                 w.u32(s.nonce);
                 w.u8(s.app);
+                w.u16(s.repeat_delay_ms);
+                w.u16(s.repeat_interval_ms);
             }
             Control::SessionAck(a) => {
                 w.u8(OP_SESSION_ACK);
@@ -665,6 +673,8 @@ impl Control {
                 slices: r.u8()?,
                 nonce: r.u32()?,
                 app: r.u8().unwrap_or(app::DESKTOP),
+                repeat_delay_ms: r.u16().unwrap_or(0),
+                repeat_interval_ms: r.u16().unwrap_or(0),
             }),
             OP_SESSION_ACK => Control::SessionAck(SessionAck {
                 status: AckStatus::from_code(r.u8()?)?,
@@ -779,6 +789,8 @@ mod tests {
             slices: 4,
             nonce: 0xDEAD_BEEF,
             app: app::DESKTOP,
+            repeat_delay_ms: 225,
+            repeat_interval_ms: 30,
         }));
         round_trip(Control::SessionAck(SessionAck {
             status: AckStatus::Ok,
@@ -896,14 +908,27 @@ mod tests {
             slices: 1,
             nonce: 1,
             app: app::STEAM_BIG_PICTURE,
+            repeat_delay_ms: 500,
+            repeat_interval_ms: 40,
         })
         .encode(0, &mut out);
-        // The last byte (the app) is optional: an older client's request.
-        for cut in HEADER_LEN..n - 1 {
+        // What follows the nonce is optional: an older client's request.
+        let optional = 1 + 2 + 2;
+        for cut in HEADER_LEN..n - optional {
             assert_eq!(Control::decode(&out[HEADER_LEN..cut]), None);
         }
-        match Control::decode(&out[HEADER_LEN..n - 1]) {
-            Some(Control::SessionStart(s)) => assert_eq!(s.app, app::DESKTOP),
+        match Control::decode(&out[HEADER_LEN..n - optional]) {
+            Some(Control::SessionStart(s)) => assert_eq!(
+                (s.app, s.repeat_delay_ms, s.repeat_interval_ms),
+                (app::DESKTOP, 0, 0)
+            ),
+            other => panic!("{other:?}"),
+        }
+        match Control::decode(&out[HEADER_LEN..n - 2]) {
+            Some(Control::SessionStart(s)) => assert_eq!(
+                (s.app, s.repeat_delay_ms, s.repeat_interval_ms),
+                (app::STEAM_BIG_PICTURE, 500, 0)
+            ),
             other => panic!("{other:?}"),
         }
         // So is the ack's last (the host's system): an older host is Windows.

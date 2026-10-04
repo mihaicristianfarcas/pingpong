@@ -21,7 +21,7 @@ use objc2_core_graphics::{
 };
 use pingpong_proto::input::{Button, InputEvent};
 
-use crate::{HeldSet, InputError, InputSink};
+use crate::{repeat, HeldSet, InputError, InputSink, RepeatRate};
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
@@ -33,8 +33,8 @@ pub fn trusted() -> bool {
     unsafe { AXIsProcessTrusted() }
 }
 
-/// Two clicks this close in time and space are a double-click.
-const DOUBLE_CLICK: Duration = Duration::from_millis(500);
+/// Two clicks this close in space are a double-click (and this close in
+/// time: the user's double-click speed).
 const DOUBLE_CLICK_POINTS: f64 = 4.0;
 
 pub struct CgEventSink {
@@ -49,6 +49,8 @@ pub struct CgEventSink {
     last_click: Option<(Instant, Button, CGPoint, i64)>,
     /// Scroll left over below a whole pixel.
     wheel_rest: (f64, f64),
+    /// The user's double-click speed.
+    double_click: Duration,
 }
 
 // SAFETY: the event source is used only through &mut self.
@@ -66,6 +68,9 @@ impl CgEventSink {
             buttons_down: 0,
             last_click: None,
             wheel_rest: (0.0, 0.0),
+            double_click: Duration::from_secs_f64(
+                objc2_app_kit::NSEvent::doubleClickInterval().clamp(0.15, 5.0),
+            ),
         }
     }
 
@@ -130,7 +135,7 @@ impl CgEventSink {
             let n = match self.last_click {
                 Some((t, lb, lp, n))
                     if lb == b
-                        && t.elapsed() < DOUBLE_CLICK
+                        && t.elapsed() < self.double_click
                         && (lp.x - at.x).abs() <= DOUBLE_CLICK_POINTS
                         && (lp.y - at.y).abs() <= DOUBLE_CLICK_POINTS =>
                 {
@@ -155,6 +160,10 @@ impl CgEventSink {
     }
 
     fn key(&mut self, scancode: u16, down: bool) {
+        self.key_event(scancode, down, false);
+    }
+
+    fn key_event(&mut self, scancode: u16, down: bool, autorepeat: bool) {
         let Some(code) = pingpong_proto::mackeys::keycode_for_scancode(scancode) else {
             return;
         };
@@ -182,6 +191,9 @@ impl CgEventSink {
         if let Some(e) = &e {
             if modifier.is_some() {
                 CGEvent::set_type(Some(e), CGEventType::FlagsChanged);
+            }
+            if autorepeat {
+                CGEvent::set_integer_value_field(Some(e), CGEventField::KeyboardEventAutorepeat, 1);
             }
             CGEvent::set_flags(Some(e), self.flags);
         }
@@ -258,6 +270,32 @@ impl InputSink for CgEventSink {
                 InputEvent::Wheel { dv, dh } => self.wheel(dv, dh),
                 InputEvent::Text(c) => self.text(c),
             }
+        }
+        Ok(())
+    }
+
+    /// Posted keys never repeat: the HID system repeats the keyboard's
+    /// own. The user's settings (System Settings > Keyboard).
+    fn key_repeat(&self) -> Option<RepeatRate> {
+        let delay = objc2_app_kit::NSEvent::keyRepeatDelay();
+        let interval = objc2_app_kit::NSEvent::keyRepeatInterval();
+        if !(delay.is_finite() && interval.is_finite() && delay > 0.0 && interval > 0.0) {
+            return Some(RepeatRate::DEFAULT);
+        }
+        Some(RepeatRate {
+            delay: Duration::from_secs_f64(delay.clamp(0.1, 2.0)),
+            interval: Duration::from_secs_f64(interval.clamp(0.01, 0.5)),
+        })
+    }
+
+    /// Modifiers and Caps Lock are flag changes on a Mac: they never repeat.
+    fn repeats(&self, scancode: u16) -> bool {
+        !repeat::is_lock_key(scancode) && !repeat::is_modifier(scancode)
+    }
+
+    fn repeat_key(&mut self, scancode: u16) -> Result<(), InputError> {
+        if self.repeats(scancode) {
+            self.key_event(scancode, true, true);
         }
         Ok(())
     }

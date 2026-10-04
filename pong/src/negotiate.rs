@@ -78,6 +78,8 @@ mod tests {
             slices: 1,
             nonce: 1,
             app: app::DESKTOP,
+            repeat_delay_ms: 0,
+            repeat_interval_ms: 0,
         }
     }
 

@@ -20,6 +20,7 @@ pub mod mackeys;
 pub mod pacer;
 pub mod packetize;
 pub mod reassemble;
+pub mod repeat;
 pub mod telemetry;
 pub mod video;
 

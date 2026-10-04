@@ -22,6 +22,8 @@ pub mod macos;
 
 /// Scancodes → Linux key codes (pure; used by the X11 sink).
 pub mod evdev;
+pub mod repeat;
+pub use repeat::{KeyRepeat, RepeatRate};
 #[cfg(target_os = "linux")]
 pub mod x11;
 
@@ -71,6 +73,23 @@ pub trait InputSink {
     /// own user's input from the injected by.
     fn last_sent(&self) -> Option<std::time::Instant> {
         None
+    }
+
+    /// How a held key repeats here when the system does not repeat
+    /// injected keys itself (Windows, macOS): the host's own keyboard
+    /// settings. `None` where it does (X11, Wayland). See [`repeat`].
+    fn key_repeat(&self) -> Option<RepeatRate> {
+        None
+    }
+
+    /// Whether `scancode`, held, repeats (as on this system's keyboards).
+    fn repeats(&self, scancode: u16) -> bool {
+        !repeat::is_lock_key(scancode)
+    }
+
+    /// Press the held key `scancode` again, as a keyboard's auto-repeat.
+    fn repeat_key(&mut self, scancode: u16) -> Result<(), InputError> {
+        self.inject(&[InputEvent::KeyDown(scancode)])
     }
 }
 

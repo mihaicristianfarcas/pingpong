@@ -30,6 +30,8 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["std", "NSData", "NSGeometry"] }
 objc2-core-foundation = { version = "0.3", features = ["std", "CFCGTypes"] }
 objc2-core-graphics = { version = "0.3", features = ["std", "CGDirectDisplay", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+# The user's key repeat and double-click settings (`NSEvent`'s class methods).
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSEvent"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2-core-graphics = { version = "0.3", features = ["std", "CGDirectDisplay", "CGEvent", "CGEventTypes"] }

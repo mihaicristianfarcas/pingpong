@@ -20,8 +20,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 // than hand-written as 1 and 2: a magic number here injects the wrong side
 // button and nothing about that is visible until a player uses one.
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
-    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, XBUTTON1, XBUTTON2,
+    GetSystemMetrics, SystemParametersInfoW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN,
+    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETKEYBOARDDELAY,
+    SPI_GETKEYBOARDSPEED, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, XBUTTON1, XBUTTON2,
 };
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -29,7 +30,9 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::{AbsoluteTransform, DisplayRect, HeldSet, InputError, InputSink, VirtualDesktop};
+use crate::{
+    AbsoluteTransform, DisplayRect, HeldSet, InputError, InputSink, RepeatRate, VirtualDesktop,
+};
 
 impl DisplayRect {
     /// The primary display's rectangle, in virtual-desktop coordinates.
@@ -84,6 +87,7 @@ pub struct SendInputSink {
     /// The stream's size: what the client's absolute positions are in.
     stream: (u32, u32),
     typist: Typist,
+    repeat: RepeatRate,
 }
 
 impl SendInputSink {
@@ -93,6 +97,7 @@ impl SendInputSink {
             held: HeldSet::new(),
             stream,
             typist: Typist::spawn(),
+            repeat: keyboard_repeat(),
         }
     }
 
@@ -415,6 +420,35 @@ impl InputSink for SendInputSink {
     fn last_sent(&self) -> Option<Instant> {
         *self.typist.sent.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// `SendInput` keys never repeat: the keyboard driver makes repeats,
+    /// and injected keys do not pass through it.
+    fn key_repeat(&self) -> Option<RepeatRate> {
+        Some(self.repeat)
+    }
+}
+
+/// This session's keyboard settings: the defaults for the SYSTEM account a
+/// service runs as, the user's own for a Pong run in their session.
+fn keyboard_repeat() -> RepeatRate {
+    let (mut delay, mut speed) = (1u32, 31u32);
+    // SAFETY: each call writes one u32 through a pointer to a live local.
+    unsafe {
+        let none = SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0);
+        let _ = SystemParametersInfoW(
+            SPI_GETKEYBOARDDELAY,
+            0,
+            Some(&mut delay as *mut u32 as *mut _),
+            none,
+        );
+        let _ = SystemParametersInfoW(
+            SPI_GETKEYBOARDSPEED,
+            0,
+            Some(&mut speed as *mut u32 as *mut _),
+            none,
+        );
+    }
+    RepeatRate::from_windows(delay, speed)
 }
 
 /// Attach this thread to whichever desktop currently receives input. Returns

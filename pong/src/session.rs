@@ -32,13 +32,13 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use parking_lot::Mutex;
 use pingpong_encode::{Codec, EncoderConfig};
-use pingpong_input::InputSink;
+use pingpong_input::{InputSink, KeyRepeat, RepeatRate};
 use pingpong_proto::control::{
     self, agent_control, agent_state, AckStatus, AgentState, Control, EndReason, LossReport,
     SessionAck, SessionStart,
 };
 use pingpong_proto::fec::FecPolicy;
-use pingpong_proto::input::SequenceGate;
+use pingpong_proto::input::{InputEvent, SequenceGate};
 use pingpong_transport::{Endpoint, Peer, PeerId};
 
 use crate::audio::AudioHandle;
@@ -118,6 +118,68 @@ pub struct InputState {
     /// When input was last injected: someone at the host is told from the
     /// agent by input more recent than this.
     pub last_injected: Option<Instant>,
+    /// The key held down, repeating, where the host's system does not
+    /// repeat injected keys (`pingpong_input::repeat`).
+    pub repeat: Option<KeyRepeat>,
+}
+
+impl InputState {
+    /// Inject what the client sent, and follow the keys for repeats.
+    pub fn inject(&mut self, events: &[InputEvent], now: Instant) {
+        self.last_injected = Some(now);
+        if let Err(e) = self.sink.inject(events) {
+            tracing::debug!(error = %e, "input injection");
+        }
+        let Some(repeat) = self.repeat.as_mut() else {
+            return;
+        };
+        for &ev in events {
+            match ev {
+                InputEvent::KeyDown(sc) if self.sink.repeats(sc) => repeat.press(sc, now),
+                InputEvent::KeyUp(sc) => repeat.release(sc),
+                _ => {}
+            }
+        }
+    }
+
+    /// Lift everything held: nothing repeats either.
+    pub fn release_all(&mut self) {
+        if let Some(r) = self.repeat.as_mut() {
+            r.clear();
+        }
+        let _ = self.sink.release_all();
+    }
+
+    /// Press the held key again if its repeat is due; when the next is.
+    pub fn repeat_tick(&mut self, now: Instant) -> Option<Instant> {
+        let repeat = self.repeat.as_mut()?;
+        if self.held {
+            repeat.clear();
+            return None;
+        }
+        if let Some(sc) = repeat.poll(now) {
+            self.last_injected = Some(now);
+            if let Err(e) = self.sink.repeat_key(sc) {
+                tracing::debug!(error = %e, "key repeat");
+            }
+        }
+        repeat.due()
+    }
+}
+
+/// How a held key repeats this session: as on the client's keyboard when it
+/// says, else as the host's own; `None` where the host's system repeats
+/// injected keys itself.
+fn key_repeat(sink: &platform::Sink, req: &SessionStart) -> Option<KeyRepeat> {
+    let host = sink.key_repeat()?;
+    let rate = RepeatRate::from_millis(req.repeat_delay_ms, req.repeat_interval_ms).unwrap_or(host);
+    tracing::info!(
+        delay_ms = rate.delay.as_millis() as u64,
+        interval_ms = rate.interval.as_millis() as u64,
+        client = rate != host,
+        "held keys repeat"
+    );
+    Some(KeyRepeat::new(rate))
 }
 
 /// One line of an agent's activity, for the web UI.
@@ -306,6 +368,8 @@ pub struct SessionManager {
     /// The last request refused, and why: the client resends a request until
     /// it hears back, and each copy must not start another attempt.
     refused: Option<(PeerId, SessionStart, AckStatus)>,
+    /// When the key held on the host repeats next.
+    repeat_due: Option<Instant>,
 }
 
 pub fn send_control(endpoint: &Endpoint, peer: &Peer, msg: Control) {
@@ -340,13 +404,17 @@ impl SessionManager {
             clients,
             last_loss: LossReport::default(),
             refused: None,
+            repeat_due: None,
         }
     }
 
     pub fn run(mut self, rx: Receiver<SessionCmd>) {
         loop {
             let tick = if self.active.is_some() {
-                TICK
+                // A held key's next repeat, if sooner.
+                self.repeat_due
+                    .map_or(TICK, |t| t.saturating_duration_since(Instant::now()))
+                    .min(TICK)
             } else {
                 IDLE_TICK
             };
@@ -505,6 +573,7 @@ impl SessionManager {
         };
 
         let sink = self.platform.input_sink(&display, width, height);
+        let repeat = key_repeat(&sink, &req);
         *self.shared.input.lock() = Some(InputState {
             peer: peer.id(),
             gate: SequenceGate::new(),
@@ -512,6 +581,7 @@ impl SessionManager {
             sink,
             held: agent_access == Some(Access::View),
             last_injected: None,
+            repeat,
         });
         self.shared
             .agent_session
@@ -884,7 +954,7 @@ impl SessionManager {
         };
         if let Some(input) = self.shared.input.lock().as_mut() {
             if input.peer != owner || input.held != held {
-                let _ = input.sink.release_all();
+                input.release_all();
                 if input.peer != owner {
                     // The owner's gate goes aside, and the new owner's comes
                     // back, with what it has sent (and was dropped) so far.
@@ -927,7 +997,7 @@ impl SessionManager {
         let clip = self.shared.clip.lock().take();
         drop(clip);
         if let Some(mut input) = self.shared.input.lock().take() {
-            let _ = input.sink.release_all();
+            input.release_all();
             self.platform.input_done(&input.sink);
         }
         *self.status.lock() = None;
@@ -1017,10 +1087,13 @@ impl SessionManager {
             self.teardown(None);
             return;
         }
-        if quiet > INPUT_RELEASE_AFTER {
-            // Only what is held: a no-op once released.
-            if let Some(input) = self.shared.input.lock().as_mut() {
-                let _ = input.sink.release_all();
+        self.repeat_due = None;
+        if let Some(input) = self.shared.input.lock().as_mut() {
+            if quiet > INPUT_RELEASE_AFTER {
+                // Only what is held: a no-op once released.
+                input.release_all();
+            } else {
+                self.repeat_due = input.repeat_tick(Instant::now());
             }
         }
         let second = self.last_stats.elapsed() >= Duration::from_secs(1);
