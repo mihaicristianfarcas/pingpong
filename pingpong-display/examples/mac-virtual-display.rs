@@ -51,7 +51,7 @@ fn main() {
     }
     let t = Instant::now();
     let mut cap = loop {
-        match SckCapture::new(vd.id, w as u32, h as u32, hz, true) {
+        match SckCapture::new(vd.id, w as u32, h as u32, hz * 1000, true) {
             Ok(c) => break c,
             Err(e) if t.elapsed() < Duration::from_secs(5) => {
                 eprintln!("waiting: {e}");

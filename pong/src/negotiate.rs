@@ -9,7 +9,10 @@ use crate::config::HostConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Negotiated {
     pub codec: Codec,
-    pub fps: u32,
+    /// Frames a second, in millihertz: the client's display's own rate,
+    /// 59.94 included (Moonlight sends it as `clientRefreshRateX100`, and
+    /// Sunshine captures at it).
+    pub fps_mhz: u32,
     pub bitrate_kbps: u32,
     /// Even, as encoders want.
     pub width: u16,
@@ -24,9 +27,9 @@ pub fn negotiate(
 ) -> Result<Negotiated, AckStatus> {
     let codec = codec_for(req.codecs, supported, cfg.allow_hevc, cfg.allow_av1)
         .ok_or(AckStatus::NoCodec)?;
-    let mut fps = (req.refresh_mhz / 1000).clamp(10, 240);
+    let mut fps_mhz = req.refresh_mhz.clamp(10_000, 240_000);
     if cfg.max_fps > 0 {
-        fps = fps.min(cfg.max_fps);
+        fps_mhz = fps_mhz.min(cfg.max_fps.saturating_mul(1000));
     }
     let mut bitrate_kbps = req.bitrate_kbps.max(1000);
     if cfg.max_bitrate_kbps > 0 {
@@ -34,7 +37,7 @@ pub fn negotiate(
     }
     Ok(Negotiated {
         codec,
-        fps,
+        fps_mhz,
         bitrate_kbps,
         width: req.width & !1,
         height: req.height & !1,
@@ -115,9 +118,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            (n.codec, n.fps, n.bitrate_kbps, n.width, n.height),
-            (Codec::Hevc, 60, 50_000, 3024, 1890)
+            (n.codec, n.fps_mhz, n.bitrate_kbps, n.width, n.height),
+            (Codec::Hevc, 60_000, 50_000, 3024, 1890)
         );
+    }
+
+    #[test]
+    fn a_fractional_rate_is_kept_to_the_millihertz() {
+        let mut req = request(codec::HEVC, 1920, 1080, 60, 20_000);
+        req.refresh_mhz = 59_940;
+        let n = negotiate(&req, &HostConfig::default(), &[Codec::Hevc]).unwrap();
+        assert_eq!(n.fps_mhz, 59_940);
     }
 
     #[test]
@@ -129,14 +140,14 @@ mod tests {
             &[Codec::H264],
         )
         .unwrap();
-        assert_eq!((n.fps, n.bitrate_kbps), (10, 1000));
+        assert_eq!((n.fps_mhz, n.bitrate_kbps), (10_000, 1000));
         let n = negotiate(
             &request(codec::H264, 1280, 720, 1000, 10),
             &cfg,
             &[Codec::H264],
         )
         .unwrap();
-        assert_eq!(n.fps, 240);
+        assert_eq!(n.fps_mhz, 240_000);
         assert_eq!(
             negotiate(
                 &request(codec::AV1, 1280, 720, 60, 10),

@@ -230,12 +230,14 @@ pub struct Cadence {
 }
 
 impl Cadence {
-    pub fn new(fps: u32) -> Cadence {
-        let fps = fps.max(1);
-        let interval = Duration::from_nanos(1_000_000_000 / fps as u64);
+    /// For `fps_mhz` frames a second, in millihertz (59.94 Hz is 59_940).
+    pub fn new(fps_mhz: u32) -> Cadence {
+        let fps_mhz = fps_mhz.max(1000) as u64;
+        let interval = Duration::from_nanos(1_000_000_000_000 / fps_mhz);
+        let repeat_mhz = (fps_mhz / 5).max(10_000);
         Cadence {
             interval,
-            repeat_every: Duration::from_nanos(1_000_000_000 / (fps / 5).max(10) as u64),
+            repeat_every: Duration::from_nanos(1_000_000_000_000 / repeat_mhz),
             slack: interval / 8,
         }
     }
@@ -315,5 +317,32 @@ impl FrameOut {
                 Histogram::new("capture->encoded"),
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fractional_rate_paces_to_the_nanosecond() {
+        let c = Cadence::new(59_940);
+        assert_eq!(c.interval, Duration::from_nanos(16_683_350));
+        assert_eq!(
+            Cadence::new(120_000).interval,
+            Duration::from_nanos(8_333_333)
+        );
+    }
+
+    #[test]
+    fn a_still_desktop_repeats_at_a_fifth_of_the_rate_and_never_below_ten() {
+        assert_eq!(
+            Cadence::new(120_000).repeat_every,
+            Duration::from_nanos(41_666_666)
+        );
+        assert_eq!(
+            Cadence::new(30_000).repeat_every,
+            Duration::from_millis(100)
+        );
     }
 }

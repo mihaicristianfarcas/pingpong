@@ -318,7 +318,7 @@ impl VtEncoder {
             Codec::Hevc => unsafe { kVTProfileLevel_HEVC_Main_AutoLevel },
             _ => unsafe { kVTProfileLevel_H264_High_AutoLevel },
         };
-        let fps = CFNumber::new_i32(c.fps as i32);
+        let fps = CFNumber::new_f64(c.fps_mhz as f64 / 1000.0);
         // A keyframe only when the client asks: set the interval out of reach.
         let never = CFNumber::new_i32(i32::MAX);
         let zero_delay = CFNumber::new_i32(0);
@@ -560,8 +560,8 @@ impl VtEncoder {
 
     fn pts(&self, index: u64) -> CMTime {
         CMTime {
-            value: index as i64,
-            timescale: self.config.fps.max(1) as i32,
+            value: index as i64 * 1000,
+            timescale: self.config.fps_mhz.max(1) as i32,
             flags: CMTimeFlags::Valid,
             epoch: 0,
         }

@@ -556,7 +556,7 @@ impl NetLoop {
                 codec = codec.name(),
                 width = ack.width,
                 height = ack.height,
-                fps = ack.refresh_mhz / 1000,
+                fps = ack.refresh_mhz as f64 / 1000.0,
                 mbps = ack.bitrate_kbps / 1000,
                 "session started"
             );
@@ -916,7 +916,7 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
     SessionStart {
         width: settings.width & !1,
         height: settings.height & !1,
-        refresh_mhz: settings.fps * 1000,
+        refresh_mhz: exact_rate(settings.fps, display_refresh_mhz()),
         bitrate_kbps: settings.bitrate_kbps,
         codecs: settings.codecs,
         audio_channels: settings.audio_channels,
@@ -926,6 +926,35 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
         app: settings.app,
         repeat_delay_ms,
         repeat_interval_ms,
+    }
+}
+
+/// This computer's display refresh, to the millihertz, where the platform
+/// says.
+fn display_refresh_mhz() -> Option<u32> {
+    #[cfg(target_os = "macos")]
+    {
+        crate::mac::display_refresh_mhz()
+    }
+    #[cfg(windows)]
+    {
+        crate::win::display_refresh_mhz()
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        None
+    }
+}
+
+/// The frame rate to ask for: the display's own when `fps` is it, rounded
+/// (59.94 Hz for "60"), so the stream neither drops nor repeats a frame
+/// every few seconds against the display's refresh. Within 1%, as Sunshine
+/// takes Moonlight's `clientRefreshRateX100` (`rtsp.cpp`).
+fn exact_rate(fps: u32, display_mhz: Option<u32>) -> u32 {
+    let asked = fps.saturating_mul(1000);
+    match display_mhz {
+        Some(d) if d.abs_diff(asked) as u64 * 100 <= asked as u64 => d,
+        _ => asked,
     }
 }
 
@@ -1025,5 +1054,20 @@ fn request(ctx: &Ctx, r: Request) {
             tracing::debug!(first, last, "requesting reference invalidation");
             send_control(ctx, Control::InvalidateRefs { first, last });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_display_rate_replaces_a_rounded_one() {
+        assert_eq!(exact_rate(60, Some(59_940)), 59_940);
+        assert_eq!(exact_rate(120, Some(119_880)), 119_880);
+        assert_eq!(exact_rate(144, Some(143_981)), 143_981);
+        // A rate the user chose below the display's is theirs.
+        assert_eq!(exact_rate(60, Some(120_000)), 60_000);
+        assert_eq!(exact_rate(60, None), 60_000);
     }
 }

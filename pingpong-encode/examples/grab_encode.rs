@@ -56,7 +56,7 @@ fn main() {
         codec,
         width: w,
         height: h,
-        fps,
+        fps_mhz: fps * 1000,
         bitrate_bps: mbps * 1_000_000,
         preset: 1,
         two_pass: true,

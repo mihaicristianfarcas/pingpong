@@ -106,8 +106,8 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
         interval,
         repeat_every,
         slack,
-    } = Cadence::new(params.encoder.fps);
-    let mut out = FrameOut::new(frames, stats.clone(), params.encoder.fps);
+    } = Cadence::new(params.encoder.fps_mhz);
+    let mut out = FrameOut::new(frames, stats.clone(), params.encoder.fps());
 
     let mut index: u64 = 0;
     let mut force_idr = true;

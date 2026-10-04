@@ -29,6 +29,16 @@ use window::{Handler, Window};
 
 pub use window::{clipboard_text, toggle_fullscreen, ScreenInfo};
 
+/// The main display's refresh rate to the millihertz (59.94 Hz external
+/// panels are common), when macOS knows it: some built-in panels say 0.
+/// Any thread.
+pub fn display_refresh_mhz() -> Option<u32> {
+    use objc2_core_graphics::{CGDisplayCopyDisplayMode, CGDisplayMode, CGMainDisplayID};
+    let mode = CGDisplayCopyDisplayMode(CGMainDisplayID())?;
+    let hz = CGDisplayMode::refresh_rate(Some(&mode));
+    (hz > 1.0).then(|| (hz * 1000.0).round() as u32)
+}
+
 struct SendLayer(Retained<CAMetalLayer>);
 // SAFETY: CAMetalLayer is documented as usable from a rendering thread; the
 // render thread is the only one that draws into it.

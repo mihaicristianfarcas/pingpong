@@ -505,7 +505,7 @@ impl SessionManager {
 
         let crate::negotiate::Negotiated {
             codec,
-            fps,
+            fps_mhz,
             bitrate_kbps,
             width,
             height,
@@ -520,7 +520,7 @@ impl SessionManager {
             client = peer.public().short_id(),
             width,
             height,
-            fps,
+            fps = fps_mhz as f64 / 1000.0,
             bitrate_kbps,
             codec = codec.name(),
             "starting session"
@@ -536,7 +536,10 @@ impl SessionManager {
             &peer,
             Control::Progress(control::progress::DISPLAY),
         );
-        let display = match self.platform.display(width, height, fps, &req, keep, &cfg) {
+        let display = match self
+            .platform
+            .display(width, height, fps_mhz, &req, keep, &cfg)
+        {
             Ok(d) => d,
             Err(status) => {
                 self.refuse(&peer, &req, status);
@@ -548,7 +551,7 @@ impl SessionManager {
             codec,
             width: width as u32,
             height: height as u32,
-            fps,
+            fps_mhz,
             bitrate_bps: bitrate_kbps.saturating_mul(1000),
             preset: cfg.nvenc_preset,
             two_pass: false,
@@ -628,7 +631,7 @@ impl SessionManager {
             codec: codec_bit(codec),
             width,
             height,
-            refresh_mhz: fps * 1000,
+            refresh_mhz: fps_mhz,
             bitrate_kbps,
             audio_channels: channels,
             nonce: req.nonce,
@@ -1165,7 +1168,7 @@ impl SessionManager {
                 .to_string(),
             width: a.ack.width,
             height: a.ack.height,
-            fps: a.ack.refresh_mhz / 1000,
+            fps: (a.ack.refresh_mhz + 500) / 1000,
             codec: codec_name(a.ack.codec).to_string(),
             bitrate_kbps: a.bitrate.current_kbps(),
             started_unix: std::time::SystemTime::now()

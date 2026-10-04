@@ -96,13 +96,14 @@ impl SckCapture {
         CGMainDisplayID()
     }
 
-    /// Capture `display_id` scaled to `width`x`height`, at most `fps` frames a
-    /// second. `cursor`: draw the pointer into the image.
+    /// Capture `display_id` scaled to `width`x`height`, at most `fps_mhz`
+    /// thousandths of a frame a second. `cursor`: draw the pointer into the
+    /// image.
     pub fn new(
         display_id: u32,
         width: u32,
         height: u32,
-        fps: u32,
+        fps_mhz: u32,
         cursor: bool,
     ) -> Result<SckCapture, CaptureError> {
         let display = find_display(display_id)?;
@@ -111,8 +112,8 @@ impl SckCapture {
             config.setWidth(width as usize);
             config.setHeight(height as usize);
             config.setMinimumFrameInterval(CMTime {
-                value: 1,
-                timescale: fps.max(1) as i32,
+                value: 1000,
+                timescale: fps_mhz.max(1000) as i32,
                 flags: CMTimeFlags::Valid,
                 epoch: 0,
             });

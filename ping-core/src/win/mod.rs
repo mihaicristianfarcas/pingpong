@@ -392,6 +392,77 @@ impl Drop for Session {
     }
 }
 
+/// The refresh rate of the monitor the pointer is on, to the millihertz
+/// (DisplayConfig's rational rate: `EnumDisplaySettings` says 59 for
+/// 59.94).
+pub fn display_refresh_mhz() -> Option<u32> {
+    use windows::Win32::Devices::Display::{
+        DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig,
+        DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_HEADER,
+        DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_SOURCE_DEVICE_NAME,
+        QDC_ONLY_ACTIVE_PATHS,
+    };
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTOPRIMARY,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    // SAFETY: plain Win32 queries into buffers sized as asked, and structures
+    // with their sizes set.
+    unsafe {
+        let mut p = POINT::default();
+        let _ = GetCursorPos(&mut p);
+        let monitor = MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY);
+        let mut info = MONITORINFOEXW {
+            monitorInfo: MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFOEXW>() as u32,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(monitor, &mut info as *mut _ as *mut MONITORINFO).as_bool() {
+            return None;
+        }
+        let (mut n_paths, mut n_modes) = (0u32, 0u32);
+        GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut n_paths, &mut n_modes)
+            .ok()
+            .ok()?;
+        let mut paths = vec![DISPLAYCONFIG_PATH_INFO::default(); n_paths as usize];
+        let mut modes = vec![DISPLAYCONFIG_MODE_INFO::default(); n_modes as usize];
+        QueryDisplayConfig(
+            QDC_ONLY_ACTIVE_PATHS,
+            &mut n_paths,
+            paths.as_mut_ptr(),
+            &mut n_modes,
+            modes.as_mut_ptr(),
+            None,
+        )
+        .ok()
+        .ok()?;
+        paths.truncate(n_paths as usize);
+        paths.iter().find_map(|path| {
+            let mut name = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
+                header: DISPLAYCONFIG_DEVICE_INFO_HEADER {
+                    r#type: DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
+                    size: std::mem::size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32,
+                    adapterId: path.sourceInfo.adapterId,
+                    id: path.sourceInfo.id,
+                },
+                ..Default::default()
+            };
+            if DisplayConfigGetDeviceInfo(&mut name.header) != 0
+                || name.viewGdiDeviceName != info.szDevice
+            {
+                return None;
+            }
+            let rate = path.targetInfo.refreshRate;
+            (rate.Denominator != 0 && rate.Numerator != 0).then(|| {
+                (rate.Numerator as u64 * 1000 / rate.Denominator as u64).min(u32::MAX as u64) as u32
+            })
+        })
+    }
+}
+
 /// The display a stream would fill: the monitor the pointer is on, at its
 /// current mode (Moonlight's "native" resolution and its refresh rate).
 pub fn native_mode() -> NativeMode {

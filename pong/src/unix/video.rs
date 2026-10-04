@@ -96,8 +96,8 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
         interval,
         repeat_every,
         slack,
-    } = Cadence::new(e.fps);
-    let mut out = FrameOut::new(frames, stats.clone(), e.fps);
+    } = Cadence::new(e.fps_mhz);
+    let mut out = FrameOut::new(frames, stats.clone(), e.fps());
 
     let mut index: u64 = 0;
     // Frame ids on the wire count only frames sent: one the encoder dropped
