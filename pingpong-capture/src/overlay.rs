@@ -8,6 +8,10 @@
 //! makes the XOR exact: D3D11 has no XOR blend for a BGRA target (logic ops
 //! want an integer format), where Apollo approximates it with an inverting
 //! blend (`display_vram.cpp`).
+//!
+//! On an HDR desktop (FP16 scRGB, linear) the shape's sRGB colours are made
+//! linear and put at the desktop's SDR white; XOR, meaningless on light
+//! levels, inverts against that white instead.
 
 use windows::core::{s, PCSTR};
 use windows::Win32::Graphics::Direct3D::Fxc::{D3DCompile, D3DCOMPILE_OPTIMIZATION_LEVEL3};
@@ -27,6 +31,8 @@ const SHADERS: &str = r#"
 cbuffer Place : register(b0) {
     int2 origin; // the shape's top-left on the desktop
     int2 size;   // the shape's size; its XOR layer starts size.y rows down
+    float sdr_scale; // HDR: SDR white over 80 cd/m2
+    float3 pad;
 };
 Texture2D<float4> desktop : register(t0);
 Texture2D<float4> shape : register(t1);
@@ -47,6 +53,19 @@ float4 ps_main(float4 pos : SV_Position) : SV_Target {
     uint3 rgb = uint3(round(saturate(mixed) * 255.0)) ^ x;
     return float4(float3(rgb) / 255.0, 1.0);
 }
+
+float4 ps_hdr(float4 pos : SV_Position) : SV_Target {
+    int2 p = int2(pos.xy);
+    int2 c = p - origin;
+    float4 screen = desktop.Load(int3(p, 0));
+    float4 blend = shape.Load(int3(c, 0));
+    float3 x = shape.Load(int3(c.x, c.y + size.y, 0)).rgb;
+    float3 e = blend.rgb;
+    float3 lin = (e <= 0.04045 ? e / 12.92 : pow((e + 0.055) / 1.055, 2.4)) * sdr_scale;
+    float3 mixed = lerp(screen.rgb, lin, blend.a);
+    float3 inverted = max(sdr_scale - mixed, 0.0);
+    return float4(x > 0.5 ? inverted : mixed, 1.0);
+}
 "#;
 
 /// The constant buffer `Place`.
@@ -55,6 +74,8 @@ float4 ps_main(float4 pos : SV_Position) : SV_Target {
 struct Place {
     origin: [i32; 2],
     size: [i32; 2],
+    sdr_scale: f32,
+    pad: [f32; 3],
 }
 
 fn d3d(what: &'static str) -> impl Fn(windows::core::Error) -> CaptureError {
@@ -112,6 +133,7 @@ pub struct PointerOverlay {
     context: ID3D11DeviceContext,
     vs: ID3D11VertexShader,
     ps: ID3D11PixelShader,
+    ps_hdr: ID3D11PixelShader,
     place: ID3D11Buffer,
     shape: Option<Shape>,
 }
@@ -123,7 +145,8 @@ impl PointerOverlay {
     ) -> Result<PointerOverlay, CaptureError> {
         let vs_blob = compile("vs_main", "vs_5_0")?;
         let ps_blob = compile("ps_main", "ps_5_0")?;
-        let (mut vs, mut ps, mut place) = (None, None, None);
+        let ps_hdr_blob = compile("ps_hdr", "ps_5_0")?;
+        let (mut vs, mut ps, mut ps_hdr, mut place) = (None, None, None, None);
         let desc = D3D11_BUFFER_DESC {
             ByteWidth: std::mem::size_of::<Place>() as u32,
             Usage: D3D11_USAGE_DEFAULT,
@@ -140,6 +163,9 @@ impl PointerOverlay {
                 .CreatePixelShader(blob_bytes(&ps_blob), None, Some(&mut ps))
                 .map_err(d3d("CreatePixelShader(pointer)"))?;
             device
+                .CreatePixelShader(blob_bytes(&ps_hdr_blob), None, Some(&mut ps_hdr))
+                .map_err(d3d("CreatePixelShader(pointer, HDR)"))?;
+            device
                 .CreateBuffer(&desc, None, Some(&mut place))
                 .map_err(d3d("CreateBuffer(pointer)"))?;
         }
@@ -149,6 +175,7 @@ impl PointerOverlay {
             context: context.clone(),
             vs: vs.ok_or_else(made)?,
             ps: ps.ok_or_else(made)?,
+            ps_hdr: ps_hdr.ok_or_else(made)?,
             place: place.ok_or_else(made)?,
             shape: None,
         })
@@ -201,17 +228,22 @@ impl PointerOverlay {
 
     /// Draw the pointer with its top-left at (`x`, `y`) into `target`, a
     /// copy of the desktop `desktop` shows. Off the edges is clipped.
+    /// `hdr`: the desktop is FP16 scRGB, with SDR white this many times 80
+    /// cd/m².
     pub fn draw(
         &self,
         desktop: &ID3D11ShaderResourceView,
         target: &ID3D11RenderTargetView,
         x: i32,
         y: i32,
+        hdr: Option<f32>,
     ) {
         let Some(shape) = &self.shape else { return };
         let place = Place {
             origin: [x, y],
             size: [shape.width as i32, shape.height as i32],
+            sdr_scale: hdr.unwrap_or(1.0),
+            pad: [0.0; 3],
         };
         // The viewport may hang off the target's edges: the rasterizer clips
         // to the target.
@@ -226,7 +258,7 @@ impl PointerOverlay {
         let ctx = &self.context;
         // SAFETY: every resource bound here is owned by this overlay or the
         // capture, on the device this context belongs to; `place` is a
-        // 16-byte value matching the buffer's size.
+        // 32-byte value matching the buffer's size.
         unsafe {
             ctx.UpdateSubresource(
                 &self.place,
@@ -239,7 +271,14 @@ impl PointerOverlay {
             ctx.IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             ctx.IASetInputLayout(None);
             ctx.VSSetShader(&self.vs, None);
-            ctx.PSSetShader(&self.ps, None);
+            ctx.PSSetShader(
+                if hdr.is_some() {
+                    &self.ps_hdr
+                } else {
+                    &self.ps
+                },
+                None,
+            );
             ctx.PSSetConstantBuffers(0, Some(&[Some(self.place.clone())]));
             ctx.PSSetShaderResources(0, Some(&[Some(desktop.clone()), Some(shape.view.clone())]));
             ctx.OMSetRenderTargets(Some(&[Some(target.clone())]), None);
@@ -249,5 +288,30 @@ impl PointerOverlay {
             ctx.OMSetRenderTargets(None, None);
             ctx.PSSetShaderResources(0, Some(&[None, None]));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// D3DCompile needs no GPU: a shader that does not compile fails here
+    /// rather than at a session's start.
+    #[test]
+    fn every_shader_compiles() {
+        for (entry, target) in [
+            ("vs_main", "vs_5_0"),
+            ("ps_main", "ps_5_0"),
+            ("ps_hdr", "ps_5_0"),
+        ] {
+            if let Err(e) = compile(entry, target) {
+                panic!("{entry}: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_place_is_two_shader_registers() {
+        assert_eq!(std::mem::size_of::<Place>(), 32);
     }
 }

@@ -16,7 +16,10 @@
 //!   one the client still has (reference-frame invalidation), which recovers
 //!   with a P-frame instead of an IDR.
 //! - A VUI colour description matching `convert.rs`: BT.709, limited range,
-//!   chroma sited left.
+//!   chroma sited left; for HDR, BT.2020 primaries and matrix and the PQ
+//!   curve (HEVC Main10, AV1 10-bit, from P010), as Sunshine sends HDR.
+//! - 4:4:4 from a packed AYUV texture (`chromaFormatIDC` 3), as Sunshine's
+//!   D3D11 path feeds it; 10-bit 4:4:4 is not possible from D3D11.
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
@@ -111,8 +114,23 @@ fn guid_eq(a: &GUID, b: &GUID) -> bool {
     a.Data1 == b.Data1 && a.Data2 == b.Data2 && a.Data3 == b.Data3 && a.Data4 == b.Data4
 }
 
+/// What this GPU's encoder can do with a codec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodecCaps {
+    pub codec: Codec,
+    /// 10-bit (Main10 for HEVC): HDR.
+    pub ten_bit: bool,
+    pub yuv444: bool,
+}
+
 /// Which codecs this GPU can encode. Opens and closes a throwaway session.
 pub fn supported_codecs(device: &ID3D11Device) -> Result<Vec<Codec>, EncodeError> {
+    Ok(capabilities(device)?.into_iter().map(|c| c.codec).collect())
+}
+
+/// Which codecs this GPU can encode, and how. Opens and closes a throwaway
+/// session.
+pub fn capabilities(device: &ID3D11Device) -> Result<Vec<CodecCaps>, EncodeError> {
     let api = api()?;
     let enc = open_session(api, device)?;
     let result = (|| {
@@ -138,10 +156,50 @@ pub fn supported_codecs(device: &ID3D11Device) -> Result<Vec<Codec>, EncodeError
         Ok([Codec::H264, Codec::Hevc, Codec::Av1]
             .into_iter()
             .filter(|c| guids.iter().any(|g| guid_eq(g, &codec_guid(*c))))
+            .map(|codec| CodecCaps {
+                codec,
+                ten_bit: codec != Codec::H264
+                    && cap_of(
+                        api,
+                        enc,
+                        codec,
+                        NV_ENC_CAPS::NV_ENC_CAPS_SUPPORT_10BIT_ENCODE,
+                    ) != 0,
+                yuv444: cap_of(
+                    api,
+                    enc,
+                    codec,
+                    NV_ENC_CAPS::NV_ENC_CAPS_SUPPORT_YUV444_ENCODE,
+                ) != 0,
+            })
             .collect())
     })();
     let _ = call!(api, nvEncDestroyEncoder(enc));
     result
+}
+
+fn cap_of(
+    api: &NV_ENCODE_API_FUNCTION_LIST,
+    enc: *mut c_void,
+    codec: Codec,
+    cap: NV_ENC_CAPS,
+) -> i32 {
+    let mut param = NV_ENC_CAPS_PARAM {
+        version: NV_ENC_CAPS_PARAM_VER,
+        capsToQuery: cap,
+        ..Default::default()
+    };
+    let mut value = 0i32;
+    let Some(f) = api.nvEncGetEncodeCaps else {
+        return 0;
+    };
+    // SAFETY: a live session; the out-pointers are locals.
+    let status = unsafe { f(enc, codec_guid(codec), &mut param, &mut value) };
+    if status == NVENCSTATUS::NV_ENC_SUCCESS {
+        value
+    } else {
+        0
+    }
 }
 
 fn open_session(
@@ -245,27 +303,16 @@ impl NvencEncoder {
     }
 
     fn cap(&self, cap: NV_ENC_CAPS) -> i32 {
-        let mut param = NV_ENC_CAPS_PARAM {
-            version: NV_ENC_CAPS_PARAM_VER,
-            capsToQuery: cap,
-            ..Default::default()
-        };
-        let mut value = 0i32;
-        let Some(f) = self.api.nvEncGetEncodeCaps else {
-            return 0;
-        };
-        let status = unsafe {
-            f(
-                self.enc,
-                codec_guid(self.settings.codec),
-                &mut param,
-                &mut value,
-            )
-        };
-        if status == NVENCSTATUS::NV_ENC_SUCCESS {
-            value
-        } else {
-            0
+        cap_of(self.api, self.enc, self.settings.codec, cap)
+    }
+
+    /// The input texture's format: P010 for HDR, packed AYUV for 4:4:4,
+    /// else NV12 (what `convert::Output::for_stream` writes).
+    fn buffer_format(&self) -> NV_ENC_BUFFER_FORMAT {
+        match (self.settings.hdr, self.settings.yuv444) {
+            (true, _) => NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV420_10BIT,
+            (false, true) => NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_AYUV,
+            (false, false) => NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_NV12,
         }
     }
 
@@ -282,6 +329,23 @@ impl NvencEncoder {
                 s.codec.name()
             )));
         }
+        if s.hdr
+            && (s.codec == Codec::H264
+                || self.cap(NV_ENC_CAPS::NV_ENC_CAPS_SUPPORT_10BIT_ENCODE) == 0)
+        {
+            return Err(EncodeError::Unsupported(format!(
+                "10-bit {} encoding on this GPU",
+                s.codec.name()
+            )));
+        }
+        if s.yuv444 && self.cap(NV_ENC_CAPS::NV_ENC_CAPS_SUPPORT_YUV444_ENCODE) == 0 {
+            return Err(EncodeError::Unsupported(format!(
+                "4:4:4 {} encoding on this GPU",
+                s.codec.name()
+            )));
+        }
+        // Packed AYUV is 8-bit only: 10-bit 4:4:4 would need CUDA.
+        let yuv444 = s.yuv444 && !s.hdr;
 
         let mut preset_config = NV_ENC_PRESET_CONFIG {
             version: NV_ENC_PRESET_CONFIG_VER,
@@ -340,8 +404,15 @@ impl NvencEncoder {
         unsafe {
             match s.codec {
                 Codec::H264 => {
-                    cfg.profileGUID = NV_ENC_H264_PROFILE_HIGH_GUID;
+                    cfg.profileGUID = if yuv444 {
+                        NV_ENC_H264_PROFILE_HIGH_444_GUID
+                    } else {
+                        NV_ENC_H264_PROFILE_HIGH_GUID
+                    };
                     let h = &mut cfg.encodeCodecConfig.h264Config;
+                    if yuv444 {
+                        h.chromaFormatIDC = 3;
+                    }
                     h.set_repeatSPSPPS(1);
                     h.idrPeriod = NVENC_INFINITE_GOPLENGTH;
                     h.sliceMode = 3;
@@ -350,7 +421,7 @@ impl NvencEncoder {
                         NV_ENC_H264_ENTROPY_CODING_MODE::NV_ENC_H264_ENTROPY_CODING_MODE_CABAC;
                     h.maxNumRefFrames = dpb;
                     h.numRefL0 = NV_ENC_NUM_REF_FRAMES::NV_ENC_NUM_REF_FRAMES_1;
-                    fill_vui(&mut h.h264VUIParameters);
+                    fill_vui(&mut h.h264VUIParameters, false, yuv444);
                 }
                 Codec::Hevc => {
                     let h = &mut cfg.encodeCodecConfig.hevcConfig;
@@ -360,18 +431,31 @@ impl NvencEncoder {
                     h.sliceModeData = slices;
                     h.maxNumRefFramesInDPB = dpb;
                     h.numRefL0 = NV_ENC_NUM_REF_FRAMES::NV_ENC_NUM_REF_FRAMES_1;
-                    fill_vui(&mut h.hevcVUIParameters);
+                    if yuv444 {
+                        h.set_chromaFormatIDC(3);
+                    }
+                    if s.hdr {
+                        h.set_pixelBitDepthMinus8(2);
+                    }
+                    fill_vui(&mut h.hevcVUIParameters, s.hdr, yuv444);
                 }
                 Codec::Av1 => {
                     let a = &mut cfg.encodeCodecConfig.av1Config;
                     a.set_repeatSeqHdr(1);
                     a.idrPeriod = NVENC_INFINITE_GOPLENGTH;
-                    a.colorPrimaries = NV_ENC_VUI_COLOR_PRIMARIES::NV_ENC_VUI_COLOR_PRIMARIES_BT709;
-                    a.transferCharacteristics =
-                        NV_ENC_VUI_TRANSFER_CHARACTERISTIC::NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709;
-                    a.matrixCoefficients = NV_ENC_VUI_MATRIX_COEFFS::NV_ENC_VUI_MATRIX_COEFFS_BT709;
+                    let (primaries, transfer, matrix) = colour(s.hdr);
+                    a.colorPrimaries = primaries;
+                    a.transferCharacteristics = transfer;
+                    a.matrixCoefficients = matrix;
                     a.colorRange = 0;
-                    a.chromaSamplePosition = 1;
+                    a.chromaSamplePosition = if yuv444 { 0 } else { 1 };
+                    if yuv444 {
+                        a.set_chromaFormatIDC(3);
+                    }
+                    if s.hdr {
+                        a.set_inputPixelBitDepthMinus8(2);
+                        a.set_pixelBitDepthMinus8(2);
+                    }
                     a.maxNumRefFramesInDPB = if multi_ref { 8 } else { 1 };
                     a.numFwdRefs = NV_ENC_NUM_REF_FRAMES::NV_ENC_NUM_REF_FRAMES_1;
                 }
@@ -427,7 +511,7 @@ impl NvencEncoder {
             pitch: 0,
             subResourceIndex: 0,
             resourceToRegister: input.as_raw(),
-            bufferFormat: NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_NV12,
+            bufferFormat: self.buffer_format(),
             bufferUsage: NV_ENC_BUFFER_USAGE::NV_ENC_INPUT_IMAGE,
             ..Default::default()
         };
@@ -435,7 +519,7 @@ impl NvencEncoder {
             api,
             enc,
             call!(api, nvEncRegisterResource(enc, &mut reg)),
-            "nvEncRegisterResource(NV12)",
+            "nvEncRegisterResource",
         )?;
         self.registered = reg.registeredResource;
 
@@ -447,6 +531,8 @@ impl NvencEncoder {
             bitrate_mbps = s.bitrate_bps as f64 / 1e6,
             preset = s.preset.max(1),
             two_pass = s.two_pass,
+            hdr = s.hdr,
+            yuv444,
             slices,
             rfi = self.rfi,
             dpb,
@@ -644,17 +730,41 @@ fn supported_on(
     Ok(guids)
 }
 
-fn fill_vui(vui: &mut NV_ENC_CONFIG_H264_VUI_PARAMETERS) {
+/// The colour description: BT.709 for SDR; BT.2020 and PQ for HDR.
+fn colour(
+    hdr: bool,
+) -> (
+    NV_ENC_VUI_COLOR_PRIMARIES,
+    NV_ENC_VUI_TRANSFER_CHARACTERISTIC,
+    NV_ENC_VUI_MATRIX_COEFFS,
+) {
+    if hdr {
+        (
+            NV_ENC_VUI_COLOR_PRIMARIES::NV_ENC_VUI_COLOR_PRIMARIES_BT2020,
+            NV_ENC_VUI_TRANSFER_CHARACTERISTIC::NV_ENC_VUI_TRANSFER_CHARACTERISTIC_SMPTE2084,
+            NV_ENC_VUI_MATRIX_COEFFS::NV_ENC_VUI_MATRIX_COEFFS_BT2020_NCL,
+        )
+    } else {
+        (
+            NV_ENC_VUI_COLOR_PRIMARIES::NV_ENC_VUI_COLOR_PRIMARIES_BT709,
+            NV_ENC_VUI_TRANSFER_CHARACTERISTIC::NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709,
+            NV_ENC_VUI_MATRIX_COEFFS::NV_ENC_VUI_MATRIX_COEFFS_BT709,
+        )
+    }
+}
+
+fn fill_vui(vui: &mut NV_ENC_CONFIG_H264_VUI_PARAMETERS, hdr: bool, yuv444: bool) {
+    let (primaries, transfer, matrix) = colour(hdr);
     vui.videoSignalTypePresentFlag = 1;
     vui.videoFormat = NV_ENC_VUI_VIDEO_FORMAT::NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED;
     vui.videoFullRangeFlag = 0;
     vui.colourDescriptionPresentFlag = 1;
-    vui.colourPrimaries = NV_ENC_VUI_COLOR_PRIMARIES::NV_ENC_VUI_COLOR_PRIMARIES_BT709;
-    vui.transferCharacteristics =
-        NV_ENC_VUI_TRANSFER_CHARACTERISTIC::NV_ENC_VUI_TRANSFER_CHARACTERISTIC_BT709;
-    vui.colourMatrix = NV_ENC_VUI_MATRIX_COEFFS::NV_ENC_VUI_MATRIX_COEFFS_BT709;
-    // Chroma sample location type 0 (left), matching the converter.
-    vui.chromaSampleLocationFlag = 1;
+    vui.colourPrimaries = primaries;
+    vui.transferCharacteristics = transfer;
+    vui.colourMatrix = matrix;
+    // Chroma sample location type 0 (left), matching the converter; none
+    // to say at 4:4:4.
+    vui.chromaSampleLocationFlag = if yuv444 { 0 } else { 1 };
     vui.chromaSampleLocationTop = 0;
     vui.chromaSampleLocationBot = 0;
 }

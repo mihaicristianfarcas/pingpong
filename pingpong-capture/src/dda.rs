@@ -6,6 +6,11 @@
 //! pointer's next move, and the picture the encoder reads, the desktop with
 //! the pointer on it. A pointer that moves over a still desktop makes a new
 //! picture; one that is hidden makes none.
+//!
+//! For an HDR session the duplication asks for FP16 first, as Sunshine does
+//! (`display_base.cpp`): an HDR desktop then comes as scRGB (linear BT.709,
+//! 1.0 = 80 cd/m²), and the converter takes it to PQ. An SDR desktop still
+//! comes as BGRA.
 
 use windows::core::Interface;
 use windows::Win32::Foundation::{E_ACCESSDENIED, GENERIC_ALL};
@@ -13,7 +18,9 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11RenderTargetView, ID3D11ShaderResourceView, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET,
     D3D11_BIND_SHADER_RESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
 };
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_SAMPLE_DESC,
+};
 use windows::Win32::Graphics::Dxgi::{
     IDXGIOutput1, IDXGIOutput5, IDXGIOutputDuplication, IDXGIResource, DXGI_ERROR_ACCESS_LOST,
     DXGI_ERROR_INVALID_CALL, DXGI_ERROR_WAIT_TIMEOUT, DXGI_OUTDUPL_FRAME_INFO,
@@ -82,6 +89,12 @@ pub struct DdaCapture {
     overlay_failed: bool,
     /// Where `GetFramePointerShape` writes, kept between shapes.
     shape_buffer: Vec<u8>,
+    /// Duplicate in FP16 where the desktop is HDR.
+    hdr: bool,
+    /// SDR white over 80 cd/m²: the pointer's white on an HDR desktop.
+    sdr_scale: f32,
+    /// The surfaces' format: the duplicated frames'.
+    format: DXGI_FORMAT,
 }
 
 impl DdaCapture {
@@ -99,7 +112,18 @@ impl DdaCapture {
             overlay: None,
             overlay_failed: false,
             shape_buffer: Vec::new(),
+            hdr: false,
+            sdr_scale: 1.0,
+            format: DXGI_FORMAT_B8G8R8A8_UNORM,
         }
+    }
+
+    /// Capture an HDR desktop as it is (FP16 scRGB), its SDR white at
+    /// `sdr_white_nits`. Before the first `grab`.
+    pub fn set_hdr(&mut self, hdr: bool, sdr_white_nits: u16) {
+        self.hdr = hdr;
+        self.sdr_scale = sdr_white_nits.max(1) as f32 / 80.0;
+        self.reset();
     }
 
     pub fn gpu(&self) -> &Gpu {
@@ -124,7 +148,15 @@ impl DdaCapture {
         // declares that, and the plain call is kept as a fallback.
         let v1 = match output.cast::<IDXGIOutput5>() {
             Ok(o5) => unsafe {
-                o5.DuplicateOutput1(&self.gpu.device, 0, &[DXGI_FORMAT_B8G8R8A8_UNORM])
+                if self.hdr {
+                    o5.DuplicateOutput1(
+                        &self.gpu.device,
+                        0,
+                        &[DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM],
+                    )
+                } else {
+                    o5.DuplicateOutput1(&self.gpu.device, 0, &[DXGI_FORMAT_B8G8R8A8_UNORM])
+                }
             },
             Err(e) => Err(e),
         };
@@ -146,6 +178,7 @@ impl DdaCapture {
                     height = desc.ModeDesc.Height,
                     refresh = desc.ModeDesc.RefreshRate.Numerator as f64
                         / desc.ModeDesc.RefreshRate.Denominator.max(1) as f64,
+                    format = desc.ModeDesc.Format.0,
                     "desktop duplication started"
                 );
                 self.dup = Some(dup);
@@ -249,11 +282,17 @@ impl DdaCapture {
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         // SAFETY: writes one descriptor we own.
         unsafe { frame.GetDesc(&mut desc) };
-        if self.desktop.is_none() || desc.Width != self.width || desc.Height != self.height {
+        if self.desktop.is_none()
+            || desc.Width != self.width
+            || desc.Height != self.height
+            || desc.Format != self.format
+        {
+            self.format = desc.Format;
             self.create_surfaces(desc.Width, desc.Height)?;
         }
         let (desktop, _) = self.desktop.as_ref().expect("created above");
-        // SAFETY: both textures are BGRA of the same size on this device.
+        // SAFETY: both textures are of the same format and size, on this
+        // device.
         unsafe { self.gpu.context.CopyResource(desktop, &frame) };
         Ok(())
     }
@@ -345,10 +384,12 @@ impl DdaCapture {
         else {
             return;
         };
-        // SAFETY: both textures are BGRA of the same size on this device.
+        // SAFETY: both textures are of the same format and size, on this
+        // device.
         unsafe { self.gpu.context.CopyResource(picture, desktop) };
         if let (true, Some(overlay)) = (self.pointer.visible, &self.overlay) {
-            overlay.draw(desktop_view, target, self.pointer.x, self.pointer.y);
+            let hdr = (self.format == DXGI_FORMAT_R16G16B16A16_FLOAT).then_some(self.sdr_scale);
+            overlay.draw(desktop_view, target, self.pointer.x, self.pointer.y, hdr);
         }
     }
 
@@ -400,7 +441,7 @@ impl DdaCapture {
             Height: height,
             MipLevels: 1,
             ArraySize: 1,
-            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            Format: self.format,
             SampleDesc: DXGI_SAMPLE_DESC {
                 Count: 1,
                 Quality: 0,
