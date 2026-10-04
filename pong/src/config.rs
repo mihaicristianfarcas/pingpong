@@ -87,6 +87,11 @@ pub struct HostConfig {
     /// Allow HEVC / AV1 when the client supports them.
     pub allow_hevc: bool,
     pub allow_av1: bool,
+    /// Stream HDR to a client that asks, where the encoder can (Sunshine's
+    /// HDR, which Moonlight asks for).
+    pub allow_hdr: bool,
+    /// Stream 4:4:4 to a client that asks, where the encoder can.
+    pub allow_yuv444: bool,
     /// Ceiling on the video send rate, Mbit/s. Frames go out in 1 ms groups
     /// under this rate instead of as one burst (Apollo uses ~80% of 1 Gbit/s).
     pub pace_mbps: u32,
@@ -131,6 +136,8 @@ impl Default for HostConfig {
             max_fps: 0,
             allow_hevc: true,
             allow_av1: true,
+            allow_hdr: true,
+            allow_yuv444: true,
             pace_mbps: 800,
             keep_host_displays: false,
             allow_takeover: true,

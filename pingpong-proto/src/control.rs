@@ -85,6 +85,61 @@ pub struct SessionStart {
     /// unknown, the host's own settings. Absent from older clients.
     pub repeat_delay_ms: u16,
     pub repeat_interval_ms: u16,
+    /// `video::*` the client can show and asks for. Absent from older
+    /// clients (none).
+    pub video: u8,
+}
+
+/// `SessionStart::video` (what the client can show and asks for) and
+/// `SessionAck::video` (what the stream is).
+pub mod video {
+    /// High dynamic range: 10-bit, BT.2020 primaries, the PQ curve (HDR10),
+    /// as Moonlight asks Sunshine for it. Asked for by a client whose display
+    /// shows HDR; in the ack when the stream is (the host's display then
+    /// runs in HDR, and `Control::HdrMetadata` follows).
+    pub const HDR: u8 = 1;
+    /// Full-resolution colour (4:4:4): text without coloured fringes, as
+    /// Moonlight's "YUV 4:4:4" asks Sunshine for.
+    pub const YUV444: u8 = 2;
+}
+
+/// Host -> client, about once a second while the stream is HDR: the colour
+/// volume of the host's display (SMPTE ST 2086) and the light levels of what
+/// it shows (CTA-861.3), Sunshine's `SS_HDR_METADATA`, for the client to map
+/// the picture onto its own display; and where SDR white sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HdrMetadata {
+    /// Red, green and blue primaries, CIE 1931 x and y in units of 0.00002.
+    pub primaries: [[u16; 2]; 3],
+    pub white_point: [u16; 2],
+    /// The display's peak, cd/m².
+    pub max_luminance: u16,
+    /// Its black, in 0.0001 cd/m².
+    pub min_luminance: u16,
+    /// The brightest pixel and the brightest frame average, cd/m² (0 =
+    /// unknown).
+    pub max_cll: u16,
+    pub max_fall: u16,
+    /// SDR white in the picture, cd/m² (Windows' "SDR content brightness";
+    /// 0 = unknown, BT.2408's 203).
+    pub sdr_white: u16,
+}
+
+impl HdrMetadata {
+    /// BT.2020 primaries and D65, a display of `max_luminance` cd/m² with
+    /// SDR white at `sdr_white`: what a host says when its display reports
+    /// nothing better.
+    pub fn bt2020(max_luminance: u16, sdr_white: u16) -> HdrMetadata {
+        HdrMetadata {
+            primaries: [[35400, 14600], [8500, 39850], [6550, 2300]],
+            white_point: [15635, 16450],
+            max_luminance,
+            min_luminance: 50,
+            max_cll: 0,
+            max_fall: 0,
+            sdr_white,
+        }
+    }
 }
 
 /// Apps a session can start with (Apollo's defaults).
@@ -149,6 +204,8 @@ pub struct SessionAck {
     pub host: u8,
     /// `features::*`. Absent on the wire from older hosts (none).
     pub features: u8,
+    /// `video::*`: what the stream is. Absent from older hosts (none).
+    pub video: u8,
 }
 
 /// The host's operating system, in `SessionAck`.
@@ -338,6 +395,8 @@ pub enum Control {
     /// Agent -> host: what it is doing, in a few words, for the host's
     /// activity log ("left_click (640, 360)").
     AgentNote(AgentNote),
+    /// Host -> client: the HDR stream's metadata.
+    HdrMetadata(HdrMetadata),
 }
 
 /// What `Control::AgentControl` asks.
@@ -454,6 +513,7 @@ const OP_PROGRESS: u8 = 16;
 const OP_AGENT_CONTROL: u8 = 17;
 const OP_AGENT_STATE: u8 = 18;
 const OP_AGENT_NOTE: u8 = 19;
+const OP_HDR_METADATA: u8 = 20;
 
 struct W<'a> {
     b: &'a mut [u8],
@@ -524,6 +584,7 @@ impl Control {
                 w.u8(s.app);
                 w.u16(s.repeat_delay_ms);
                 w.u16(s.repeat_interval_ms);
+                w.u8(s.video);
             }
             Control::SessionAck(a) => {
                 w.u8(OP_SESSION_ACK);
@@ -537,6 +598,7 @@ impl Control {
                 w.u32(a.nonce);
                 w.u8(a.host);
                 w.u8(a.features);
+                w.u8(a.video);
             }
             Control::SessionEnd(r) => {
                 w.u8(OP_SESSION_END);
@@ -618,6 +680,20 @@ impl Control {
                 w.u8(s.flags);
                 w.u8(s.watchers);
             }
+            Control::HdrMetadata(m) => {
+                w.u8(OP_HDR_METADATA);
+                for [x, y] in m.primaries {
+                    w.u16(x);
+                    w.u16(y);
+                }
+                w.u16(m.white_point[0]);
+                w.u16(m.white_point[1]);
+                w.u16(m.max_luminance);
+                w.u16(m.min_luminance);
+                w.u16(m.max_cll);
+                w.u16(m.max_fall);
+                w.u16(m.sdr_white);
+            }
             Control::AgentNote(n) => {
                 w.u8(OP_AGENT_NOTE);
                 w.u8(n.len);
@@ -675,6 +751,7 @@ impl Control {
                 app: r.u8().unwrap_or(app::DESKTOP),
                 repeat_delay_ms: r.u16().unwrap_or(0),
                 repeat_interval_ms: r.u16().unwrap_or(0),
+                video: r.u8().unwrap_or(0),
             }),
             OP_SESSION_ACK => Control::SessionAck(SessionAck {
                 status: AckStatus::from_code(r.u8()?)?,
@@ -687,6 +764,7 @@ impl Control {
                 nonce: r.u32()?,
                 host: r.u8().unwrap_or(host::WINDOWS),
                 features: r.u8().unwrap_or(0),
+                video: r.u8().unwrap_or(0),
             }),
             OP_SESSION_END => Control::SessionEnd(EndReason::from_code(r.u8()?)),
             OP_CURSOR_STATE => {
@@ -750,6 +828,21 @@ impl Control {
                 flags: r.u8()?,
                 watchers: r.u8()?,
             }),
+            OP_HDR_METADATA => {
+                let mut primaries = [[0u16; 2]; 3];
+                for p in &mut primaries {
+                    *p = [r.u16()?, r.u16()?];
+                }
+                Control::HdrMetadata(HdrMetadata {
+                    primaries,
+                    white_point: [r.u16()?, r.u16()?],
+                    max_luminance: r.u16()?,
+                    min_luminance: r.u16()?,
+                    max_cll: r.u16()?,
+                    max_fall: r.u16()?,
+                    sdr_white: r.u16()?,
+                })
+            }
             OP_AGENT_NOTE => {
                 let len = r.u8()? as usize;
                 if len > AgentNote::MAX {
@@ -791,6 +884,7 @@ mod tests {
             app: app::DESKTOP,
             repeat_delay_ms: 225,
             repeat_interval_ms: 30,
+            video: video::HDR | video::YUV444,
         }));
         round_trip(Control::SessionAck(SessionAck {
             status: AckStatus::Ok,
@@ -803,6 +897,12 @@ mod tests {
             nonce: 7,
             host: host::MACOS,
             features: features::CLIPBOARD,
+            video: video::HDR,
+        }));
+        round_trip(Control::HdrMetadata(HdrMetadata {
+            max_cll: 1000,
+            max_fall: 400,
+            ..HdrMetadata::bt2020(1499, 240)
         }));
         round_trip(Control::SessionEnd(EndReason::Replaced));
         round_trip(Control::SessionEnd(EndReason::HostInUse));
@@ -910,25 +1010,30 @@ mod tests {
             app: app::STEAM_BIG_PICTURE,
             repeat_delay_ms: 500,
             repeat_interval_ms: 40,
+            video: video::YUV444,
         })
         .encode(0, &mut out);
         // What follows the nonce is optional: an older client's request.
-        let optional = 1 + 2 + 2;
+        let optional = 1 + 2 + 2 + 1;
         for cut in HEADER_LEN..n - optional {
             assert_eq!(Control::decode(&out[HEADER_LEN..cut]), None);
         }
         match Control::decode(&out[HEADER_LEN..n - optional]) {
             Some(Control::SessionStart(s)) => assert_eq!(
-                (s.app, s.repeat_delay_ms, s.repeat_interval_ms),
-                (app::DESKTOP, 0, 0)
+                (s.app, s.repeat_delay_ms, s.repeat_interval_ms, s.video),
+                (app::DESKTOP, 0, 0, 0)
             ),
             other => panic!("{other:?}"),
         }
-        match Control::decode(&out[HEADER_LEN..n - 2]) {
+        match Control::decode(&out[HEADER_LEN..n - 3]) {
             Some(Control::SessionStart(s)) => assert_eq!(
-                (s.app, s.repeat_delay_ms, s.repeat_interval_ms),
-                (app::STEAM_BIG_PICTURE, 500, 0)
+                (s.app, s.repeat_delay_ms, s.repeat_interval_ms, s.video),
+                (app::STEAM_BIG_PICTURE, 500, 0, 0)
             ),
+            other => panic!("{other:?}"),
+        }
+        match Control::decode(&out[HEADER_LEN..n - 1]) {
+            Some(Control::SessionStart(s)) => assert_eq!((s.repeat_interval_ms, s.video), (40, 0)),
             other => panic!("{other:?}"),
         }
         // So is the ack's last (the host's system): an older host is Windows.
@@ -943,15 +1048,23 @@ mod tests {
             nonce: 1,
             host: host::MACOS,
             features: features::CLIPBOARD,
+            video: video::HDR,
         })
         .encode(0, &mut out);
-        match Control::decode(&out[HEADER_LEN..n - 2]) {
+        match Control::decode(&out[HEADER_LEN..n - 3]) {
             Some(Control::SessionAck(a)) => assert_eq!((a.host, a.features), (host::WINDOWS, 0)),
             other => panic!("{other:?}"),
         }
         // And the features after it: an older host offers none.
-        match Control::decode(&out[HEADER_LEN..n - 1]) {
+        match Control::decode(&out[HEADER_LEN..n - 2]) {
             Some(Control::SessionAck(a)) => assert_eq!((a.host, a.features), (host::MACOS, 0)),
+            other => panic!("{other:?}"),
+        }
+        // And the video after them: an older host streams SDR 4:2:0.
+        match Control::decode(&out[HEADER_LEN..n - 1]) {
+            Some(Control::SessionAck(a)) => {
+                assert_eq!((a.features, a.video), (features::CLIPBOARD, 0))
+            }
             other => panic!("{other:?}"),
         }
         assert_eq!(Control::decode(&[]), None);

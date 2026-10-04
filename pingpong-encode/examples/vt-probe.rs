@@ -35,8 +35,8 @@ fn main() {
         Codec::Hevc
     };
 
-    let mut cap =
-        SckCapture::new(SckCapture::main_display(), w, h, fps * 1000, true).expect("capture");
+    let mut cap = SckCapture::new(SckCapture::main_display(), w, h, fps * 1000, true, false)
+        .expect("capture");
     let config = EncoderConfig {
         codec,
         width: w,
@@ -46,6 +46,8 @@ fn main() {
         preset: 1,
         two_pass: false,
         slices: 1,
+        hdr: false,
+        yuv444: false,
     };
     let started = Instant::now();
     let mut enc = VtEncoder::new(config).expect("encoder");

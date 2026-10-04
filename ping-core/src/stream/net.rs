@@ -203,8 +203,8 @@ struct NetLoop {
     /// The gate counts lost frames for the session; reports carry the
     /// interval's.
     lost_reported: u64,
-    /// The (codec, width, height) the decoder is configured for.
-    configured: Option<(u8, u16, u16)>,
+    /// The (codec, width, height, video) the decoder is configured for.
+    configured: Option<(u8, u16, u16, u8)>,
 
     audio: Option<Player>,
     depacketizer: AudioDepacketizer,
@@ -474,6 +474,7 @@ impl NetLoop {
                 }
             }
             Control::Rumble { index, low, high } => self.emit(Event::Rumble { index, low, high }),
+            Control::HdrMetadata(m) => self.video.hdr_metadata(m),
             Control::Progress(step) if !self.streaming() => {
                 use pingpong_proto::control::progress;
                 let text = match step {
@@ -533,15 +534,15 @@ impl NetLoop {
             self.end(why, true);
             return Next::Stop;
         }
-        let key = (ack.codec, ack.width, ack.height);
+        let key = (ack.codec, ack.width, ack.height, ack.video);
         if self.configured != Some(key) {
             let Some(codec) = Codec::from_bit(ack.codec) else {
                 self.end("The host chose an unknown codec".into(), true);
                 return Next::Stop;
             };
-            if let Err(e) = self
-                .video
-                .configure(codec, ack.width as u32, ack.height as u32)
+            if let Err(e) =
+                self.video
+                    .configure(codec, ack.width as u32, ack.height as u32, ack.video)
             {
                 self.end(format!("Cannot decode {}: {e}", codec.name()), true);
                 return Next::Stop;
@@ -926,6 +927,7 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
         app: settings.app,
         repeat_delay_ms,
         repeat_interval_ms,
+        video: settings.video,
     }
 }
 

@@ -20,6 +20,7 @@ use pingpong_transport::{Endpoint, Peer};
 
 use crate::audio::AudioHandle;
 use crate::config::HostConfig;
+use crate::negotiate::Negotiated;
 use crate::session::Shared;
 use crate::video::VideoParams;
 
@@ -86,6 +87,27 @@ impl Platform {
         vec![Codec::Hevc, Codec::H264]
     }
 
+    /// HDR10 in HEVC, from an HDR virtual display captured in HDR (macOS 15
+    /// and later, Apple silicon). No 4:4:4: VideoToolbox encodes HEVC at
+    /// 4:2:2 at most (its "RExt" profile is 4:2:2 10-bit, measured on an
+    /// M4 Pro).
+    pub fn video_caps(&self, codec: Codec, asked: u8) -> u8 {
+        let hdr = codec == Codec::Hevc
+            && cfg!(target_arch = "aarch64")
+            && crate::permissions::macos_at_least(15);
+        if hdr {
+            asked & control::video::HDR
+        } else {
+            0
+        }
+    }
+
+    /// The HDR stream's metadata: ScreenCaptureKit's HDR10 capture is for a
+    /// canonical 1000 cd/m² display, with SDR white at BT.2408's 203.
+    pub fn hdr_metadata(&self, _d: &Display) -> control::HdrMetadata {
+        control::HdrMetadata::bt2020(1000, 203)
+    }
+
     /// Anything that stops a session before it starts.
     pub fn preflight(&self) -> Result<(), AckStatus> {
         if !crate::permissions::screen_capture_allowed() {
@@ -108,13 +130,12 @@ impl Platform {
     /// desktop; the main display when none can be made.
     pub fn display(
         &mut self,
-        width: u16,
-        height: u16,
-        fps_mhz: u32,
+        n: &Negotiated,
         _req: &SessionStart,
         keep_host_displays: bool,
         cfg: &HostConfig,
     ) -> Result<Display, AckStatus> {
+        let (width, height, fps_mhz, video) = (n.width, n.height, n.fps_mhz, n.video);
         // An asleep display cannot be captured at all: wake it first.
         let awake = crate::power::Awake::hold();
         let mode = pingpong_display::DisplayMode {
@@ -122,7 +143,11 @@ impl Platform {
             height,
             refresh_mhz: fps_mhz,
         };
-        let virtual_display = match pingpong_display::macos::VirtualDisplay::new(mode, &cfg.name) {
+        let virtual_display = match pingpong_display::macos::VirtualDisplay::new(
+            mode,
+            &cfg.name,
+            video & control::video::HDR != 0,
+        ) {
             Ok(mut d) => {
                 if let Err(e) = d.make_main(!keep_host_displays) {
                     tracing::warn!(error = %e, "could not make the virtual display the desktop");
@@ -253,7 +278,7 @@ pub fn open_video(params: &VideoParams) -> Result<(SckCapture, VtEncoder), Strin
     // A display just woken takes a moment to be offered for capture.
     let woken_by = Instant::now() + Duration::from_secs(4);
     let cap = loop {
-        match SckCapture::new(params.source, e.width, e.height, e.fps_mhz, true) {
+        match SckCapture::new(params.source, e.width, e.height, e.fps_mhz, true, e.hdr) {
             Ok(c) => break c,
             Err(pingpong_capture::CaptureError::NoSuchOutput(_)) if Instant::now() < woken_by => {
                 std::thread::sleep(Duration::from_millis(200));

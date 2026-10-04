@@ -30,7 +30,7 @@ pingpong-capture = { path = "../pingpong-capture" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFNumber", "CFString", "CFDictionary"] }
+objc2-core-foundation = { version = "0.3", features = ["std", "CFBase", "CFData", "CFNumber", "CFString", "CFDictionary"] }
 objc2-core-media = { version = "0.3", features = ["std", "CMBase", "CMTime", "CMBlockBuffer", "CMSampleBuffer", "CMFormatDescription", "objc2-core-video"] }
 objc2-core-video = { version = "0.3", features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-video-toolbox = { version = "0.3", features = ["std", "VTBase", "VTErrors", "VTSession", "VTCompressionSession", "VTCompressionProperties"] }

@@ -184,6 +184,7 @@ mod tests {
             nonce: 0,
             host: 0,
             features,
+            video: 0,
         }
     }
 

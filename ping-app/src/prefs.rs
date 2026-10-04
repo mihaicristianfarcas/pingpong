@@ -38,6 +38,10 @@ pub struct Prefs {
     pub swap_mouse_buttons: bool,
     /// Moonlight's "reverse mouse scrolling direction".
     pub reverse_scroll: bool,
+    /// Moonlight's "HDR": asked for when this display shows it.
+    pub hdr: bool,
+    /// Moonlight's "YUV 4:4:4".
+    pub yuv444: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub share_clipboard: bool,
     /// What the update check follows, once the user has chosen (until
@@ -67,6 +71,8 @@ impl Default for Prefs {
             gamepad_mouse: true,
             swap_mouse_buttons: false,
             reverse_scroll: false,
+            hdr: false,
+            yuv444: false,
             share_clipboard: true,
             updates: None,
         }
@@ -203,6 +209,8 @@ impl Prefs {
             clipboard: self.share_clipboard,
             swap_mouse_buttons: self.swap_mouse_buttons,
             reverse_scroll: self.reverse_scroll,
+            hdr: self.hdr,
+            yuv444: self.yuv444,
         }
     }
 
@@ -357,6 +365,18 @@ impl Prefs {
             self.swap_mouse_buttons = v;
             if v {
                 done.push("swapped mouse buttons".into());
+            }
+        }
+        if let Some(v) = m.bool("hdr") {
+            self.hdr = v;
+            if v {
+                done.push("HDR".into());
+            }
+        }
+        if let Some(v) = m.bool("yuv444") {
+            self.yuv444 = v;
+            if v {
+                done.push("YUV 4:4:4".into());
             }
         }
         if let Some(v) = m.bool("reversescroll") {

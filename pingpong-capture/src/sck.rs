@@ -26,7 +26,7 @@ use objc2_core_video::{kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, CVPixelB
 use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol};
 use objc2_screen_capture_kit::{
     SCContentFilter, SCDisplay, SCShareableContent, SCStream, SCStreamConfiguration,
-    SCStreamOutput, SCStreamOutputType,
+    SCStreamConfigurationPreset, SCStreamOutput, SCStreamOutputType,
 };
 
 use crate::{CaptureError, Grab};
@@ -98,17 +98,38 @@ impl SckCapture {
 
     /// Capture `display_id` scaled to `width`x`height`, at most `fps_mhz`
     /// thousandths of a frame a second. `cursor`: draw the pointer into the
-    /// image.
+    /// image. `hdr`: HDR10, 10-bit BT.2020 PQ (macOS 15 and later).
     pub fn new(
         display_id: u32,
         width: u32,
         height: u32,
         fps_mhz: u32,
         cursor: bool,
+        hdr: bool,
     ) -> Result<SckCapture, CaptureError> {
         let display = find_display(display_id)?;
         unsafe {
-            let config = SCStreamConfiguration::new();
+            let config = if hdr {
+                // ScreenCaptureKit's HDR10 preset: `x420` (10-bit 4:2:0,
+                // video range), BT.2100 PQ, the BT.2020 matrix, tone-mapped
+                // for a canonical HDR display rather than for the host's:
+                // what an HDR10 encoder takes as it is.
+                let c = SCStreamConfiguration::streamConfigurationWithPreset(
+                    SCStreamConfigurationPreset::CaptureHDRRecordingPreservedSDRHDR10,
+                );
+                tracing::info!(
+                    pixel_format = %fourcc(c.pixelFormat()),
+                    colour_space = %c.colorSpaceName(),
+                    "capturing in HDR10"
+                );
+                c
+            } else {
+                let c = SCStreamConfiguration::new();
+                c.setPixelFormat(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
+                c.setColorMatrix(kCGDisplayStreamYCbCrMatrix_ITU_R_709_2);
+                c
+            };
+            let config = config;
             config.setWidth(width as usize);
             config.setHeight(height as usize);
             config.setMinimumFrameInterval(CMTime {
@@ -117,8 +138,6 @@ impl SckCapture {
                 flags: CMTimeFlags::Valid,
                 epoch: 0,
             });
-            config.setPixelFormat(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange);
-            config.setColorMatrix(kCGDisplayStreamYCbCrMatrix_ITU_R_709_2);
             config.setShowsCursor(cursor);
             // Enough in flight that the encoder holding one never stalls capture.
             config.setQueueDepth(5);
@@ -395,4 +414,9 @@ impl Drop for SckAudio {
     fn drop(&mut self) {
         let _ = wait(|done| unsafe { self.stream.stopCaptureWithCompletionHandler(Some(&done)) });
     }
+}
+
+/// A pixel format's four characters, for the log.
+fn fourcc(format: u32) -> String {
+    String::from_utf8_lossy(&format.to_be_bytes()).into_owned()
 }

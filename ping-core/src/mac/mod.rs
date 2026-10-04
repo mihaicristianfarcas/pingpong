@@ -16,7 +16,7 @@ use objc2::MainThreadMarker;
 use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
 use objc2_quartz_core::CAMetalLayer;
 use parking_lot::Mutex;
-use pingpong_decode::videotoolbox::VtDecoder;
+use pingpong_decode::videotoolbox::{PictureFormat, VtDecoder};
 use pingpong_decode::VideoDecoder;
 use pingpong_transport::Identity;
 
@@ -28,6 +28,16 @@ use render::RenderShared;
 use window::{Handler, Window};
 
 pub use window::{clipboard_text, toggle_fullscreen, ScreenInfo};
+
+/// Whether the main display shows HDR: headroom above SDR white (EDR), as an
+/// XDR panel or an HDR monitor has. Main thread.
+pub fn display_has_hdr() -> bool {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    objc2_app_kit::NSScreen::mainScreen(mtm)
+        .is_some_and(|s| s.maximumPotentialExtendedDynamicRangeColorComponentValue() > 1.0)
+}
 
 /// The main display's refresh rate to the millihertz (59.94 Hz external
 /// panels are common), when macOS knows it: some built-in panels say 0.
@@ -50,17 +60,33 @@ struct MacVideo {
 }
 
 impl VideoOut for MacVideo {
-    fn configure(&mut self, codec: Codec, _width: u32, _height: u32) -> Result<(), String> {
+    fn configure(
+        &mut self,
+        codec: Codec,
+        _width: u32,
+        _height: u32,
+        video: u8,
+    ) -> Result<(), String> {
         let codec = match codec {
             Codec::H264 => pingpong_decode::Codec::H264,
             Codec::Hevc => pingpong_decode::Codec::Hevc,
             Codec::Av1 => pingpong_decode::Codec::Av1,
         };
         let render = self.render.clone();
-        let decoder = VtDecoder::with_sink(codec, Arc::new(move |f| render.push_frame(f)))
+        let mut decoder = VtDecoder::with_sink(codec, Arc::new(move |f| render.push_frame(f)))
             .map_err(|e| e.to_string())?;
+        let hdr = video & pingpong_proto::control::video::HDR != 0;
+        decoder.set_format(PictureFormat {
+            ten_bit: hdr,
+            yuv444: video & pingpong_proto::control::video::YUV444 != 0,
+        });
+        self.render.set_hdr(hdr);
         self.decoder = Some(decoder);
         Ok(())
+    }
+
+    fn hdr_metadata(&mut self, metadata: pingpong_proto::control::HdrMetadata) {
+        self.render.set_hdr_metadata(metadata);
     }
 
     fn decode(&mut self, bitstream: &[u8], timing: FrameTiming) -> Result<(), String> {
@@ -95,7 +121,8 @@ impl Session {
         on_end: EndCallback,
     ) -> Result<Session, String> {
         let mtm = MainThreadMarker::new().ok_or("a stream opens on the main thread")?;
-        let s = opts.settings;
+        let mut s = opts.settings;
+        s.video = crate::session::video_caps(s.video, s.codecs);
         let stats = Arc::new(StatsCollector::default());
         let render = RenderShared::new(stats.clone(), s.vsync, s.frame_pacing);
         render.set_overlay(opts.show_stats);

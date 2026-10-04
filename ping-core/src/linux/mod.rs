@@ -266,7 +266,13 @@ impl LinuxVideo {
 }
 
 impl VideoOut for LinuxVideo {
-    fn configure(&mut self, codec: Codec, _width: u32, _height: u32) -> Result<(), String> {
+    fn configure(
+        &mut self,
+        codec: Codec,
+        _width: u32,
+        _height: u32,
+        _video: u8,
+    ) -> Result<(), String> {
         let codec = match codec {
             Codec::H264 => pingpong_decode::Codec::H264,
             Codec::Hevc => pingpong_decode::Codec::Hevc,
@@ -415,7 +421,8 @@ impl StreamApp {
                 .map_err(|e| e.to_string())?
         };
 
-        let settings = r.options().settings;
+        let mut settings = r.options().settings;
+        settings.video = crate::session::video_caps(settings.video, settings.codecs);
         let pointer = Arc::new(Mutex::new(PointerState::new(
             settings.width as u32,
             settings.height as u32,

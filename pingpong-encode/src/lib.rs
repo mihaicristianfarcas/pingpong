@@ -56,6 +56,11 @@ pub struct EncoderConfig {
     pub two_pass: bool,
     /// Slices per frame. More slices decode in parallel and localise damage.
     pub slices: u32,
+    /// HDR10: 10-bit, BT.2020 primaries, the PQ curve (the capture is
+    /// already so, or is converted to it).
+    pub hdr: bool,
+    /// Chroma at full resolution (4:4:4).
+    pub yuv444: bool,
 }
 
 impl EncoderConfig {

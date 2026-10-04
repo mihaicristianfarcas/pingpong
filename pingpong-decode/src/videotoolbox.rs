@@ -1,4 +1,6 @@
-//! H.264 and HEVC decode through VideoToolbox, in real-time mode.
+//! H.264 and HEVC decode through VideoToolbox, in real-time mode: 8-bit
+//! and 10-bit (HDR), 4:2:0 and 4:4:4 (Apple silicon decodes HEVC 4:4:4 in
+//! hardware: measured on an M4 Pro, 8- and 10-bit).
 //!
 //! Measured: 0.96 ms p50 / 1.12 ms p95 at 1080p60, one callback per
 //! submit, no buffering or reordering -- which is why the client has no jitter
@@ -10,14 +12,19 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use objc2_core_foundation::{kCFBooleanTrue, CFRetained, CFType};
+use objc2_core_foundation::{
+    kCFBooleanTrue, CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType,
+};
 use objc2_core_media::{
     kCMBlockBufferAssureMemoryNowFlag, CMBlockBuffer, CMFormatDescription, CMSampleBuffer,
     CMSampleTimingInfo, CMTime, CMTimeFlags, CMVideoFormatDescription,
     CMVideoFormatDescriptionCreateFromH264ParameterSets,
     CMVideoFormatDescriptionCreateFromHEVCParameterSets,
 };
-use objc2_core_video::{CVImageBuffer, CVPixelBufferGetHeight, CVPixelBufferGetWidth};
+use objc2_core_video::{
+    kCVPixelBufferMetalCompatibilityKey, kCVPixelBufferPixelFormatTypeKey, CVImageBuffer,
+    CVPixelBufferGetHeight, CVPixelBufferGetWidth,
+};
 use objc2_video_toolbox::{
     kVTDecompressionPropertyKey_RealTime, VTDecodeFrameFlags, VTDecodeInfoFlags,
     VTDecompressionOutputCallbackRecord, VTDecompressionSession, VTSessionSetProperty,
@@ -31,6 +38,34 @@ const MAX_READY: usize = 2;
 
 /// Length-prefix width every NAL is rewritten with (AVCC/HVCC framing).
 const LENGTH_BYTES: i32 = 4;
+
+/// Bi-planar Y'CbCr, video range: 10-bit in 16-bit samples, 4:2:0 and
+/// 4:4:4 (`x420`, `x444`), and 8-bit 4:4:4 (`444v`).
+const X420: u32 = u32::from_be_bytes(*b"x420");
+const X444: u32 = u32::from_be_bytes(*b"x444");
+const V444: u32 = u32::from_be_bytes(*b"444v");
+
+/// What a stream's pictures are: their bit depth and chroma.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PictureFormat {
+    pub ten_bit: bool,
+    pub yuv444: bool,
+}
+
+impl PictureFormat {
+    /// The pixel format to ask VideoToolbox for: one Metal can sample plane
+    /// by plane. VideoToolbox's own for 10-bit is packed (`p420`, `p444`:
+    /// three samples to 32 bits), which `CVMetalTextureCache` cannot map.
+    /// `None` for 8-bit 4:2:0, whose own (`420v`) is.
+    fn pixel_format(self) -> Option<u32> {
+        match (self.ten_bit, self.yuv444) {
+            (false, false) => None,
+            (false, true) => Some(V444),
+            (true, false) => Some(X420),
+            (true, true) => Some(X444),
+        }
+    }
+}
 
 /// Shared with VideoToolbox's callback through a raw pointer, so it lives in a
 /// Box that outlives the session.
@@ -123,6 +158,7 @@ pub struct VtDecoder {
     slices: Vec<(usize, usize)>,
     frame_index: i64,
     skipped_before_parameter_sets: u64,
+    picture: PictureFormat,
 }
 
 // SAFETY: the session is only used through &mut self; VideoToolbox sessions
@@ -159,7 +195,19 @@ impl VtDecoder {
             slices: Vec::new(),
             frame_index: 0,
             skipped_before_parameter_sets: 0,
+            picture: PictureFormat::default(),
         })
+    }
+
+    /// The stream's pictures are `format` (from the session's ack): decoded
+    /// into a pixel format Metal samples as it is.
+    pub fn set_format(&mut self, format: PictureFormat) {
+        if format != self.picture {
+            self.picture = format;
+            // Built again, for the new output, at the next parameter sets.
+            self.teardown_session();
+            self.params.clear();
+        }
     }
 
     pub fn codec(&self) -> Codec {
@@ -227,6 +275,19 @@ impl VtDecoder {
             decompressionOutputCallback: Some(output_callback),
             decompressionOutputRefCon: &*self.shared as *const Shared as *mut c_void,
         };
+        let attributes = self.picture.pixel_format().map(|fourcc| {
+            let pixel_format = CFNumber::new_i32(fourcc as i32);
+            let yes: &CFType = CFBoolean::new(true);
+            // SAFETY: CoreVideo's constant keys.
+            let keys: [&CFString; 2] = unsafe {
+                [
+                    kCVPixelBufferPixelFormatTypeKey,
+                    kCVPixelBufferMetalCompatibilityKey,
+                ]
+            };
+            let values: [&CFType; 2] = [&pixel_format, yes];
+            CFDictionary::<CFString, CFType>::from_slices(&keys, &values)
+        });
         let mut session: *mut VTDecompressionSession = std::ptr::null_mut();
         // SAFETY: valid format and callback; the refcon outlives the session.
         let status = unsafe {
@@ -234,7 +295,7 @@ impl VtDecoder {
                 None,
                 &fmt,
                 None,
-                None,
+                attributes.as_deref().map(|d| d.as_opaque()),
                 &callback_record,
                 NonNull::new(&mut session as *mut *mut VTDecompressionSession).unwrap(),
             )
@@ -265,7 +326,7 @@ impl VtDecoder {
         self.params = params.iter().map(|p| p.to_vec()).collect();
         self.format = Some(fmt);
         self.session = Some(session);
-        tracing::info!(codec = ?self.codec, "decoder (re)built from new parameter sets");
+        tracing::info!(codec = ?self.codec, format = ?self.picture, "decoder (re)built from new parameter sets");
         Ok(())
     }
 

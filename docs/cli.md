@@ -31,7 +31,9 @@ bitrate for the mode):
 | `--size WxH` | Stream resolution, exactly as given |
 | `--fps N` | Frame rate |
 | `--mbps N` | Bitrate (otherwise automatic) |
-| `--codec h264\|hevc` | Only this codec |
+| `--codec h264\|hevc\|av1` | Only this codec |
+| `--hdr` | Ask for HDR, when this display shows it and the host can |
+| `--yuv444` | Ask for 4:4:4 colour, when this computer decodes it and the host can |
 | `--windowed` | A window, not full screen |
 | `--no-vsync` | Present frames at once, tearing allowed |
 | `--frame-pacing` | One frame per display refresh |

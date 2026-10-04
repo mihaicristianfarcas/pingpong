@@ -342,6 +342,8 @@ const settingSections = [
     ['nvidia_dxgi_present', 'OpenGL and Vulkan through DXGI', 'check', "Full-screen OpenGL and Vulkan games are captured at their full frame rate. Changes the driver's setting for every program while Pong runs, and puts it back when Pong stops. Applies after Pong restarts."],
     ['allow_hevc', 'Allow HEVC', 'check', 'Better quality per bit than H.264 when the client supports it.'],
     ['allow_av1', 'Allow AV1', 'check', 'Used when both this GPU and the client support it.'],
+    ['allow_hdr', 'Allow HDR', 'check', "Stream HDR to a client that asks and shows it, where this host can: HEVC Main10 from an NVIDIA GPU, or from a Mac on macOS 15 or later."],
+    ['allow_yuv444', 'Allow YUV 4:4:4', 'check', 'Full-resolution colour for a client that asks: sharper text, for about a fifth more bitrate. NVIDIA GPUs on Windows.'],
   ]],
   ['Limits', [
     ['max_bitrate_kbps', 'Maximum bitrate (kbit/s)', 'number', '0 lets the client decide.'],
@@ -362,7 +364,7 @@ const settingSections = [
   ]],
 ];
 // NVENC's settings mean nothing to a Mac host (VideoToolbox, no AV1 encoder).
-const macOnlyHidden = ['nvenc_preset', 'nvenc_two_pass', 'nvidia_max_power', 'nvidia_dxgi_present', 'allow_av1'];
+const macOnlyHidden = ['nvenc_preset', 'nvenc_two_pass', 'nvidia_max_power', 'nvidia_dxgi_present', 'allow_av1', 'allow_yuv444'];
 const visibleFields = fields => fields.filter(([k]) => hostOs !== 'macos' || !macOnlyHidden.includes(k));
 const settingFields = settingSections.flatMap(([, fields]) => fields);
 

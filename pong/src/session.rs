@@ -469,6 +469,7 @@ impl SessionManager {
                 nonce: req.nonce,
                 host: platform::HOST_KIND,
                 features: 0,
+                video: 0,
             },
         );
     }
@@ -503,19 +504,24 @@ impl SessionManager {
         // the display (Windows reuses its virtual display).
         drop(self.stop_stream());
 
+        let negotiated =
+            match crate::negotiate::negotiate(&req, &cfg, &self.supported, |c, asked| {
+                self.platform.video_caps(c, asked)
+            }) {
+                Ok(n) => n,
+                Err(status) => {
+                    self.refuse(&peer, &req, status);
+                    return;
+                }
+            };
         let crate::negotiate::Negotiated {
             codec,
             fps_mhz,
             bitrate_kbps,
             width,
             height,
-        } = match crate::negotiate::negotiate(&req, &cfg, &self.supported) {
-            Ok(n) => n,
-            Err(status) => {
-                self.refuse(&peer, &req, status);
-                return;
-            }
-        };
+            video: picture,
+        } = negotiated;
         tracing::info!(
             client = peer.public().short_id(),
             width,
@@ -523,6 +529,8 @@ impl SessionManager {
             fps = fps_mhz as f64 / 1000.0,
             bitrate_kbps,
             codec = codec.name(),
+            hdr = picture & control::video::HDR != 0,
+            yuv444 = picture & control::video::YUV444 != 0,
             "starting session"
         );
         if let Err(status) = self.platform.preflight() {
@@ -536,10 +544,7 @@ impl SessionManager {
             &peer,
             Control::Progress(control::progress::DISPLAY),
         );
-        let display = match self
-            .platform
-            .display(width, height, fps_mhz, &req, keep, &cfg)
-        {
+        let display = match self.platform.display(&negotiated, &req, keep, &cfg) {
             Ok(d) => d,
             Err(status) => {
                 self.refuse(&peer, &req, status);
@@ -556,6 +561,8 @@ impl SessionManager {
             preset: cfg.nvenc_preset,
             two_pass: false,
             slices: 1,
+            hdr: picture & control::video::HDR != 0,
+            yuv444: picture & control::video::YUV444 != 0,
         };
         let params = self.platform.video_params(&display, encoder, &cfg, &req);
         send_control(
@@ -637,6 +644,7 @@ impl SessionManager {
             nonce: req.nonce,
             host: platform::HOST_KIND,
             features,
+            video: picture,
         };
         self.ack(&peer, ack);
         video.open();
@@ -1107,6 +1115,10 @@ impl SessionManager {
             // joining later) hears it this way, once a second: control
             // messages are not retransmitted.
             out.push(Control::CursorState(control::CursorState::IN_PICTURE));
+            // An HDR stream's metadata, the same way.
+            if a.ack.video & control::video::HDR != 0 {
+                out.push(Control::HdrMetadata(self.platform.hdr_metadata(&a.display)));
+            }
         }
         for msg in out {
             send_control(&self.endpoint, &a.peer, msg);

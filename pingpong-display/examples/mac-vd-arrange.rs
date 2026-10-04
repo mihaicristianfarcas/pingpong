@@ -19,6 +19,7 @@ fn main() {
             refresh_mhz: 60_000,
         },
         "Pong",
+        false,
     )
     .expect("virtual display");
     vd.make_main(mirror).expect("arrange");
@@ -39,7 +40,7 @@ fn main() {
             CGDisplayBounds(d)
         );
     }
-    if let Err(e) = SckCapture::new(0xFFFF, 64, 64, 1000, false) {
+    if let Err(e) = SckCapture::new(0xFFFF, 64, 64, 1000, false, false) {
         println!("capturable: {e}");
     }
 }

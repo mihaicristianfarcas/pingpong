@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use pingpong_proto::control::{app, codec};
+use pingpong_proto::control::{app, codec, video};
 
 use crate::store::KnownHost;
 use crate::stream::{HostTarget, StreamSettings};
@@ -75,6 +75,12 @@ pub struct StreamRequest {
     pub swap_mouse_buttons: bool,
     /// The wheel and the trackpad scroll the other way (Moonlight's option).
     pub reverse_scroll: bool,
+    /// Stream in HDR when this display and the host can (Moonlight's
+    /// "HDR").
+    pub hdr: bool,
+    /// Full-resolution colour when the host can encode it and this computer
+    /// decode it (Moonlight's "YUV 4:4:4").
+    pub yuv444: bool,
 }
 
 impl Default for StreamRequest {
@@ -103,6 +109,8 @@ impl Default for StreamRequest {
             clipboard: true,
             swap_mouse_buttons: false,
             reverse_scroll: false,
+            hdr: false,
+            yuv444: false,
         }
     }
 }
@@ -128,6 +136,10 @@ impl StreamRequest {
                     swap_buttons: self.swap_mouse_buttons,
                     reverse_scroll: self.reverse_scroll,
                 },
+                // What this computer can show is the platform's to say
+                // (`video_caps`), when the session opens.
+                video: (if self.hdr { video::HDR } else { 0 })
+                    | (if self.yuv444 { video::YUV444 } else { 0 }),
                 // A watcher gets no sound (an agent's session has none).
                 ..StreamSettings::default()
             },
@@ -139,6 +151,27 @@ impl StreamRequest {
             gamepad_mouse: self.gamepad_mouse,
         }
     }
+}
+
+/// What of `asked` (`control::video::*`) this computer can show, with these
+/// codecs: HDR needs HEVC or AV1, and a display with headroom above SDR
+/// white; 4:4:4 a decoder for it. On a Mac, call on the main thread.
+pub fn video_caps(asked: u8, codecs: u8) -> u8 {
+    let mut can = 0;
+    #[cfg(target_os = "macos")]
+    {
+        // Apple silicon decodes HEVC Main10 and 4:4:4 in hardware.
+        if cfg!(target_arch = "aarch64") {
+            can |= video::YUV444;
+            if crate::mac::display_has_hdr() {
+                can |= video::HDR;
+            }
+        }
+    }
+    if codecs & (codec::HEVC | codec::AV1) == 0 {
+        can &= !video::HDR;
+    }
+    asked & can
 }
 
 /// The display a stream would fill, as Moonlight's "native" resolution, at

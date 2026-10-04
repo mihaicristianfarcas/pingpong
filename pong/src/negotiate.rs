@@ -2,7 +2,7 @@
 //! allows. Shared by the Windows and macOS session managers.
 
 use pingpong_encode::Codec;
-use pingpong_proto::control::{AckStatus, SessionStart};
+use pingpong_proto::control::{video, AckStatus, SessionStart};
 
 use crate::config::HostConfig;
 
@@ -14,16 +14,21 @@ pub struct Negotiated {
     /// Sunshine captures at it).
     pub fps_mhz: u32,
     pub bitrate_kbps: u32,
+    /// `control::video::*`: HDR and 4:4:4, where the client asked, the
+    /// host's encoder can, and the settings allow.
+    pub video: u8,
     /// Even, as encoders want.
     pub width: u16,
     pub height: u16,
 }
 
-/// The session for `req`, or why there is none.
+/// The session for `req`, or why there is none. `caps`: what the host can
+/// encode of these `control::video` bits with a codec, together.
 pub fn negotiate(
     req: &SessionStart,
     cfg: &HostConfig,
     supported: &[Codec],
+    caps: impl Fn(Codec, u8) -> u8,
 ) -> Result<Negotiated, AckStatus> {
     let codec = codec_for(req.codecs, supported, cfg.allow_hevc, cfg.allow_av1)
         .ok_or(AckStatus::NoCodec)?;
@@ -35,7 +40,15 @@ pub fn negotiate(
     if cfg.max_bitrate_kbps > 0 {
         bitrate_kbps = bitrate_kbps.min(cfg.max_bitrate_kbps);
     }
+    let mut allowed = 0;
+    if cfg.allow_hdr {
+        allowed |= video::HDR;
+    }
+    if cfg.allow_yuv444 {
+        allowed |= video::YUV444;
+    }
     Ok(Negotiated {
+        video: caps(codec, req.video & allowed),
         codec,
         fps_mhz,
         bitrate_kbps,
@@ -83,6 +96,7 @@ mod tests {
             app: app::DESKTOP,
             repeat_delay_ms: 0,
             repeat_interval_ms: 0,
+            video: 0,
         }
     }
 
@@ -115,6 +129,7 @@ mod tests {
             &request(codec::HEVC, 3025, 1891, 120, 100_000),
             &cfg,
             &[Codec::Hevc],
+            |_, _| 0,
         )
         .unwrap();
         assert_eq!(
@@ -127,8 +142,36 @@ mod tests {
     fn a_fractional_rate_is_kept_to_the_millihertz() {
         let mut req = request(codec::HEVC, 1920, 1080, 60, 20_000);
         req.refresh_mhz = 59_940;
-        let n = negotiate(&req, &HostConfig::default(), &[Codec::Hevc]).unwrap();
+        let n = negotiate(&req, &HostConfig::default(), &[Codec::Hevc], |_, _| 0).unwrap();
         assert_eq!(n.fps_mhz, 59_940);
+    }
+
+    #[test]
+    fn hdr_and_444_need_the_client_the_encoder_and_the_settings() {
+        use pingpong_proto::control::video::{HDR, YUV444};
+        let mut req = request(codec::HEVC, 1920, 1080, 60, 20_000);
+        req.video = HDR | YUV444;
+        let caps = |c: Codec, asked: u8| if c == Codec::Hevc { asked & HDR } else { 0 };
+        let cfg = HostConfig::default();
+        assert_eq!(
+            negotiate(&req, &cfg, &[Codec::Hevc], caps).unwrap().video,
+            HDR
+        );
+        let off = HostConfig {
+            allow_hdr: false,
+            ..HostConfig::default()
+        };
+        assert_eq!(
+            negotiate(&req, &off, &[Codec::Hevc], caps).unwrap().video,
+            0
+        );
+        req.video = YUV444;
+        assert_eq!(
+            negotiate(&req, &cfg, &[Codec::Hevc], |_, asked| asked)
+                .unwrap()
+                .video,
+            YUV444
+        );
     }
 
     #[test]
@@ -138,6 +181,7 @@ mod tests {
             &request(codec::H264, 1280, 720, 1, 10),
             &cfg,
             &[Codec::H264],
+            |_, _| 0,
         )
         .unwrap();
         assert_eq!((n.fps_mhz, n.bitrate_kbps), (10_000, 1000));
@@ -145,6 +189,7 @@ mod tests {
             &request(codec::H264, 1280, 720, 1000, 10),
             &cfg,
             &[Codec::H264],
+            |_, _| 0,
         )
         .unwrap();
         assert_eq!(n.fps_mhz, 240_000);
@@ -152,7 +197,8 @@ mod tests {
             negotiate(
                 &request(codec::AV1, 1280, 720, 60, 10),
                 &cfg,
-                &[Codec::H264]
+                &[Codec::H264],
+                |_, _| 0
             ),
             Err(AckStatus::NoCodec)
         );

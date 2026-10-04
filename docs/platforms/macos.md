@@ -16,6 +16,16 @@ measurements here are from an M4 Pro).
   (`CVMetalTextureCache`). Without frame pacing the newest frame is drawn at
   once; with it, Moonlight's pacer draws one frame per display refresh on a
   `CVDisplayLink` tick.
+- **HDR and 4:4:4.** On Apple silicon, VideoToolbox decodes HEVC Main10
+  and HEVC 4:4:4 (8- and 10-bit) in hardware (measured on an M4 Pro); Ping
+  asks for 10-bit pictures as `x420`/`x444`, which Metal samples plane by
+  plane (VideoToolbox's own are packed). With **HDR** on (Settings >
+  Video) and a display with headroom above SDR white (an XDR panel, an
+  HDR monitor), the stream's layer is BT.2100 PQ, 10 bits a channel, with
+  the host's HDR metadata (`CAEDRMetadata`), as Moonlight's
+  `vt_metal.mm` does: the host's SDR white lands on this Mac's, and
+  brighter goes into the display's headroom. Text and statistics drawn
+  over an HDR picture are converted to it.
 - **Keyboard and mouse.** While captured, the pointer is locked and hidden,
   and its relative motion goes to the host (or its position, after
   Ctrl+Option+Shift+M); the pointer you see is the host's, in the picture.
@@ -50,9 +60,9 @@ says which system the host runs (so Ping forwards Command as Command).
 | | Windows host | macOS host |
 |---|---|---|
 | Display for the session | SudoVDA virtual display, primary, others off | `CGVirtualDisplay` (private CoreGraphics) in the stream's mode (HiDPI from 2560 px wide), main, the Mac's own displays mirroring it |
-| Capture | Desktop Duplication | ScreenCaptureKit, NV12 video range, BT.709 |
+| Capture | Desktop Duplication | ScreenCaptureKit, NV12 video range, BT.709; for HDR its HDR10 capture (`x420`, BT.2100 PQ) |
 | Colour conversion | D3D11 shaders | none (ScreenCaptureKit delivers NV12) |
-| Encoder | NVENC, reference invalidation | VideoToolbox hardware HEVC/H.264, low-latency rate control, recovery from long-term references |
+| Encoder | NVENC, reference invalidation | VideoToolbox hardware HEVC/H.264 (HEVC Main10 for HDR), low-latency rate control, recovery from long-term references |
 | Sound | WASAPI loopback of a virtual sink, up to 7.1 | ScreenCaptureKit's system mix in stereo; up to 7.1 from a Core Audio tap of a surround output |
 | Input | `SendInput` | CoreGraphics events at the HID tap |
 | Pointer | Desktop Duplication's, drawn into the picture | ScreenCaptureKit draws it into the picture |
@@ -163,9 +173,17 @@ seconds and prints each channel's level.
   wrong guess costs a keyframe, as before.
 - **The pointer** is in the picture: ScreenCaptureKit draws it, in its
   real shape, and hides it when an app does.
+- **HDR** (macOS 15 or later, Apple silicon): for a client that asks, the
+  virtual display is an HDR one (a `CGVirtualDisplayMode` with a transfer
+  function, measured to give the screen 5x SDR white of headroom),
+  captured with ScreenCaptureKit's HDR10 preset and encoded as HEVC Main10
+  with BT.2020 primaries, the PQ curve and HDR10 metadata. Verified Mac to
+  Mac on one M4 Pro: 52-53 fps of desktop at 1920x1200, no loss.
 
 ### Limits
 
+- No 4:4:4: VideoToolbox encodes HEVC at 4:2:2 at most (its RExt profile
+  is 4:2:2 10-bit).
 - Sound is stereo unless the Mac has a surround output and Pong may record
   the system's sound (see [Sound in surround](#sound-in-surround)).
 - No controllers yet: macOS makes virtual controllers only for a program
