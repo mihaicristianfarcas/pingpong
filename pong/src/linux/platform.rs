@@ -104,6 +104,8 @@ struct SharedScreen {
 pub struct Platform {
     /// What this machine encodes, and with what, found at start.
     codecs: Vec<(Codec, Backend)>,
+    /// The codecs it also encodes at 4:4:4 (NVENC, x264; not VA-API).
+    yuv444: Vec<Codec>,
     data_dir: PathBuf,
     wayland: bool,
 }
@@ -112,8 +114,18 @@ impl Platform {
     pub fn new(data_dir: &Path) -> Platform {
         let wayland = crate::portal::wayland_session();
         let codecs = FfmpegEncoder::probe();
+        let yuv444: Vec<Codec> = codecs
+            .iter()
+            .map(|c| c.0)
+            .filter(|c| FfmpegEncoder::probe_yuv444(*c))
+            .collect();
         for (codec, backend) in &codecs {
-            tracing::info!(codec = codec.name(), ?backend, "can encode");
+            tracing::info!(
+                codec = codec.name(),
+                ?backend,
+                yuv444 = yuv444.contains(codec),
+                "can encode"
+            );
         }
         if codecs.is_empty() {
             tracing::error!(
@@ -144,6 +156,7 @@ impl Platform {
         }
         Platform {
             codecs,
+            yuv444,
             data_dir: data_dir.to_path_buf(),
             wayland,
         }
@@ -174,10 +187,15 @@ impl Platform {
     pub fn claim(&mut self) {}
 
     /// The display to stream: the screen, woken and kept on.
-    /// What of `control::video` the encoder can stream with `codec`: SDR
-    /// 4:2:0 (the X server and the portal share SDR pictures).
-    pub fn video_caps(&self, _codec: Codec, _asked: u8) -> u8 {
-        0
+    /// What of `asked` (`control::video`) the encoder can stream with
+    /// `codec`: 4:4:4 where NVENC or x264 encodes it; never HDR (the X
+    /// server and the portal share SDR pictures).
+    pub fn video_caps(&self, codec: Codec, asked: u8) -> u8 {
+        if self.yuv444.contains(&codec) {
+            asked & control::video::YUV444
+        } else {
+            0
+        }
     }
 
     /// The HDR stream's metadata (never asked: no HDR here).
