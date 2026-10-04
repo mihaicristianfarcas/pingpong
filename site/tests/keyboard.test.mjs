@@ -69,6 +69,93 @@ const components = [
   'components/Command.astro', 'components/Video.astro', 'layouts/Base.astro',
 ];
 
+test('cached fonts cannot restore a refresh before the gallery and downloads initialize', async () => {
+  const { window, document, run, close } = page();
+  try {
+    document.fonts = { ready: Promise.resolve() };
+    window.performance.getEntriesByType = () => [{ type: 'reload' }];
+    window.sessionStorage.setItem('scroll:/', '400');
+    run('layouts/Base.astro');
+    await Promise.resolve();
+    assert.equal(window.scrollY, 0, 'the initial expanded layout must not receive the saved position');
+    assert.equal(document.documentElement.dataset.restore, '400');
+    for (const component of components.filter((component) => component !== 'layouts/Base.astro')) run(component);
+    assert.equal(document.querySelector('[data-gallery]').hasAttribute('data-ready'), true);
+    assert.equal(document.querySelectorAll('[data-picker] .panel:not([hidden])').length, 1);
+    document.dispatchEvent(new window.Event('DOMContentLoaded'));
+    await Promise.resolve();
+    assert.equal(window.scrollY, 400);
+    assert.equal(document.documentElement.hasAttribute('data-restore'), false);
+  } finally { await close(); }
+});
+
+test('the refresh fallback cannot reveal an unfinished layout while component scripts load', async () => {
+  const { window, document, run, close } = page();
+  try {
+    let fontsReady;
+    document.fonts = { ready: new Promise((resolve) => { fontsReady = resolve; }) };
+    window.performance.getEntriesByType = () => [{ type: 'reload' }];
+    window.sessionStorage.setItem('scroll:/', '400');
+    run('layouts/Base.astro');
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    assert.equal(window.scrollY, 0);
+    assert.equal(document.documentElement.dataset.restore, '400');
+    for (const component of components.filter((component) => component !== 'layouts/Base.astro')) run(component);
+    document.dispatchEvent(new window.Event('DOMContentLoaded'));
+    fontsReady();
+    await Promise.resolve();
+    assert.equal(window.scrollY, 400);
+    assert.equal(document.documentElement.hasAttribute('data-restore'), false);
+  } finally { await close(); }
+});
+
+test('refresh leaves the header visible at the restored position until the next downward scroll', async () => {
+  const { window, document, run, close } = page();
+  try {
+    const frames = [];
+    window.requestAnimationFrame = (callback) => frames.push(callback);
+    const scroll = () => {
+      window.dispatchEvent(new window.Event('scroll'));
+      frames.splice(0).forEach((callback) => callback(0));
+    };
+    let fontsReady;
+    document.fonts = { ready: new Promise((resolve) => { fontsReady = resolve; }) };
+    window.performance.getEntriesByType = () => [{ type: 'reload' }];
+    window.sessionStorage.setItem('scroll:/', '400');
+    run('layouts/Base.astro');
+    run('components/Nav.astro');
+    document.dispatchEvent(new window.Event('DOMContentLoaded'));
+    // Fonts can finish after pageshow, so resetting only on pageshow misses
+    // the layout's delayed scroll restoration.
+    window.dispatchEvent(new window.Event('pageshow'));
+    fontsReady();
+    await new Promise(setImmediate);
+    scroll();
+    const header = document.querySelector('[data-nav]');
+    assert.equal(window.scrollY, 400);
+    assert.equal(header.hasAttribute('data-hidden'), false);
+    window.scrollTo(0, 420);
+    scroll();
+    assert.equal(header.hasAttribute('data-hidden'), true);
+  } finally { await close(); }
+});
+
+test('returning to a cached page resets a hidden header', async () => {
+  const { window, document, run, close } = page();
+  try {
+    const frames = [];
+    window.requestAnimationFrame = (callback) => frames.push(callback);
+    run('components/Nav.astro');
+    const header = document.querySelector('[data-nav]');
+    window.scrollTo(0, 400);
+    window.dispatchEvent(new window.Event('scroll'));
+    frames.splice(0).forEach((callback) => callback(0));
+    assert.equal(header.hasAttribute('data-hidden'), true);
+    window.dispatchEvent(new window.PageTransitionEvent('pageshow', { persisted: true }));
+    assert.equal(header.hasAttribute('data-hidden'), false);
+  } finally { await close(); }
+});
+
 for (const width of [1280, 390]) {
   test(`at ${width}px the page offers every visible action, in header-to-footer order`, async () => {
     const { window, document, enabled, stops, close } = page(components, width);

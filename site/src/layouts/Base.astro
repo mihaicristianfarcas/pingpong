@@ -1,6 +1,8 @@
 ---
 //! Shared page metadata and in-page navigation. Links focus the first
 //! clickable control at their destination, respecting reduced motion.
+//! Scroll restoration waits for component layout and fonts, then tells the
+//! header to start visible at that position.
 import { Font } from 'astro:assets';
 import '../styles/global.css';
 
@@ -82,25 +84,28 @@ const cardUrl = Astro.site ? new URL(card, Astro.site).href : card;
     <a class="skip" href="#main">Skip to content</a>
     <slot />
     <script is:inline>
-      // Back to where the reader was (see <head>), once the page is laid out
-      // as it will stay: the font in (the layout just forced starts it
-      // loading; on a reload it comes from the cache), and the images and
-      // the video sized by their markup. Shown then, or after 600 ms at the
-      // most, whichever comes first.
+      // Module scripts collapse the gallery and download panels before
+      // DOMContentLoaded. Restoring earlier uses the much taller fallback
+      // layout, so that collapse can move or clamp the saved scroll position.
       (() => {
         const root = document.documentElement;
         const saved = root.dataset.restore;
         if (saved === undefined) return;
-        void document.body.offsetHeight;
-        let done = false;
-        const show = () => {
-          if (done) return;
-          done = true;
-          window.scrollTo(0, Number(saved));
-          delete root.dataset.restore;
-        };
-        (document.fonts ? document.fonts.ready : Promise.resolve()).then(show, show);
-        setTimeout(show, 600);
+        document.addEventListener('DOMContentLoaded', () => {
+          // Measure after enhancement so font readiness describes the final
+          // layout. The font timeout must not bypass component initialization.
+          void document.body.offsetHeight;
+          let done = false;
+          const show = () => {
+            if (done) return;
+            done = true;
+            window.scrollTo(0, Number(saved));
+            window.dispatchEvent(new Event('pingpong:scroll-restored'));
+            delete root.dataset.restore;
+          };
+          (document.fonts ? document.fonts.ready : Promise.resolve()).then(show, show);
+          setTimeout(show, 600);
+        }, { once: true });
       })();
     </script>
     <script>

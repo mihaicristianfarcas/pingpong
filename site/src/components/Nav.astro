@@ -1,6 +1,6 @@
 ---
 //! Section navigation that hides on downward scroll and returns upward.
-//! The mobile disclosure and keyboard focus keep its controls visible.
+//! Restoring the page resets it; menu and keyboard focus keep it visible.
 import Logo from './Logo.astro';
 import { REPO } from '../lib/repo';
 ---
@@ -212,6 +212,16 @@ import { REPO } from '../lib/repo';
   let previous = Math.max(0, window.scrollY);
   let travel = 0;
   const reveal = () => header.removeAttribute('data-hidden');
+  // A restored position is the new baseline, not a downward scroll. The
+  // layout can restore it after pageshow while waiting for fonts to load.
+  const reset = () => {
+    previous = Math.max(0, window.scrollY);
+    travel = 0;
+    reveal();
+  };
+  window.addEventListener('pageshow', reset);
+  window.addEventListener('pingpong:scroll-restored', reset);
+  reset();
   const open = (on: boolean) => {
     nav.toggleAttribute('data-open', on);
     button.setAttribute('aria-expanded', String(on));

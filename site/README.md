@@ -23,8 +23,14 @@ and End; Escape closes it and returns focus to Menu. The first Tab reveals
 Skip to content, which moves focus to the first action in the main content.
 
 The header hides as you scroll down and returns as you scroll up or reach
-the top. It stays visible while its controls have focus or the mobile menu
-is open. Reduced motion removes its slide transition.
+the top. Refreshing or returning to the page resets it to visible, including
+when your scroll position is restored. It stays visible while its controls
+have focus or the mobile menu is open. Reduced motion removes its slide
+transition.
+
+On refresh, the saved scroll position is restored after the component
+scripts finish arranging the gallery and downloads and the fonts settle.
+The font wait has a 600 ms fallback after component initialization.
 
 Copy results and changed download selections are announced to screen
 readers. The stream video has native controls without JavaScript and
