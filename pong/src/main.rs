@@ -33,6 +33,8 @@ mod gamepad;
 mod host;
 mod negotiate;
 mod netif;
+#[cfg(windows)]
+mod nvprefs;
 mod pairing;
 #[cfg(target_os = "macos")]
 #[path = "mac/permissions.rs"]
@@ -65,6 +67,8 @@ mod session;
 #[cfg(target_os = "macos")]
 #[path = "mac/sound.rs"]
 mod sound;
+#[cfg(windows)]
+mod tuning;
 #[cfg(windows)]
 mod video;
 #[cfg(any(target_os = "macos", target_os = "linux"))]

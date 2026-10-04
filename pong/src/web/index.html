@@ -338,6 +338,8 @@ const settingSections = [
   ['Encoder', [
     ['nvenc_preset', 'Preset', 'select:1=P1 (fastest)|2=P2|3=P3|4=P4|5=P5|6=P6|7=P7 (best quality)', 'Lower is faster. Apollo uses P1.'],
     ['nvenc_two_pass', 'Two-pass encoding', 'check', 'Quarter-resolution first pass: better bit allocation at no extra latency.'],
+    ['nvidia_max_power', 'Full GPU power for Pong', 'check', "The NVIDIA driver keeps its clocks up for Pong instead of lowering them between frames, which slows the encoder. Applies after Pong restarts."],
+    ['nvidia_dxgi_present', 'OpenGL and Vulkan through DXGI', 'check', "Full-screen OpenGL and Vulkan games are captured at their full frame rate. Changes the driver's setting for every program while Pong runs, and puts it back when Pong stops. Applies after Pong restarts."],
     ['allow_hevc', 'Allow HEVC', 'check', 'Better quality per bit than H.264 when the client supports it.'],
     ['allow_av1', 'Allow AV1', 'check', 'Used when both this GPU and the client support it.'],
   ]],
@@ -360,7 +362,7 @@ const settingSections = [
   ]],
 ];
 // NVENC's settings mean nothing to a Mac host (VideoToolbox, no AV1 encoder).
-const macOnlyHidden = ['nvenc_preset', 'nvenc_two_pass', 'allow_av1'];
+const macOnlyHidden = ['nvenc_preset', 'nvenc_two_pass', 'nvidia_max_power', 'nvidia_dxgi_present', 'allow_av1'];
 const visibleFields = fields => fields.filter(([k]) => hostOs !== 'macos' || !macOnlyHidden.includes(k));
 const settingFields = settingSections.flatMap(([, fields]) => fields);
 

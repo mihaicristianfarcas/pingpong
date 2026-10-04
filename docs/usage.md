@@ -149,6 +149,8 @@ window is an ordinary app: closing it quits it.
 | | Share the clipboard with clients | on | `clipboard` |
 | Video | NVENC preset | P1 (fastest), as Apollo | `nvenc_preset` |
 | | Two-pass encoding | on | `nvenc_two_pass` |
+| | Full GPU power for Pong (NVIDIA, after a restart) | on | `nvidia_max_power` |
+| | OpenGL and Vulkan through DXGI (NVIDIA, system-wide while Pong runs, after a restart) | on | `nvidia_dxgi_present` |
 | | Allow HEVC, Allow AV1 | on | `allow_hevc`, `allow_av1` |
 | | Maximum bitrate, maximum frame rate | the client's choice | `max_bitrate_kbps`, `max_fps` |
 | | Send pacing | 800 Mbit/s | `pace_mbps` |

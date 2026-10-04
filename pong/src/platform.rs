@@ -45,6 +45,10 @@ pub struct Platform {
     /// A session ended and its display is kept for the next (see `LINGER`):
     /// since when, and the host's last-input time then.
     linger: Option<(Instant, u32)>,
+    /// The NVIDIA driver's settings for streaming, put back when Pong stops.
+    _nvidia: Option<crate::nvprefs::Applied>,
+    /// What Windows is asked for while a session streams.
+    streaming: Option<crate::tuning::Streaming>,
 }
 
 fn state_path(data_dir: &Path) -> PathBuf {
@@ -57,11 +61,14 @@ impl Platform {
         // A previous run that died mid-session left the host's monitors off.
         WindowsDisplay::restore_stale(&path);
         crate::audio::restore_stale(data_dir);
+        let cfg = HostConfig::load_or_default(data_dir);
         Platform {
             display: WindowsDisplay::new(path),
             data_dir: data_dir.to_path_buf(),
             app: None,
             linger: None,
+            _nvidia: crate::nvprefs::apply(data_dir, cfg.nvidia_max_power, cfg.nvidia_dxgi_present),
+            streaming: None,
         }
     }
 
@@ -197,6 +204,9 @@ impl Platform {
     /// the host awake, plug in the client's pads.
     pub fn starting(&mut self, peer: &Arc<Peer>, shared: &Shared, endpoint: &Arc<Endpoint>) {
         stay_awake(true);
+        if self.streaming.is_none() {
+            self.streaming = Some(crate::tuning::Streaming::start());
+        }
         let mut pads = shared.pads.lock();
         if pads.as_ref().is_none_or(|(p, _)| *p != peer.id()) {
             *pads = Some((
@@ -249,6 +259,7 @@ impl Platform {
         drop(shared.pads.lock().take());
         if ran {
             stay_awake(false);
+            self.streaming = None;
             if !shutdown {
                 self.linger = Some((Instant::now(), last_input()));
                 tracing::info!(

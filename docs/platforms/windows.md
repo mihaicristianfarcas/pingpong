@@ -90,6 +90,21 @@ one's window.
   and must not read files on the user's behalf.
 - **Awake.** The display and system are kept awake for the session: Windows
   powering the display off at its idle timeout would stop the capture.
+- **While streaming**, as Sunshine asks of Windows (`misc.cpp`,
+  `streaming_will_start`): a 1 ms timer resolution (otherwise waits with a
+  timeout wake 15.6 ms apart), DWM's composition scheduled by MMCSS, every
+  connected Wi-Fi adapter in media-streaming mode (no background scans),
+  and Mouse Keys on when the host has no mouse attached, so Windows shows a
+  pointer to draw. All put back when the session ends.
+- **The NVIDIA driver**, as Sunshine sets it, through NVAPI's driver
+  settings: a profile of Pong's own for `pong.exe` prefers maximum
+  performance (the driver's adaptive clocks otherwise slow the encoder
+  between frames), and OpenGL and Vulkan present through DXGI while Pong
+  runs, so Desktop Duplication captures full-screen OpenGL and Vulkan games
+  at their full frame rate. The second is the driver's global setting:
+  Pong keeps what it was in `nvidia-undo.toml` and puts it back when it
+  stops (or, after a crash, when it next starts). Both are settings, on by
+  default.
 
 ### Starting a stream
 
