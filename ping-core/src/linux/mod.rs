@@ -23,7 +23,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use pingpong_decode::ffmpeg::FfmpegDecoder;
 use pingpong_proto::control::CursorShape;
-use pingpong_proto::input::{scancode, Button, InputEvent};
+use pingpong_proto::input::{scancode, Button};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{
