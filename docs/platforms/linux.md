@@ -17,7 +17,9 @@ line of its standard output. That process is `ping_core::linux`:
   Ctrl+Alt+Shift chords); the pointer is captured by locking or confining
   the cursor.
 - **Decode.** FFmpeg, with VA-API where the machine has it, else four slice
-  threads in software. `PING_SOFTWARE_DECODE=1` skips VA-API.
+  threads in software. `PING_SOFTWARE_DECODE=1` skips VA-API. A 4:4:4
+  stream (**YUV 4:4:4**, which a Linux client asks for when set) decodes in
+  software where VA-API does not take it.
 - **Present.** wgpu (Vulkan or GL), drawing the planes (NV12, I420 or I444)
   with the same colour maths as the Windows renderer.
 - **Controllers.** gilrs (evdev), rumble included.
@@ -50,7 +52,9 @@ pointer mapped to match).
   (H.264 only, in software), set up as Sunshine sets them up: no B-frames,
   an endless GOP, a VBV of about a frame, an IDR on a loss (none of these
   encoders invalidates references). swscale converts to BT.709 4:2:0 and
-  scales (`pingpong-encode/src/ffmpeg.rs`).
+  scales (`pingpong-encode/src/ffmpeg.rs`); to 4:4:4 for a client that asks
+  for it, where NVENC or x264 encodes (VA-API takes 4:2:0 only). No HDR:
+  the X server and the portal share SDR pictures.
 - **Input.** XTest: keys by position, text by the layout's own keys (spare
   key codes remapped only for characters the layout lacks), the wheel as
   buttons 4–7 (`pingpong-input/src/x11.rs`).
@@ -87,6 +91,7 @@ Data and logs are in `~/.config/pong`.
 | What | Result |
 |---|---|
 | Linux host to Linux client, 1920x1080 screen to a 1280x720@60 stream, x264 in software | 60 fps; 4.2 ms capture to encoded; client decode 0.3 ms; 8.5 ms capture to screen; clicks, keys, typed text ("Hé!") and the wheel arrive; a 440 Hz tone at 200 packets a second |
+| The same at 4:4:4 (`--yuv444`: x264 High 4:4:4 Predictive) | 60 fps; 5.7 ms capture to encoded; client decode 0.34 ms in software; 10.4 ms capture to screen; no loss |
 | The same through the Wayland portal (GNOME 46, nested, software rendering) | frames at the 42 fps the nested compositor draws; 4.7 ms capture to encoded; 10–11 ms capture to screen; input arrives; later sessions start from the restore token without asking |
 | Linux client streaming a Windows host over a VPN, 1280x720@60 | H.264 and HEVC; 60 fps received, decoded and presented; 1 ms decode (software); 14–20 ms capture to screen |
 | Offscreen decode and present of the 600-frame test stream (`ping-core/examples/linux-render-check.rs`) | every colour bar matches FFmpeg's own BT.709 conversion exactly |

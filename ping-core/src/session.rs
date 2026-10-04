@@ -168,6 +168,12 @@ pub fn video_caps(asked: u8, codecs: u8) -> u8 {
             }
         }
     }
+    // FFmpeg decodes 4:4:4 in software where VA-API does not, and the
+    // presenter draws its full-size chroma planes.
+    #[cfg(target_os = "linux")]
+    {
+        can |= video::YUV444;
+    }
     if codecs & (codec::HEVC | codec::AV1) == 0 {
         can &= !video::HDR;
     }

@@ -5,7 +5,8 @@
 //!
 //! Images come in as BGRX or RGBX at the screen's size; swscale turns them into the
 //! encoder's 4:2:0 (BT.709, limited range) at the stream's size, scaled to
-//! fit and letterboxed ([`fit`]). Encoding is synchronous: a frame is out by
+//! fit and letterboxed ([`fit`]); or 4:4:4 (YUV444P) for a client that asks,
+//! where NVENC or x264 encodes (VA-API encoders take 4:2:0 only). Encoding is synchronous: a frame is out by
 //! the time `submit` returns, so nothing is ever in flight, and there is no
 //! reference invalidation (a loss costs an IDR).
 
@@ -129,6 +130,23 @@ impl FfmpegEncoder {
         Err(last)
     }
 
+    /// Whether something here encodes `codec` at 4:4:4.
+    pub fn probe_yuv444(codec: Codec) -> bool {
+        let config = EncoderConfig {
+            codec,
+            width: 1280,
+            height: 720,
+            fps_mhz: 60_000,
+            bitrate_bps: 10_000_000,
+            preset: 1,
+            two_pass: false,
+            slices: 1,
+            hdr: false,
+            yuv444: true,
+        };
+        FfmpegEncoder::new(config).is_ok()
+    }
+
     /// The codecs something here can encode, fastest backend first found.
     pub fn probe() -> Vec<(Codec, Backend)> {
         let mut found = Vec::new();
@@ -205,19 +223,31 @@ impl FfmpegEncoder {
                 c.slices = config.slices as i32;
             }
             e.apply_rate(config.bitrate_bps);
-            e.sw_format = match backend {
-                Backend::Vaapi => {
+            e.sw_format = match (backend, config.yuv444) {
+                (Backend::Vaapi, true) => {
+                    return Err(EncodeError::Unsupported("4:4:4 through VA-API".into()));
+                }
+                (Backend::Vaapi, false) => {
                     e.attach_vaapi()?;
                     ff::AVPixelFormat::AV_PIX_FMT_NV12
                 }
-                Backend::Nvenc => {
+                (Backend::Nvenc, true) => {
+                    (*e.ctx).pix_fmt = ff::AVPixelFormat::AV_PIX_FMT_YUV444P;
+                    ff::AVPixelFormat::AV_PIX_FMT_YUV444P
+                }
+                (Backend::Nvenc, false) => {
                     (*e.ctx).pix_fmt = ff::AVPixelFormat::AV_PIX_FMT_NV12;
                     ff::AVPixelFormat::AV_PIX_FMT_NV12
                 }
-                Backend::Software => {
-                    (*e.ctx).pix_fmt = ff::AVPixelFormat::AV_PIX_FMT_YUV420P;
+                (Backend::Software, yuv444) => {
+                    let format = if yuv444 {
+                        ff::AVPixelFormat::AV_PIX_FMT_YUV444P
+                    } else {
+                        ff::AVPixelFormat::AV_PIX_FMT_YUV420P
+                    };
+                    (*e.ctx).pix_fmt = format;
                     (*e.ctx).thread_count = 0;
-                    ff::AVPixelFormat::AV_PIX_FMT_YUV420P
+                    format
                 }
             };
             e.set_options();
@@ -241,6 +271,7 @@ impl FfmpegEncoder {
                 height = config.height,
                 fps = config.fps_mhz as f64 / 1000.0,
                 mbps = config.bitrate_bps / 1_000_000,
+                yuv444 = config.yuv444,
                 "encoder ready"
             );
             Ok(e)
@@ -337,8 +368,9 @@ impl FfmpegEncoder {
             } else {
                 2
             };
+            let chroma_rows = if self.config.yuv444 { h } else { h.div_ceil(2) };
             for p in 1..=planes {
-                std::ptr::write_bytes(f.data[p], 128, f.linesize[p] as usize * h.div_ceil(2));
+                std::ptr::write_bytes(f.data[p], 128, f.linesize[p] as usize * chroma_rows);
             }
         }
     }
@@ -394,6 +426,11 @@ impl FfmpegEncoder {
             if nv12 {
                 dst[1] = f.data[1].add((y / 2) as usize * f.linesize[1] as usize + x as usize);
                 strides[1] = f.linesize[1];
+            } else if self.config.yuv444 {
+                for p in 1..3 {
+                    dst[p] = f.data[p].add(y as usize * f.linesize[p] as usize + x as usize);
+                    strides[p] = f.linesize[p];
+                }
             } else {
                 for p in 1..3 {
                     dst[p] =
@@ -538,6 +575,44 @@ mod tests {
         assert_eq!(fit(1920, 1080, 1280, 800), (0, 40, 1280, 720));
         assert_eq!(fit(1280, 1024, 1920, 1080), (284, 0, 1350, 1080));
         assert_eq!(fit(2560, 1600, 1920, 1080), (96, 0, 1728, 1080));
+    }
+
+    /// x264 encodes 4:4:4 for a client that asks (High 4:4:4 Predictive).
+    #[test]
+    fn software_h264_at_4_4_4() {
+        let config = EncoderConfig {
+            codec: Codec::H264,
+            width: 640,
+            height: 360,
+            fps_mhz: 60_000,
+            bitrate_bps: 4_000_000,
+            preset: 1,
+            two_pass: false,
+            slices: 1,
+            hdr: false,
+            yuv444: true,
+        };
+        let Ok(mut e) = FfmpegEncoder::with(Backend::Software, config) else {
+            eprintln!("no libx264 here; skipped");
+            return;
+        };
+        let pixels = vec![0x80u8; 800 * 450 * 4];
+        let image = Image {
+            data: &pixels,
+            width: 800,
+            height: 450,
+            stride: 800 * 4,
+            rgb: false,
+        };
+        e.submit(&image, 0, true).unwrap();
+        let frame = e.next(Duration::from_secs(1)).unwrap().unwrap();
+        // The SPS (NAL type 7) says profile_idc 244: High 4:4:4 Predictive.
+        let profile = frame
+            .data
+            .windows(5)
+            .find(|w| w[..3] == [0, 0, 1] && w[3] & 0x1F == 7)
+            .map(|w| w[4]);
+        assert_eq!(profile, Some(244));
     }
 
     /// x264 turns a picture into an IDR, then P-frames, then an IDR on demand.
