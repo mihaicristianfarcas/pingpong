@@ -550,7 +550,7 @@ fn apply_capture(r: &mut Running, captured: bool) {
         let input = r.stream.input().clone();
         r.keyboard.release_all(&input);
         for b in r.held_buttons.drain(..) {
-            input.send(InputEvent::ButtonUp(b));
+            input.mouse_button(b, false);
         }
     }
     apply_pointer(r);
@@ -750,11 +750,11 @@ impl ApplicationHandler<UserEvent> for StreamApp {
                 if down {
                     if !r.held_buttons.contains(&b) {
                         r.held_buttons.push(b);
-                        input.send(InputEvent::ButtonDown(b));
+                        input.mouse_button(b, true);
                     }
                 } else if let Some(i) = r.held_buttons.iter().position(|x| *x == b) {
                     r.held_buttons.remove(i);
-                    input.send(InputEvent::ButtonUp(b));
+                    input.mouse_button(b, false);
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -772,10 +772,10 @@ impl ApplicationHandler<UserEvent> for StreamApp {
                 let (dh, dv) = (fx.trunc(), fy.trunc());
                 r.scroll_residue = (fx - dh, fy - dv);
                 if dv != 0.0 || dh != 0.0 {
-                    input.send(InputEvent::Wheel {
-                        dv: dv.clamp(i16::MIN as f64, i16::MAX as f64) as i16,
-                        dh: dh.clamp(i16::MIN as f64, i16::MAX as f64) as i16,
-                    });
+                    input.wheel(
+                        dv.clamp(i16::MIN as f64, i16::MAX as f64) as i16,
+                        dh.clamp(i16::MIN as f64, i16::MAX as f64) as i16,
+                    );
                 }
             }
             _ => {}

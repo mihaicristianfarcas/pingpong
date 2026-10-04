@@ -34,6 +34,10 @@ pub struct Prefs {
     pub mute_in_background: bool,
     pub connection_warnings: bool,
     pub gamepad_mouse: bool,
+    /// Moonlight's "swap left and right mouse buttons".
+    pub swap_mouse_buttons: bool,
+    /// Moonlight's "reverse mouse scrolling direction".
+    pub reverse_scroll: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub share_clipboard: bool,
     /// What the update check follows, once the user has chosen (until
@@ -61,6 +65,8 @@ impl Default for Prefs {
             mute_in_background: true,
             connection_warnings: true,
             gamepad_mouse: true,
+            swap_mouse_buttons: false,
+            reverse_scroll: false,
             share_clipboard: true,
             updates: None,
         }
@@ -195,6 +201,8 @@ impl Prefs {
             via: Vec::new(),
             watch: false,
             clipboard: self.share_clipboard,
+            swap_mouse_buttons: self.swap_mouse_buttons,
+            reverse_scroll: self.reverse_scroll,
         }
     }
 
@@ -344,6 +352,18 @@ impl Prefs {
         }
         if let Some(v) = m.bool("gamepadmouse") {
             self.gamepad_mouse = v;
+        }
+        if let Some(v) = m.bool("swapmousebuttons") {
+            self.swap_mouse_buttons = v;
+            if v {
+                done.push("swapped mouse buttons".into());
+            }
+        }
+        if let Some(v) = m.bool("reversescroll") {
+            self.reverse_scroll = v;
+            if v {
+                done.push("reversed scrolling".into());
+            }
         }
         Some(done)
     }

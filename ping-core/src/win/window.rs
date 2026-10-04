@@ -133,7 +133,7 @@ impl Handler {
         }
         for b in self.held_buttons.drain() {
             if let Some(b) = button(b) {
-                self.input.send(InputEvent::ButtonUp(b));
+                self.input.mouse_button(b, false);
             }
         }
     }
@@ -350,10 +350,10 @@ impl Handler {
         let Some(b) = button(n) else { return false };
         if down {
             if self.held_buttons.insert(n) {
-                self.input.send(InputEvent::ButtonDown(b));
+                self.input.mouse_button(b, true);
             }
         } else if self.held_buttons.remove(&n) {
-            self.input.send(InputEvent::ButtonUp(b));
+            self.input.mouse_button(b, false);
         }
         false
     }
@@ -851,11 +851,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let h = s.handler.borrow();
             if h.captured() {
                 let delta = hiword(wparam.0) as i16;
-                h.input.send(if msg == WM_MOUSEWHEEL {
-                    InputEvent::Wheel { dv: delta, dh: 0 }
+                if msg == WM_MOUSEWHEEL {
+                    h.input.wheel(delta, 0);
                 } else {
-                    InputEvent::Wheel { dv: 0, dh: delta }
-                });
+                    h.input.wheel(0, delta);
+                }
             }
             LRESULT(0)
         }

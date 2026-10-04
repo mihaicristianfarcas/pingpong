@@ -88,6 +88,8 @@ pub struct StreamSettings {
     pub watch: bool,
     /// Share the clipboard with the host both ways, if it allows.
     pub clipboard: bool,
+    /// Swapped buttons, reversed scrolling.
+    pub mouse: crate::input::MouseOptions,
 }
 
 impl Default for StreamSettings {
@@ -107,6 +109,7 @@ impl Default for StreamSettings {
             app: control::app::DESKTOP,
             watch: false,
             clipboard: false,
+            mouse: crate::input::MouseOptions::default(),
         }
     }
 }
@@ -368,7 +371,8 @@ impl Stream {
                 })
                 .map_err(|e| e.to_string())?;
         }
-        let (input, input_tx) = InputThread::spawn(ctx.endpoint.clone(), ctx.peer.clone());
+        let (input, input_tx) =
+            InputThread::spawn(ctx.endpoint.clone(), ctx.peer.clone(), ctx.settings.mouse);
         let net = {
             let ctx = ctx.clone();
             std::thread::Builder::new()
