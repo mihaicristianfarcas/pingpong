@@ -20,6 +20,10 @@ pub mod sudovda;
 #[cfg(windows)]
 pub mod windows;
 
+/// HDR on a Windows display.
+#[cfg(windows)]
+pub mod hdr;
+
 /// A virtual display on macOS (CoreGraphics' private CGVirtualDisplay).
 #[cfg(target_os = "macos")]
 pub mod macos;

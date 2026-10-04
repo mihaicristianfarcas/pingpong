@@ -51,7 +51,15 @@ fn main() {
     }
     let (w, h) = cap.size();
     let (w, h) = (w & !1, h & !1);
-    let mut conv = Converter::new(&device, &context, w, h).expect("converter");
+    let mut conv = Converter::new(
+        &device,
+        &context,
+        w,
+        h,
+        pingpong_encode::convert::Output::Nv12,
+        203,
+    )
+    .expect("converter");
     let settings = EncoderConfig {
         codec,
         width: w,

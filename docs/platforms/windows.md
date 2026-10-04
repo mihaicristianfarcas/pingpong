@@ -65,11 +65,23 @@ one's window.
   saturating the GPU does not starve capture and encode.
 - **Colour.** BGRA → NV12 in the host's own D3D11 shaders: BT.709, limited
   range, chroma sited left, the colour description written into the stream.
+  For a client that asks for **HDR** (and an NVIDIA GPU that encodes
+  10-bit), the virtual display is switched to HDR for the session (Windows
+  11 24H2's HDR state, or advanced colour before it, as Sunshine's
+  libdisplaydevice does), duplicated in FP16 (scRGB), and converted to
+  BT.2020 with the PQ curve into P010; the pointer is drawn at the
+  display's SDR white, and an SDR frame (a secure desktop) is placed
+  there too. The client hears the display's light levels and SDR white
+  (`HdrMetadata`). For **4:4:4**, BGRA → packed AYUV, chroma at full
+  resolution. Not both at once: NVENC takes 10-bit 4:4:4 only from CUDA,
+  not from a D3D11 texture, so HDR wins.
 - **Encode.** NVENC P1, ultra-low-latency tuning, CBR with a single-frame
   VBV, two-pass at quarter resolution (a setting, on by default), an
   infinite GOP and five reference frames where the GPU supports them, so a
   lost frame is repaired by invalidating it as a reference rather than by a
-  keyframe.
+  keyframe. HEVC Main10 (and AV1 10-bit) for HDR, `chromaFormatIDC` 3 for
+  4:4:4 (H.264 High 4:4:4), where the GPU says it can
+  (`NV_ENC_CAPS_SUPPORT_10BIT_ENCODE`, `..._YUV444_ENCODE`).
 - **Sound.** WASAPI loopback of the session's virtual sink, stereo to 7.1,
   Opus as Sunshine configures it.
 - **Input.** `SendInput`: keys by scancode, the mouse relative (the host's

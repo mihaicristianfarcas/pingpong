@@ -35,6 +35,10 @@ const LINGER: Duration = Duration::from_secs(60);
 /// A session's display, while it streams.
 pub struct Display {
     gdi_name: String,
+    /// SDR white in its HDR desktop, cd/m² (203, BT.2408's, when SDR).
+    sdr_white: u16,
+    /// What the client hears of an HDR stream, read once the display is up.
+    hdr: control::HdrMetadata,
 }
 
 pub struct Platform {
@@ -48,6 +52,8 @@ pub struct Platform {
     linger: Option<(Instant, u32)>,
     /// The NVIDIA driver's settings for streaming, put back when Pong stops.
     _nvidia: Option<crate::nvprefs::Applied>,
+    /// What the GPU's encoder can do, per codec (probed once).
+    caps: std::cell::OnceCell<Vec<pingpong_encode::nvenc::CodecCaps>>,
     /// What Windows is asked for while a session streams.
     streaming: Option<crate::tuning::Streaming>,
 }
@@ -70,36 +76,72 @@ impl Platform {
             linger: None,
             _nvidia: crate::nvprefs::apply(data_dir, cfg.nvidia_max_power, cfg.nvidia_dxgi_present),
             streaming: None,
+            caps: std::cell::OnceCell::new(),
         }
     }
 
     pub fn supported_codecs(&self) -> Vec<Codec> {
-        let Some((name, _)) = pingpong_capture::gpu::Gpu::list_outputs()
-            .into_iter()
-            .next()
-        else {
-            return vec![Codec::H264];
-        };
-        match pingpong_capture::gpu::Gpu::for_output(&name) {
-            Ok(gpu) => pingpong_encode::nvenc::supported_codecs(&gpu.device).unwrap_or_else(|e| {
-                tracing::error!(error = %e, "NVENC unavailable");
-                Vec::new()
-            }),
-            Err(e) => {
-                tracing::error!(error = %e, "no GPU output to probe");
-                vec![Codec::H264]
+        self.caps().iter().map(|c| c.codec).collect()
+    }
+
+    /// The GPU's encoder, probed on the first output's device.
+    fn caps(&self) -> &[pingpong_encode::nvenc::CodecCaps] {
+        use pingpong_encode::nvenc::CodecCaps;
+        self.caps.get_or_init(|| {
+            let h264 = || {
+                vec![CodecCaps {
+                    codec: Codec::H264,
+                    ten_bit: false,
+                    yuv444: false,
+                }]
+            };
+            let Some((name, _)) = pingpong_capture::gpu::Gpu::list_outputs()
+                .into_iter()
+                .next()
+            else {
+                return h264();
+            };
+            match pingpong_capture::gpu::Gpu::for_output(&name) {
+                Ok(gpu) => pingpong_encode::nvenc::capabilities(&gpu.device).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "NVENC unavailable");
+                    Vec::new()
+                }),
+                Err(e) => {
+                    tracing::error!(error = %e, "no GPU output to probe");
+                    h264()
+                }
             }
+        })
+    }
+
+    /// What of `asked` (`control::video`) NVENC can stream with `codec`:
+    /// HDR where it encodes 10-bit (HEVC, AV1), 4:4:4 where it encodes that.
+    /// Not both: NVENC takes 10-bit 4:4:4 from CUDA only, not from a D3D11
+    /// texture (as Sunshine's `nvenc_d3d11_native.cpp` says), so HDR wins.
+    pub fn video_caps(&self, codec: Codec, asked: u8) -> u8 {
+        use control::video::{HDR, YUV444};
+        let Some(c) = self.caps().iter().find(|c| c.codec == codec) else {
+            return 0;
+        };
+        let mut can = 0;
+        if c.ten_bit {
+            can |= HDR;
         }
+        if c.yuv444 {
+            can |= YUV444;
+        }
+        let mut video = asked & can;
+        if video & HDR != 0 {
+            video &= !YUV444;
+        }
+        video
     }
 
-    /// What of `control::video` the encoder can stream with `codec`.
-    pub fn video_caps(&self, _codec: Codec, _asked: u8) -> u8 {
-        0
-    }
-
-    /// The HDR stream's metadata.
-    pub fn hdr_metadata(&self, _d: &Display) -> control::HdrMetadata {
-        control::HdrMetadata::bt2020(1000, 203)
+    /// The HDR stream's metadata: the virtual display's light as Windows
+    /// reports it; BT.2020 primaries, as Sunshine reports them for its scRGB
+    /// to PQ conversion (`display_base.cpp`).
+    pub fn hdr_metadata(&self, d: &Display) -> control::HdrMetadata {
+        d.hdr
     }
 
     /// Anything that stops a session before it starts.
@@ -138,9 +180,37 @@ impl Platform {
             refresh_mhz: fps_mhz,
         };
         match self.display.activate(mode) {
-            Ok(active) => Ok(Display {
-                gdi_name: active.gdi_name,
-            }),
+            Ok(active) => {
+                // HDR on for a session that streams it, off otherwise (the
+                // display's identity keeps what the last session left).
+                let hdr = n.video & control::video::HDR != 0;
+                match self.display.set_hdr(hdr) {
+                    Ok(true) => tracing::info!(hdr, "virtual display switched"),
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!(error = %e, hdr, "virtual display's HDR not switched"),
+                }
+                let sdr_white = if hdr {
+                    self.display.sdr_white_nits().unwrap_or(203)
+                } else {
+                    203
+                };
+                let mut metadata = control::HdrMetadata::bt2020(1000, sdr_white);
+                if let Some((max, min, full)) =
+                    pingpong_capture::gpu::Gpu::output_luminance(&active.gdi_name)
+                {
+                    if hdr && max >= 100.0 {
+                        metadata.max_luminance = max.min(10_000.0) as u16;
+                        metadata.min_luminance =
+                            (min * 10_000.0).clamp(0.0, u16::MAX as f32) as u16;
+                        metadata.max_fall = full.min(10_000.0) as u16;
+                    }
+                }
+                Ok(Display {
+                    gdi_name: active.gdi_name,
+                    sdr_white,
+                    hdr: metadata,
+                })
+            }
             Err(e) => {
                 tracing::error!(error = %e, "virtual display unavailable; refusing the session");
                 Err(AckStatus::VddUnavailable)
@@ -163,6 +233,7 @@ impl Platform {
                 ..encoder
             },
             pace_mbps: cfg.pace_mbps.max(10),
+            sdr_white_nits: d.sdr_white,
         }
     }
 

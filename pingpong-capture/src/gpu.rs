@@ -14,7 +14,7 @@ use windows::Win32::Graphics::Direct3D11::{
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIDevice1, IDXGIFactory1,
-    IDXGIOutput, DXGI_ADAPTER_DESC1,
+    IDXGIOutput, IDXGIOutput6, DXGI_ADAPTER_DESC1,
 };
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows::Win32::System::Threading::GetCurrentProcess;
@@ -93,6 +93,33 @@ impl Gpu {
             }
         }
         out
+    }
+
+    /// The light an output can give, as Windows reports it for an HDR
+    /// display (`IDXGIOutput6::GetDesc1`): its peak, its black and its
+    /// full-frame peak, cd/m².
+    pub fn output_luminance(gdi_name: &str) -> Option<(f32, f32, f32)> {
+        let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>() }.ok()?;
+        let mut a = 0;
+        while let Ok(adapter) = unsafe { factory.EnumAdapters1(a) } {
+            a += 1;
+            let mut o = 0;
+            while let Ok(output) = unsafe { adapter.EnumOutputs(o) } {
+                o += 1;
+                let named = unsafe { output.GetDesc() }
+                    .is_ok_and(|d| utf16_name(&d.DeviceName).eq_ignore_ascii_case(gdi_name));
+                if !named {
+                    continue;
+                }
+                let desc = unsafe { output.cast::<IDXGIOutput6>().ok()?.GetDesc1() }.ok()?;
+                return Some((
+                    desc.MaxLuminance,
+                    desc.MinLuminance,
+                    desc.MaxFullFrameLuminance,
+                ));
+            }
+        }
+        None
     }
 
     fn create(adapter: IDXGIAdapter1, output: IDXGIOutput) -> Result<Gpu, CaptureError> {

@@ -786,6 +786,18 @@ impl WindowsDisplay {
         self.isolate = isolate;
     }
 
+    /// Switch the active virtual display's HDR on or off (see `hdr`).
+    /// Returns whether it changed.
+    pub fn set_hdr(&self, on: bool) -> Result<bool, DisplayError> {
+        let id = self.active_id.ok_or(DisplayError::NoSuchDisplay)?;
+        crate::hdr::set_hdr(id, on)
+    }
+
+    /// The active virtual display's SDR white inside its HDR desktop.
+    pub fn sdr_white_nits(&self) -> Option<u16> {
+        crate::hdr::sdr_white_nits(self.active_id?)
+    }
+
     /// If a previous run died with a session active, put the desktop back
     /// (v2 design §6.4). Call once at startup, before anything else touches
     /// the display.

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use pingpong_capture::dda::{sync_thread_desktop, DdaCapture};
 use pingpong_capture::gpu::Gpu;
 use pingpong_capture::Grab;
-use pingpong_encode::convert::Converter;
+use pingpong_encode::convert::{Converter, Output};
 use pingpong_encode::nvenc::NvencEncoder;
 use pingpong_encode::EncoderConfig;
 use pingpong_proto::clock;
@@ -25,6 +25,9 @@ pub struct VideoParams {
     pub gdi_name: String,
     pub encoder: EncoderConfig,
     pub pace_mbps: u32,
+    /// SDR white on the display, cd/m²: where an SDR frame (or the pointer)
+    /// goes in an HDR picture.
+    pub sdr_white_nits: u16,
 }
 
 /// Start capturing and encoding `params.gdi_name`. Blocks until the encoder is
@@ -68,6 +71,7 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
         let (device, context) = (gpu.device.clone(), gpu.context.clone());
         let mut cap = DdaCapture::new(gpu);
         let e = params.encoder;
+        cap.set_hdr(e.hdr, params.sdr_white_nits);
         let deadline = Instant::now() + Duration::from_secs(1);
         while cap.texture().is_none() {
             if Instant::now() > deadline {
@@ -82,8 +86,15 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
                 tracing::debug!(error = %e, "waiting for the first desktop image");
             }
         }
-        let conv =
-            Converter::new(&device, &context, e.width, e.height).map_err(|e| e.to_string())?;
+        let conv = Converter::new(
+            &device,
+            &context,
+            e.width,
+            e.height,
+            Output::for_stream(e.hdr, e.yuv444),
+            params.sdr_white_nits,
+        )
+        .map_err(|e| e.to_string())?;
         let enc = NvencEncoder::new(&device, conv.output(), e).map_err(|e| e.to_string())?;
         let (cw, ch) = cap.size();
         if (cw, ch) != (e.width, e.height) {
