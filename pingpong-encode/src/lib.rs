@@ -46,7 +46,9 @@ pub struct EncoderConfig {
     pub codec: Codec,
     pub width: u32,
     pub height: u32,
-    pub fps: u32,
+    /// Frames a second, in millihertz: the client's display may refresh at
+    /// 59.94 Hz, and a stream at 60 would show a frame twice every 17 s.
+    pub fps_mhz: u32,
     pub bitrate_bps: u32,
     /// NVENC preset P1 (fastest) .. P7 (best). Apollo defaults to P1.
     pub preset: u8,
@@ -54,6 +56,18 @@ pub struct EncoderConfig {
     pub two_pass: bool,
     /// Slices per frame. More slices decode in parallel and localise damage.
     pub slices: u32,
+}
+
+impl EncoderConfig {
+    /// Whole frames a second, rounded.
+    pub fn fps(&self) -> u32 {
+        (self.fps_mhz.saturating_add(500) / 1000).max(1)
+    }
+
+    /// One frame's share of `bitrate_bps`, in bits: the single-frame VBV.
+    pub fn frame_bits(&self, bitrate_bps: u32) -> u32 {
+        (bitrate_bps as u64 * 1000 / self.fps_mhz.max(1) as u64).min(u32::MAX as u64) as u32
+    }
 }
 
 /// What the client must know about an encoded frame to decide whether it can

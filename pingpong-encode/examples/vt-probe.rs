@@ -35,12 +35,13 @@ fn main() {
         Codec::Hevc
     };
 
-    let mut cap = SckCapture::new(SckCapture::main_display(), w, h, fps, true).expect("capture");
+    let mut cap =
+        SckCapture::new(SckCapture::main_display(), w, h, fps * 1000, true).expect("capture");
     let config = EncoderConfig {
         codec,
         width: w,
         height: h,
-        fps,
+        fps_mhz: fps * 1000,
         bitrate_bps: mbps * 1_000_000,
         preset: 1,
         two_pass: false,

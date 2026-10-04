@@ -137,7 +137,7 @@ impl FfmpegEncoder {
                 codec,
                 width: 1280,
                 height: 720,
-                fps: 60,
+                fps_mhz: 60_000,
                 bitrate_bps: 10_000_000,
                 preset: 1,
                 two_pass: false,
@@ -184,12 +184,12 @@ impl FfmpegEncoder {
             c.width = config.width as i32;
             c.height = config.height as i32;
             c.time_base = ff::AVRational {
-                num: 1,
-                den: config.fps.max(1) as i32,
+                num: 1000,
+                den: config.fps_mhz.max(1) as i32,
             };
             c.framerate = ff::AVRational {
-                num: config.fps.max(1) as i32,
-                den: 1,
+                num: config.fps_mhz.max(1) as i32,
+                den: 1000,
             };
             // Keyframes only when asked for (a loss, a new client).
             c.gop_size = i32::MAX;
@@ -237,7 +237,7 @@ impl FfmpegEncoder {
                 codec = config.codec.name(),
                 width = config.width,
                 height = config.height,
-                fps = config.fps,
+                fps = config.fps_mhz as f64 / 1000.0,
                 mbps = config.bitrate_bps / 1_000_000,
                 "encoder ready"
             );
@@ -250,7 +250,7 @@ impl FfmpegEncoder {
         let c = unsafe { &mut *self.ctx };
         c.bit_rate = bps as i64;
         c.rc_max_rate = bps as i64;
-        c.rc_buffer_size = (bps as u64 * 3 / 2 / self.config.fps.max(1) as u64) as i32;
+        c.rc_buffer_size = (self.config.frame_bits(bps) as u64 * 3 / 2) as i32;
     }
 
     unsafe fn opt(&self, name: &CStr, value: &str) {
@@ -545,7 +545,7 @@ mod tests {
             codec: Codec::H264,
             width: 640,
             height: 360,
-            fps: 60,
+            fps_mhz: 60_000,
             bitrate_bps: 4_000_000,
             preset: 1,
             two_pass: false,

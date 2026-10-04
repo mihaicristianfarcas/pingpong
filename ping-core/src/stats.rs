@@ -210,7 +210,7 @@ impl StatsCollector {
         let s = Stats {
             width: ack.map(|a| a.width).unwrap_or(0),
             height: ack.map(|a| a.height).unwrap_or(0),
-            target_fps: ack.map(|a| a.refresh_mhz / 1000).unwrap_or(0),
+            target_fps: ack.map(|a| (a.refresh_mhz + 500) / 1000).unwrap_or(0),
             codec: ack.map(|a| a.codec).unwrap_or(0),
             bitrate_kbps: ack.map(|a| a.bitrate_kbps).unwrap_or(0),
             received_fps: (w.frames_received as f32 * scale).round() as u32,

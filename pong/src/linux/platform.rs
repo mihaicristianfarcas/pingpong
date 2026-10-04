@@ -177,7 +177,7 @@ impl Platform {
         &mut self,
         width: u16,
         height: u16,
-        _fps: u32,
+        _fps_mhz: u32,
         _req: &SessionStart,
         _keep: bool,
         _cfg: &HostConfig,

@@ -115,16 +115,17 @@ impl Platform {
         &mut self,
         width: u16,
         height: u16,
-        _fps: u32,
-        req: &SessionStart,
+        fps_mhz: u32,
+        _req: &SessionStart,
         keep_host_displays: bool,
         _cfg: &HostConfig,
     ) -> Result<Display, AckStatus> {
         self.display.set_isolate(!keep_host_displays);
+        // SudoVDA takes millihertz: the client's 59.94 is the display's.
         let mode = DisplayMode {
             width,
             height,
-            refresh_mhz: req.refresh_mhz,
+            refresh_mhz: fps_mhz,
         };
         match self.display.activate(mode) {
             Ok(active) => Ok(Display {

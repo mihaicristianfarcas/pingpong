@@ -325,7 +325,7 @@ impl NvencEncoder {
         cfg.rcParams.averageBitRate = s.bitrate_bps;
         cfg.rcParams.maxBitRate = s.bitrate_bps;
         if self.cap(NV_ENC_CAPS::NV_ENC_CAPS_SUPPORT_CUSTOM_VBV_BUF_SIZE) != 0 {
-            cfg.rcParams.vbvBufferSize = s.bitrate_bps / s.fps.max(1);
+            cfg.rcParams.vbvBufferSize = s.frame_bits(s.bitrate_bps);
             cfg.rcParams.vbvInitialDelay = cfg.rcParams.vbvBufferSize;
         }
 
@@ -389,8 +389,8 @@ impl NvencEncoder {
             darHeight: s.height,
             maxEncodeWidth: s.width,
             maxEncodeHeight: s.height,
-            frameRateNum: s.fps.max(1),
-            frameRateDen: 1,
+            frameRateNum: s.fps_mhz.max(1),
+            frameRateDen: 1000,
             // Picture-type decision on: NVENC picks I/P itself and a keyframe is
             // requested per picture with FORCEIDR, which also keeps it marking
             // references correctly (with PTD off, refPicFlag had to be set by
@@ -443,7 +443,7 @@ impl NvencEncoder {
             codec = s.codec.name(),
             width = s.width,
             height = s.height,
-            fps = s.fps,
+            fps = s.fps_mhz as f64 / 1000.0,
             bitrate_mbps = s.bitrate_bps as f64 / 1e6,
             preset = s.preset.max(1),
             two_pass = s.two_pass,
@@ -596,7 +596,7 @@ impl NvencEncoder {
         self.config.rcParams.averageBitRate = bitrate_bps;
         self.config.rcParams.maxBitRate = bitrate_bps;
         if self.config.rcParams.vbvBufferSize != 0 {
-            self.config.rcParams.vbvBufferSize = bitrate_bps / self.settings.fps.max(1);
+            self.config.rcParams.vbvBufferSize = self.settings.frame_bits(bitrate_bps);
             self.config.rcParams.vbvInitialDelay = self.config.rcParams.vbvBufferSize;
         }
         self.init.encodeConfig = &mut *self.config;

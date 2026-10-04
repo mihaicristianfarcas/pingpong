@@ -110,7 +110,7 @@ impl Platform {
         &mut self,
         width: u16,
         height: u16,
-        fps: u32,
+        fps_mhz: u32,
         _req: &SessionStart,
         keep_host_displays: bool,
         cfg: &HostConfig,
@@ -120,7 +120,7 @@ impl Platform {
         let mode = pingpong_display::DisplayMode {
             width,
             height,
-            refresh_mhz: fps * 1000,
+            refresh_mhz: fps_mhz,
         };
         let virtual_display = match pingpong_display::macos::VirtualDisplay::new(mode, &cfg.name) {
             Ok(mut d) => {
@@ -131,7 +131,7 @@ impl Platform {
                     id = d.id,
                     width,
                     height,
-                    fps,
+                    fps = fps_mhz as f64 / 1000.0,
                     mirrored = !keep_host_displays,
                     "virtual display plugged in"
                 );
@@ -253,7 +253,7 @@ pub fn open_video(params: &VideoParams) -> Result<(SckCapture, VtEncoder), Strin
     // A display just woken takes a moment to be offered for capture.
     let woken_by = Instant::now() + Duration::from_secs(4);
     let cap = loop {
-        match SckCapture::new(params.source, e.width, e.height, e.fps, true) {
+        match SckCapture::new(params.source, e.width, e.height, e.fps_mhz, true) {
             Ok(c) => break c,
             Err(pingpong_capture::CaptureError::NoSuchOutput(_)) if Instant::now() < woken_by => {
                 std::thread::sleep(Duration::from_millis(200));

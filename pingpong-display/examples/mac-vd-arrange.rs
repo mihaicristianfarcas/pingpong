@@ -39,7 +39,7 @@ fn main() {
             CGDisplayBounds(d)
         );
     }
-    if let Err(e) = SckCapture::new(0xFFFF, 64, 64, 1, false) {
+    if let Err(e) = SckCapture::new(0xFFFF, 64, 64, 1000, false) {
         println!("capturable: {e}");
     }
 }

@@ -48,6 +48,7 @@ objc2-core-text = { version = "0.3", features = ["std", "CTLine", "CTFont", "CTS
 pingpong-decode = { path = "../pingpong-decode" }
 png = "0.18"
 windows = { version = "0.61", features = [
+    "Win32_Devices_Display",
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D_Fxc",
