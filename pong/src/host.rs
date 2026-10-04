@@ -450,7 +450,6 @@ impl Host {
     }
 
     fn on_input(&self, peer: &Peer, header: &Header, body: &[u8]) {
-        use pingpong_input::InputSink;
         let Some(batch) = input::decode(body, header.frame_id, header.fragment_idx) else {
             return;
         };
@@ -466,10 +465,7 @@ impl Host {
         }
         let events = state.gate.admit(&batch);
         if !events.is_empty() && !state.held {
-            state.last_injected = Some(Instant::now());
-            if let Err(e) = state.sink.inject(events) {
-                tracing::debug!(error = %e, "input injection");
-            }
+            state.inject(events, Instant::now());
         }
     }
 }

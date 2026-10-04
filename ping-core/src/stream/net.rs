@@ -910,6 +910,9 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
     if !std::env::var("PINGPONG_LAN_SHARDS").is_ok_and(|v| v == "0") {
         flags |= control::flags::LAN_SHARDS;
     }
+    let (repeat_delay_ms, repeat_interval_ms) = crate::keyboard::repeat_rate()
+        .map(|r| r.to_millis())
+        .unwrap_or((0, 0));
     SessionStart {
         width: settings.width & !1,
         height: settings.height & !1,
@@ -921,6 +924,8 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
         slices: settings.slices.max(1),
         nonce,
         app: settings.app,
+        repeat_delay_ms,
+        repeat_interval_ms,
     }
 }
 

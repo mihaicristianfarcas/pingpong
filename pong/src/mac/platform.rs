@@ -13,7 +13,7 @@ use pingpong_capture::sck::SckCapture;
 use pingpong_encode::videotoolbox::VtEncoder;
 use pingpong_encode::{Codec, EncoderConfig};
 use pingpong_input::macos::CgEventSink;
-use pingpong_input::{InputError, InputSink};
+use pingpong_input::{InputError, InputSink, RepeatRate};
 use pingpong_proto::control::{self, AckStatus, Control, SessionStart};
 use pingpong_proto::input::InputEvent;
 use pingpong_transport::{Endpoint, Peer};
@@ -44,6 +44,18 @@ impl InputSink for Sink {
 
     fn release_all(&mut self) -> Result<(), InputError> {
         self.inner.release_all()
+    }
+
+    fn key_repeat(&self) -> Option<RepeatRate> {
+        self.inner.key_repeat()
+    }
+
+    fn repeats(&self, scancode: u16) -> bool {
+        self.inner.repeats(scancode)
+    }
+
+    fn repeat_key(&mut self, scancode: u16) -> Result<(), InputError> {
+        self.inner.repeat_key(scancode)
     }
 }
 
