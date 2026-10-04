@@ -1,0 +1,97 @@
+---
+//! Answers for people choosing a streaming setup. Platform and network
+//! limits follow README.md, docs/parity.md and docs/networking.md.
+import { onGitHub } from '../lib/repo';
+---
+
+<section class="section" id="faq">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">FAQ</span>
+      <h2 class="title">Before you stream</h2>
+    </div>
+
+    <div class="questions">
+      <details>
+        <summary><h3>Can I use pingpong for remote desktop gaming?</h3></summary>
+        <p>
+          Yes. Pong streams the host’s desktop, including games, to Ping on another computer. It supports up to
+          4K and 120 fps, HEVC or H.264 video, and stereo to 7.1 sound. Controllers and rumble work with Windows
+          hosts; macOS hosts do not support controllers yet. Your hardware and network affect performance.
+          See the <a href="#latency">benchmarks and their test conditions</a>.
+        </p>
+      </details>
+      <details>
+        <summary><h3>Is pingpong an alternative to Moonlight and Sunshine or Apollo?</h3></summary>
+        <p>
+          Yes. Ping takes the client’s role and Pong takes the host’s role. Install them together: pingpong uses
+          its own protocol, so Ping does not connect to Sunshine or Apollo, and Moonlight does not connect to
+          Pong. Read the <a href={onGitHub('docs/parity.md')}>feature comparison with Moonlight and Apollo</a>
+          for the supported features and limits.
+        </p>
+      </details>
+      <details>
+        <summary><h3>Which computers can host and receive a stream?</h3></summary>
+        <p>
+          Both apps run on macOS 14 or later, Windows 10 and 11, and Linux under X11 or Wayland. A Windows host
+          needs an NVIDIA GPU and SudoVDA. Linux hosts stream a scaled screen without a virtual display; on
+          sway and Hyprland, the client cannot send keyboard or mouse input. Phones, tablets and TVs are out of
+          scope. Check the <a href="#platforms">platform requirements</a> before downloading.
+        </p>
+      </details>
+      <details>
+        <summary><h3>Do I need a VPN or port forwarding to stream over the internet?</h3></summary>
+        <p>
+          Pair Ping and Pong once on your local network, then enable internet access on the host. pingpong
+          finds paired hosts through sealed records on the BitTorrent DHT and connects directly by punching
+          through NATs. It has no relay fallback: symmetric NAT on both sides can prevent a connection. In
+          that case, forward UDP port 47800 to the host. See
+          <a href={onGitHub('docs/networking.md')}>internet setup and network limits</a>.
+        </p>
+      </details>
+      <details>
+        <summary><h3>Is pingpong free and open source?</h3></summary>
+        <p>
+          Yes. Ping and Pong are free to download and use, with their source code available under the GPL-3.0
+          license. Install Pong on the computer you stream from and Ping on the one you sit at.
+          <a href="#install">Download Ping and Pong</a> for your system.
+        </p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<style>
+  .questions {
+    max-width: 48rem;
+  }
+
+  details {
+    border-top: 1px solid var(--line-2);
+    padding-block: 20px;
+  }
+
+  details:last-child {
+    border-bottom: 1px solid var(--line-2);
+  }
+
+  summary {
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  summary::marker {
+    color: var(--accent);
+  }
+
+  h3 {
+    display: inline;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+  }
+
+  details p {
+    margin-top: 12px;
+    font-size: 0.9375rem;
+  }
+</style>

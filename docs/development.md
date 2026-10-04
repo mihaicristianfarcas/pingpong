@@ -276,9 +276,12 @@ npm run build     # astro check, then the page in site/dist/
 npm run preview   # serves site/dist/
 ```
 
-`SITE_URL` and `BASE_PATH` say where the page is served from; for GitHub
-Pages, `SITE_URL=https://mihaicristianfarcas.github.io BASE_PATH=/pingpong/
-npm run build`. Without `SITE_URL` the page has no canonical URL.
+`SITE_URL` (default `https://ping-pong.sh`) and `BASE_PATH` (default `/`)
+set the deployment URL and path. The canonical URL, link-preview image
+URLs, software structured data, `robots.txt` and `sitemap.xml` all use that
+deployment URL. The sitemap lists the landing page, without section anchors or a
+build-time last-modified date. Preview deployments should use their host’s
+indexing controls to keep previews out of search results.
 
 What it shows is made from the apps, by scripts in `site/scripts/`:
 

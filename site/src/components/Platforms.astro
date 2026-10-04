@@ -1,26 +1,27 @@
 ---
-// Where each system stands, after the README's status table.
+//! A compact desktop support overview, after the README's status table.
+//! Setup requirements and platform limits stay visible; the parity link has details.
 import { onGitHub } from '../lib/repo';
 
 type Status = 'Daily use' | 'Works';
-const systems: { os: string; versions: string; client: [Status, string]; host: [Status, string] }[] = [
+const systems: { os: string; versions: string; client: Status; host: [Status, string] }[] = [
   {
     os: 'macOS',
     versions: '14 and later',
-    client: ['Daily use', 'Ping.app'],
-    host: ['Works', 'Pong.app: a virtual display at your size, HEVC, stereo or surround sound; no controllers yet'],
+    client: 'Daily use',
+    host: ['Works', 'Virtual display; no controllers yet'],
   },
   {
     os: 'Windows',
     versions: '10 and 11',
-    client: ['Works', 'Ping.exe, less tested than on macOS'],
-    host: ['Daily use', 'PongService: starts at boot and streams the lock screen; needs an NVIDIA GPU and SudoVDA'],
+    client: 'Works',
+    host: ['Daily use', 'Requires NVIDIA and SudoVDA'],
   },
   {
     os: 'Linux',
     versions: 'X11 and Wayland',
-    client: ['Works', 'ping-app, tested in a container'],
-    host: ['Works', 'pong as a user service; the screen is scaled, with no virtual display'],
+    client: 'Works',
+    host: ['Works', 'No virtual display yet; no remote input on sway or Hyprland, work in progress.'],
   },
 ];
 ---
@@ -29,11 +30,11 @@ const systems: { os: string; versions: string; client: [Status, string]; host: [
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">Platforms</span>
-      <h2 class="title">A client and a host on every desktop</h2>
+      <h2 class="title">A client and host on every desktop</h2>
     </div>
 
-    <div class="table-wrap" role="region" aria-label="Where Ping and Pong run" tabindex="0">
-      <table>
+    <div class="table-wrap">
+      <table aria-label="Where Ping and Pong run">
         <thead>
           <tr>
             <th scope="col">System</th>
@@ -48,12 +49,13 @@ const systems: { os: string; versions: string; client: [Status, string]; host: [
                 {s.os}
                 <span>{s.versions}</span>
               </th>
-              {[s.client, s.host].map(([status, text]) => (
-                <td>
-                  <span class:list={['status', status === 'Daily use' && 'daily']}>{status}</span>
-                  <p>{text}</p>
-                </td>
-              ))}
+              <td>
+                <span class:list={['status', s.client === 'Daily use' && 'daily']}>{s.client}</span>
+              </td>
+              <td>
+                <span class:list={['status', s.host[0] === 'Daily use' && 'daily']}>{s.host[0]}</span>
+                <p>{s.host[1]}</p>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -61,14 +63,14 @@ const systems: { os: string; versions: string; client: [Status, string]; host: [
     </div>
     <p class="note after">
       Phones, tablets and TVs are out of scope.
-      <a href={onGitHub('docs/parity.md')}>Feature by feature against Moonlight + Apollo</a>
+      <a href={onGitHub('docs/parity.md')}>Compare platform features</a>
     </p>
   </div>
 </section>
 
 <style>
   .table-wrap {
-    overflow-x: auto;
+    overflow: hidden;
     border: 1px solid var(--line-2);
     border-radius: var(--radius);
     background: var(--surface);
@@ -76,7 +78,6 @@ const systems: { os: string; versions: string; client: [Status, string]; host: [
 
   table {
     width: 100%;
-    min-width: 640px;
     border-collapse: collapse;
     font-size: 0.9375rem;
   }
@@ -86,6 +87,7 @@ const systems: { os: string; versions: string; client: [Status, string]; host: [
     padding: 20px 24px;
     text-align: left;
     vertical-align: top;
+    overflow-wrap: anywhere;
   }
 
   thead th {
@@ -139,5 +141,12 @@ const systems: { os: string; versions: string; client: [Status, string]; host: [
 
   .after {
     margin-top: 16px;
+  }
+
+  @media (max-width: 640px) {
+    th,
+    td {
+      padding: 14px 10px;
+    }
   }
 </style>

@@ -1,12 +1,13 @@
+//! Static landing-page builds for the public domain or another deployment.
+//! SITE_URL and BASE_PATH keep canonical links and crawl files on that host.
 // @ts-check
 import process from 'node:process';
 import { defineConfig, fontProviders } from 'astro/config';
 
-// SITE_URL and BASE_PATH say where the page is served from, so one build
-// serves a domain's root or a project path such as GitHub Pages'
-// /pingpong/. With SITE_URL unset the page has no canonical URL.
+// A normal build targets the public domain, so its canonical URL and crawl
+// files do not depend on the deployment's environment.
 export default defineConfig({
-  site: process.env.SITE_URL || undefined,
+  site: process.env.SITE_URL || 'https://ping-pong.sh',
   base: process.env.BASE_PATH || '/',
   // HTML's whitespace rules rather than JSX's (Astro's default), so prose
   // can wrap in the source without losing the space before a link.

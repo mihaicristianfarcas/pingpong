@@ -1,7 +1,9 @@
 ---
+//! The landing page answers desktop streaming and remote gaming searches.
 import Base from '../layouts/Base.astro';
 import Agents from '../components/Agents.astro';
 import Features from '../components/Features.astro';
+import FAQ from '../components/FAQ.astro';
 import Footer from '../components/Footer.astro';
 import Gallery from '../components/Gallery.astro';
 import Hero from '../components/Hero.astro';
@@ -11,12 +13,39 @@ import Nav from '../components/Nav.astro';
 import Performance from '../components/Performance.astro';
 import Platforms from '../components/Platforms.astro';
 import Specs from '../components/Specs.astro';
+import { onGitHub } from '../lib/repo';
+
+const title = 'pingpong: Open-source remote desktop & game streaming';
+const description =
+  'Free, open-source remote desktop and game streaming for macOS, Windows and Linux. Stream up to 4K at 120 fps over a post-quantum WireGuard tunnel.';
+const canonical = new URL(import.meta.env.BASE_URL.replace(/\/?$/, '/'), Astro.site);
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${canonical.href}#website`,
+      name: 'pingpong',
+      url: canonical.href,
+      inLanguage: 'en',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${canonical.href}#software`,
+      name: 'pingpong',
+      url: canonical.href,
+      description,
+      applicationCategory: 'MultimediaApplication',
+      operatingSystem: 'macOS 14 or later, Windows 10 or 11, Linux',
+      license: onGitHub('LICENSE'),
+      downloadUrl: `${canonical.href}#install`,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    },
+  ],
+};
 ---
 
-<Base
-  title="pingpong: low-latency desktop streaming"
-  description="Ping and Pong stream one computer's desktop to another with the latency of Moonlight and Apollo, inside a single post-quantum WireGuard tunnel. Open source, for macOS, Windows and Linux."
->
+<Base title={title} description={description} structuredData={structuredData}>
   <Nav />
   <main id="main">
     <Hero />
@@ -28,6 +57,7 @@ import Specs from '../components/Specs.astro';
     <Gallery />
     <Platforms />
     <Install />
+    <FAQ />
   </main>
   <Footer />
 </Base>

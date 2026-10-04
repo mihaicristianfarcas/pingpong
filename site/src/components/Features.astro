@@ -1,6 +1,6 @@
 ---
-// What pingpong does beyond the stream itself. The words follow README.md,
-// docs/parity.md, docs/networking.md and docs/usage.md.
+//! What pingpong does beyond the stream itself. The words follow README.md,
+//! docs/parity.md, docs/networking.md and docs/usage.md.
 import { TUNNEL } from '../lib/facts';
 
 const features = [
@@ -10,7 +10,7 @@ const features = [
   },
   {
     title: 'Reach your host from anywhere',
-    text: 'Hosts publish sealed records on the BitTorrent DHT, and both sides punch through their NATs. No relay server, no VPN and no ports to forward.',
+    text: 'Hosts publish sealed records on the BitTorrent DHT, and both sides punch through their NATs. No relay server or separate VPN; port forwarding may be needed when both sides have symmetric NAT.',
   },
   {
     title: 'Recovery from packet loss',
@@ -21,24 +21,12 @@ const features = [
     text: 'Windows and macOS hosts create a virtual display at your screen’s resolution and refresh rate for the session, so nothing is scaled.',
   },
   {
-    title: 'Sizes games fill',
-    text: 'Ping asks for your screen’s size at the nearest standard aspect ratio, 16:10 below a MacBook’s notch, so a game fills the picture instead of leaving strips around it.',
-  },
-  {
-    title: 'The host’s own pointer',
-    text: 'The host draws its pointer into the picture, as Apollo does, and Ping sends the mouse’s relative motion, as Moonlight does: menus take the mouse, and a game that hides the pointer hides it.',
-  },
-  {
     title: 'A clipboard shared both ways',
     text: 'Text, images, files and folders, in either direction. Anything a password manager marks as concealed is never sent.',
   },
   {
     title: 'Surround sound and controllers',
     text: 'Stereo, 5.1 or 7.1 sound, from a Mac host too when it has a surround output. Controllers reach a Windows host as Xbox 360 pads, and rumble comes back about 7 ms after the host sets it.',
-  },
-  {
-    title: 'Screenshots of your own screen',
-    text: 'Your computer’s screenshot shortcuts stay yours while you stream, ⌘⇧4 and CleanShot X on a Mac, Print Screen and the Snipping Tool on Windows, with a pointer you can move.',
   },
 ];
 ---
@@ -47,10 +35,12 @@ const features = [
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">Features</span>
-      <h2 class="title">Feature for feature with Moonlight and Apollo</h2>
+      <h2 class="title">An open-source alternative to Moonlight and Apollo</h2>
       <p class="lede">
-        pingpong covers what a Moonlight + Apollo setup does, and adds to it: one code base in Rust, with a client
-        and a host on all three desktops.
+        pingpong pairs its own client and host for remote desktop and game streaming. It follows Moonlight,
+        Sunshine and Apollo’s streaming behaviour, and adds post-quantum encryption and a shared clipboard.
+        Compare <a href="#platforms">platform support</a> and the
+        <a href="#latency">measured latency</a> before choosing your setup.
       </p>
     </div>
 
