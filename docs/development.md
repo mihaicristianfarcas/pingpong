@@ -274,6 +274,7 @@ npm install
 npm run dev       # http://localhost:4321, reloading as you edit
 npm run build     # astro check, then the page in site/dist/
 npm run preview   # serves site/dist/
+npm test          # builds the page, then checks its DOM keyboard behaviour
 ```
 
 `SITE_URL` (default `https://ping-pong.sh`) and `BASE_PATH` (default `/`)

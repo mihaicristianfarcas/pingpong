@@ -1,7 +1,7 @@
 ---
-// The two windows, as they are: captured from the apps' demo mode
-// (PING_UI_DEMO / PONG_UI_DEMO, docs/ui.md) in their dark appearance, with
-// the demo's made-up hosts and devices. Pong's Overview is the hero's.
+//! Screenshots from the apps' demo modes (docs/ui.md), with made-up hosts
+//! and devices. Native buttons put every choice in the page's Tab order;
+//! without script all screenshots are shown and the controls are hidden.
 import { Image } from 'astro:assets';
 import Icon from './Icon.astro';
 import pongDevices from '../assets/shots/pong-devices.webp';
@@ -62,16 +62,14 @@ const tabs = [
 
     <div class="gallery" data-gallery>
       <div class="controls">
-        <div class="tabs" role="tablist" aria-label="Pages of the apps">
+        <div class="tabs" role="group" aria-label="Pages of the apps">
           {tabs.map((t, i) => (
             <button
               type="button"
-              role="tab"
               class="tab"
               id={`tab-${i}`}
               aria-controls={`pane-${i}`}
-              aria-selected={i === 0 ? 'true' : 'false'}
-              tabindex={i === 0 ? 0 : -1}
+              aria-pressed={i === 0 ? 'true' : 'false'}
               data-tab={i}
             >
               <span class="app">{t.app}</span>
@@ -89,10 +87,9 @@ const tabs = [
         {tabs.map((t, i) => (
           <div
             class="pane"
-            role="tabpanel"
+            role="region"
             id={`pane-${i}`}
             aria-labelledby={`tab-${i}`}
-            tabindex={i === 0 ? 0 : -1}
             data-pane={i}
             data-on={i === 0 ? '' : undefined}
           >
@@ -108,6 +105,10 @@ const tabs = [
 </section>
 
 <style>
+  .gallery:not([data-ready]) .controls {
+    display: none;
+  }
+
   .controls {
     display: flex;
     flex-wrap: wrap;
@@ -148,7 +149,7 @@ const tabs = [
     border-color: rgb(255 255 255 / 0.3);
   }
 
-  .tab[aria-selected='true'] {
+  .tab[aria-pressed='true'] {
     border-color: rgb(255 255 255 / 0.5);
     background: var(--surface-2);
     color: var(--text);
@@ -159,7 +160,7 @@ const tabs = [
     font-size: 0.75rem;
   }
 
-  .tab[aria-selected='true'] .app {
+  .tab[aria-pressed='true'] .app {
     color: var(--text-2);
   }
 
@@ -177,11 +178,11 @@ const tabs = [
     transform-origin: left;
   }
 
-  .gallery[data-auto] .tab[aria-selected='true']::before {
+  .gallery[data-auto] .tab[aria-pressed='true']::before {
     animation: fill var(--dwell) linear forwards;
   }
 
-  .gallery[data-auto]:is(:has(:focus-visible), [data-away]) .tab[aria-selected='true']::before {
+  .gallery[data-auto]:is(:has(:focus-visible), [data-away]) .tab[aria-pressed='true']::before {
     animation-play-state: paused;
   }
 
@@ -243,6 +244,20 @@ const tabs = [
     transition: none;
   }
 
+  .gallery:not([data-ready]) .panes {
+    display: block;
+  }
+
+  .gallery:not([data-ready]) .pane {
+    margin-top: 24px;
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .gallery:not([data-ready]) .pane figcaption {
+    visibility: visible;
+  }
+
   figcaption {
     margin-bottom: 24px;
     color: var(--text-2);
@@ -267,17 +282,15 @@ const tabs = [
     let current = 0;
     root.style.setProperty('--dwell', `${DWELL}ms`);
 
-    const show = (i: number, focus = false) => {
+    const show = (i: number) => {
       current = (i + tabs.length) % tabs.length;
       tabs.forEach((t, j) => {
-        t.setAttribute('aria-selected', String(j === current));
-        t.tabIndex = j === current ? 0 : -1;
+        t.setAttribute('aria-pressed', String(j === current));
       });
       panes.forEach((p, j) => {
         p.toggleAttribute('data-on', j === current);
-        p.tabIndex = j === current ? 0 : -1;
+        p.setAttribute('aria-hidden', String(j !== current));
       });
-      if (focus) tabs[current].focus();
     };
 
     const auto = (on: boolean) => {
@@ -287,7 +300,10 @@ const tabs = [
 
     // On by themselves unless the reader asked for less motion; a page the
     // reader picks, or the button, stops them.
-    auto(!window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    auto(!still.matches);
+    still.addEventListener('change', (e) => e.matches && auto(false));
+    root.addEventListener('focusin', () => auto(false));
     toggle.addEventListener('click', () => auto(!root.hasAttribute('data-auto')));
 
     // The fill running out is the cue for the next page.
@@ -301,16 +317,6 @@ const tabs = [
         show(i);
       }),
     );
-    root.querySelector('[role="tablist"]')!.addEventListener('keydown', (e) => {
-      const k = (e as KeyboardEvent).key;
-      if (k === 'ArrowRight' || k === 'ArrowDown') show(current + 1, true);
-      else if (k === 'ArrowLeft' || k === 'ArrowUp') show(current - 1, true);
-      else if (k === 'Home') show(0, true);
-      else if (k === 'End') show(tabs.length - 1, true);
-      else return;
-      auto(false);
-      e.preventDefault();
-    });
 
     // Every page's picture is fetched and decoded as the gallery comes near,
     // so none appears late the first time it is shown. Off screen, the
@@ -329,5 +335,7 @@ const tabs = [
       { rootMargin: '800px 0px' },
     ).observe(root);
     new IntersectionObserver(([e]) => root.toggleAttribute('data-away', !e.isIntersecting)).observe(root);
+    show(0);
+    root.dataset.ready = '';
   }
 </script>

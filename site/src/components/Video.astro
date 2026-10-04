@@ -1,7 +1,6 @@
 ---
-// A looping, muted clip that plays only while on screen, with a button to
-// pause it. With reduced motion asked for, it waits on its poster until
-// the button is pressed.
+//! A muted clip with native controls before enhancement and a named play
+//! button afterwards. Reduced motion leaves the poster until activated.
 interface Props {
   src: string;
   poster: string;
@@ -14,11 +13,12 @@ const { src, poster, label, width, height, class: className } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
-<div class:list={['video', className]}>
+<div class:list={['video', className]} data-paused>
   <video
     data-clip
     muted
     loop
+    controls
     playsinline
     preload="metadata"
     poster={`${base}${poster}`}
@@ -28,7 +28,7 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
   >
     <source src={`${base}${src}`} type="video/mp4" />
   </video>
-  <button type="button" class="toggle" data-clip-toggle aria-label="Pause the video">
+  <button type="button" class="toggle" data-clip-toggle aria-label="Play the video">
     <svg class="pause" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"
       ><rect x="3" y="2" width="3" height="10" rx="1" fill="currentColor"></rect><rect
         x="8"
@@ -59,10 +59,10 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
     position: absolute;
     right: 12px;
     bottom: 12px;
-    display: grid;
+    display: none;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
     border: 1px solid var(--line-2);
     border-radius: 999px;
     background: rgb(11 11 12 / 0.7);
@@ -70,6 +70,10 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s;
+  }
+
+  .video[data-ready] .toggle {
+    display: grid;
   }
 
   .video:hover .toggle,
@@ -96,31 +100,49 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 </style>
 
 <script>
-  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)');
   for (const box of document.querySelectorAll<HTMLElement>('.video')) {
     const video = box.querySelector<HTMLVideoElement>('[data-clip]');
     const button = box.querySelector<HTMLButtonElement>('[data-clip-toggle]');
-    if (!video || !button || box.dataset.ready) continue;
-    box.dataset.ready = '';
+    if (!video || !button || box.hasAttribute('data-ready')) continue;
     // Paused by the person (or by asking for reduced motion): stays paused.
-    let held = still;
+    let held = still.matches;
     let visible = false;
+    // Playback can be rejected by the browser. Name the available action
+    // from the actual media state, rather than an autoplay request.
+    const reflect = () => {
+      box.toggleAttribute('data-paused', video.paused);
+      button.setAttribute('aria-label', video.paused ? 'Play the video' : 'Pause the video');
+    };
+    video.addEventListener('play', reflect);
+    video.addEventListener('pause', reflect);
+    video.addEventListener('error', reflect);
     const sync = () => {
       const play = visible && !held;
-      if (play && video.paused) video.play().catch(() => {});
+      if (play && video.paused) video.play().catch(() => {
+        held = true;
+        reflect();
+      });
       if (!play && !video.paused) video.pause();
-      box.toggleAttribute('data-paused', held);
-      button.setAttribute('aria-label', held ? 'Play the video' : 'Pause the video');
+      reflect();
     };
     button.addEventListener('click', () => {
-      held = !held;
+      held = !video.paused;
       sync();
+    });
+    still.addEventListener('change', (e) => {
+      if (e.matches) {
+        held = true;
+        sync();
+      }
     });
     new IntersectionObserver(([e]) => {
       visible = e.isIntersecting;
       if (visible && video.preload !== 'auto') video.preload = 'auto';
       sync();
     }, { rootMargin: '200px' }).observe(box);
+    video.controls = false;
+    box.dataset.ready = '';
     sync();
   }
 </script>

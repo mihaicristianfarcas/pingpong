@@ -1,5 +1,6 @@
 ---
-//! Shared search and social metadata, in-page navigation and scroll restoration.
+//! Shared page metadata and in-page navigation. Links focus the first
+//! clickable control at their destination, respecting reduced motion.
 import { Font } from 'astro:assets';
 import '../styles/global.css';
 
@@ -107,21 +108,27 @@ const cardUrl = Astro.site ? new URL(card, Astro.site).href : card;
       // address: a reload then returns to where the reader was, rather than
       // to the last section a link pointed at. An address that arrives with
       // a section loses it once the browser has scrolled there, for the
-      // same reason. The focus moves to the section too, so the keyboard
-      // carries on from there (the skip link relies on it).
+      // same reason. Focus moves to the first visible action at the
+      // destination, so keyboard navigation continues through controls.
       const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const actions = 'a[href], button:not(:disabled), summary, input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), video[controls]';
       document.addEventListener('click', (e) => {
         const link = (e.target as Element).closest('a[href^="#"]');
         if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         const id = decodeURIComponent(link.getAttribute('href')!.slice(1));
-        const to = id === 'top' ? document.body : document.getElementById(id);
+        const to = document.getElementById(id);
         if (!to) return;
         e.preventDefault();
         const behavior = still.matches ? 'auto' : 'smooth';
         if (id === 'top') window.scrollTo({ top: 0, behavior });
         else to.scrollIntoView({ behavior });
-        if (!to.matches('a, button, input, [tabindex]')) to.setAttribute('tabindex', '-1');
-        to.focus({ preventScroll: true });
+        const focus = [...to.querySelectorAll<HTMLElement>(actions)].find((control) =>
+          control.getAttribute('aria-disabled') !== 'true'
+          && !control.closest('[hidden], [inert], [aria-hidden="true"]')
+          && control.getClientRects().length > 0
+          && getComputedStyle(control).visibility !== 'hidden',
+        );
+        focus?.focus({ preventScroll: true });
       });
       const dropHash = () => history.replaceState(history.state, '', location.pathname + location.search);
       if (location.hash) window.addEventListener('load', dropHash, { once: true });

@@ -54,13 +54,18 @@
   box-sizing: border-box;
 }
 
+/* Author display rules must not put inactive controls back into the page. */
+[hidden] {
+  display: none !important;
+}
+
 /* No scroll-behavior: smooth here: a browser restoring the scroll position
    on reload would glide there from the top. In-page links glide by script
    (layouts/Base.astro). */
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: calc(var(--nav) + 16px);
+  scroll-padding-top: calc(var(--nav-height, var(--nav)) + 16px);
   background: var(--bg);
 }
 
@@ -151,14 +156,13 @@ a:hover {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
 }
 
-/* A section the focus was moved to by a link: no ring around all of it. */
-[tabindex='-1']:focus {
-  outline: none;
+:where(a[href], button, summary, input, select, textarea, video[controls]) {
+  scroll-margin-block: 16px;
 }
 
 /* First on the page for the keyboard, shown only when it has the focus. */
@@ -253,8 +257,8 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 42px;
-  padding: 0 18px;
+  min-height: 42px;
+  padding: 8px 18px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-size: 0.9375rem;
@@ -263,6 +267,14 @@ kbd {
   transition:
     background-color 0.15s,
     border-color 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
 }
 
 .button:hover {
