@@ -16,6 +16,7 @@ use pingpong_transport::{Endpoint, Peer};
 
 use crate::audio::{AudioHandle, AudioParams};
 use crate::config::HostConfig;
+use crate::negotiate::Negotiated;
 use crate::session::Shared;
 use crate::video::VideoParams;
 
@@ -91,6 +92,16 @@ impl Platform {
         }
     }
 
+    /// What of `control::video` the encoder can stream with `codec`.
+    pub fn video_caps(&self, _codec: Codec, _asked: u8) -> u8 {
+        0
+    }
+
+    /// The HDR stream's metadata.
+    pub fn hdr_metadata(&self, _d: &Display) -> control::HdrMetadata {
+        control::HdrMetadata::bt2020(1000, 203)
+    }
+
     /// Anything that stops a session before it starts.
     pub fn preflight(&self) -> Result<(), AckStatus> {
         Ok(())
@@ -113,13 +124,12 @@ impl Platform {
     /// display made for the client; the host's own monitors never.
     pub fn display(
         &mut self,
-        width: u16,
-        height: u16,
-        fps_mhz: u32,
+        n: &Negotiated,
         _req: &SessionStart,
         keep_host_displays: bool,
         _cfg: &HostConfig,
     ) -> Result<Display, AckStatus> {
+        let (width, height, fps_mhz) = (n.width, n.height, n.fps_mhz);
         self.display.set_isolate(!keep_host_displays);
         // SudoVDA takes millihertz: the client's 59.94 is the display's.
         let mode = DisplayMode {

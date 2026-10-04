@@ -38,6 +38,7 @@ fn main() {
                 refresh_mhz: 60_000,
             },
             "Pong",
+            false,
         ) {
             Ok(vd) => vd,
             Err(e) => {

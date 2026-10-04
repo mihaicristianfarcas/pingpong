@@ -153,3 +153,29 @@ pub fn ask_audio_capture() {
     }
     tracing::info!("asked for System Audio Recording, for sound in surround");
 }
+
+/// Whether this Mac runs macOS `major` or later (`kern.osproductversion`).
+pub fn macos_at_least(major: u32) -> bool {
+    let mut buf = [0u8; 32];
+    let mut len = buf.len();
+    // SAFETY: sysctlbyname writes at most `len` bytes into `buf`, a live local.
+    let ok = unsafe {
+        libc::sysctlbyname(
+            c"kern.osproductversion".as_ptr(),
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    } == 0;
+    ok && std::str::from_utf8(&buf[..len.min(buf.len())])
+        .ok()
+        .and_then(|v| {
+            v.trim_end_matches('\0')
+                .split('.')
+                .next()?
+                .parse::<u32>()
+                .ok()
+        })
+        .is_some_and(|v| v >= major)
+}

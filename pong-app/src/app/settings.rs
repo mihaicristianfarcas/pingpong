@@ -170,6 +170,24 @@ impl PongApp {
                         cx,
                     ));
                 }
+                encoder.push(self.toggle(
+                    "allow_hdr",
+                    "Allow HDR",
+                    "Stream HDR to a client that asks and shows it: HEVC Main10, \
+                        from an NVIDIA GPU or a Mac on macOS 15 or later.",
+                    t,
+                    cx,
+                ));
+                if !mac {
+                    encoder.push(self.toggle(
+                        "allow_yuv444",
+                        "Allow YUV 4:4:4",
+                        "Full-resolution colour for a client that asks: sharper text, \
+                            for about a fifth more bitrate.",
+                        t,
+                        cx,
+                    ));
+                }
                 let limits = vec![
                     self.choice(
                         "max_bitrate_kbps",

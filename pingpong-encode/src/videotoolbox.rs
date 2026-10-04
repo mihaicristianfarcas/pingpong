@@ -13,7 +13,7 @@ use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use objc2_core_foundation::{
-    CFArray, CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType,
+    CFArray, CFBoolean, CFData, CFDictionary, CFNumber, CFRetained, CFString, CFType,
 };
 use objc2_core_media::{
     kCMVideoCodecType_H264, kCMVideoCodecType_HEVC, CMFormatDescription, CMSampleBuffer, CMTime,
@@ -21,14 +21,16 @@ use objc2_core_media::{
     CMVideoFormatDescriptionGetHEVCParameterSetAtIndex,
 };
 use objc2_core_video::{
-    kCVImageBufferColorPrimaries_ITU_R_709_2, kCVImageBufferTransferFunction_ITU_R_709_2,
-    kCVImageBufferYCbCrMatrix_ITU_R_709_2, CVPixelBuffer,
+    kCVImageBufferColorPrimaries_ITU_R_2020, kCVImageBufferColorPrimaries_ITU_R_709_2,
+    kCVImageBufferTransferFunction_ITU_R_709_2, kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ,
+    kCVImageBufferYCbCrMatrix_ITU_R_2020, kCVImageBufferYCbCrMatrix_ITU_R_709_2, CVPixelBuffer,
 };
 use objc2_video_toolbox::{
     kVTCompressionPropertyKey_AllowFrameReordering, kVTCompressionPropertyKey_AverageBitRate,
-    kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_EnableLTR,
-    kVTCompressionPropertyKey_ExpectedFrameRate, kVTCompressionPropertyKey_MaxFrameDelayCount,
-    kVTCompressionPropertyKey_MaxKeyFrameInterval,
+    kVTCompressionPropertyKey_ColorPrimaries, kVTCompressionPropertyKey_ContentLightLevelInfo,
+    kVTCompressionPropertyKey_EnableLTR, kVTCompressionPropertyKey_ExpectedFrameRate,
+    kVTCompressionPropertyKey_MasteringDisplayColorVolume,
+    kVTCompressionPropertyKey_MaxFrameDelayCount, kVTCompressionPropertyKey_MaxKeyFrameInterval,
     kVTCompressionPropertyKey_MaximizePowerEfficiency,
     kVTCompressionPropertyKey_MaximumRealTimeFrameRate,
     kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
@@ -36,7 +38,8 @@ use objc2_video_toolbox::{
     kVTCompressionPropertyKey_TransferFunction, kVTCompressionPropertyKey_YCbCrMatrix,
     kVTEncodeFrameOptionKey_AcknowledgedLTRTokens, kVTEncodeFrameOptionKey_ForceKeyFrame,
     kVTEncodeFrameOptionKey_ForceLTRRefresh, kVTProfileLevel_H264_High_AutoLevel,
-    kVTProfileLevel_HEVC_Main_AutoLevel, kVTSampleAttachmentKey_RequireLTRAcknowledgementToken,
+    kVTProfileLevel_HEVC_Main10_AutoLevel, kVTProfileLevel_HEVC_Main_AutoLevel,
+    kVTSampleAttachmentKey_RequireLTRAcknowledgementToken,
     kVTVideoEncoderSpecification_EnableLowLatencyRateControl,
     kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder, VTCompressionSession,
     VTEncodeInfoFlags, VTSessionSetProperty,
@@ -45,6 +48,21 @@ use objc2_video_toolbox::{
 use crate::{Codec, EncodeError, EncodedFrame, EncoderConfig, FrameKind};
 
 const START_CODE: [u8; 4] = [0, 0, 0, 1];
+
+/// HDR10's static metadata as its SEI messages carry it (big-endian):
+/// the mastering display's colour volume (BT.2020 primaries in the order
+/// green, blue, red, D65, `max_nits` and 0.005 cd/m² in 0.0001 cd/m²), and
+/// content light levels left unknown (0).
+fn hdr10_sei(max_nits: u32) -> ([u8; 24], [u8; 4]) {
+    let mut display = [0u8; 24];
+    let xy: [u16; 8] = [8500, 39850, 6550, 2300, 35400, 14600, 15635, 16450];
+    for (i, v) in xy.iter().enumerate() {
+        display[i * 2..i * 2 + 2].copy_from_slice(&v.to_be_bytes());
+    }
+    display[16..20].copy_from_slice(&(max_nits * 10_000).to_be_bytes());
+    display[20..24].copy_from_slice(&50u32.to_be_bytes());
+    (display, [0u8; 4])
+}
 
 /// Longest wait for a frame to come out of the encoder before asking it to
 /// flush (a dropped frame never comes).
@@ -314,9 +332,27 @@ impl VtEncoder {
         let c = self.config;
         let yes: &CFType = CFBoolean::new(true);
         let no: &CFType = CFBoolean::new(false);
-        let profile: &CFType = match c.codec {
-            Codec::Hevc => unsafe { kVTProfileLevel_HEVC_Main_AutoLevel },
+        let profile: &CFType = match (c.codec, c.hdr) {
+            (Codec::Hevc, true) => unsafe { kVTProfileLevel_HEVC_Main10_AutoLevel },
+            (Codec::Hevc, false) => unsafe { kVTProfileLevel_HEVC_Main_AutoLevel },
             _ => unsafe { kVTProfileLevel_H264_High_AutoLevel },
+        };
+        // HDR10 (BT.2020, PQ) as ScreenCaptureKit's HDR10 capture delivers
+        // it; else BT.709, as the SDR capture is converted.
+        let (primaries, transfer, matrix): (&CFType, &CFType, &CFType) = unsafe {
+            if c.hdr {
+                (
+                    kCVImageBufferColorPrimaries_ITU_R_2020,
+                    kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ,
+                    kCVImageBufferYCbCrMatrix_ITU_R_2020,
+                )
+            } else {
+                (
+                    kCVImageBufferColorPrimaries_ITU_R_709_2,
+                    kCVImageBufferTransferFunction_ITU_R_709_2,
+                    kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+                )
+            }
         };
         let fps = CFNumber::new_f64(c.fps_mhz as f64 / 1000.0);
         // A keyframe only when the client asks: set the interval out of reach.
@@ -364,19 +400,15 @@ impl VtEncoder {
                 ),
                 (
                     kVTCompressionPropertyKey_ColorPrimaries,
-                    kCVImageBufferColorPrimaries_ITU_R_709_2,
+                    primaries,
                     "primaries",
                 ),
                 (
                     kVTCompressionPropertyKey_TransferFunction,
-                    kCVImageBufferTransferFunction_ITU_R_709_2,
+                    transfer,
                     "transfer",
                 ),
-                (
-                    kVTCompressionPropertyKey_YCbCrMatrix,
-                    kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-                    "matrix",
-                ),
+                (kVTCompressionPropertyKey_YCbCrMatrix, matrix, "matrix"),
                 (
                     kVTCompressionPropertyKey_AverageBitRate,
                     &CFNumber::new_i32(c.bitrate_bps as i32),
@@ -389,6 +421,31 @@ impl VtEncoder {
             if status != 0 {
                 // Not every encoder takes every property; the stream still works.
                 tracing::debug!(what, status, "encoder property not taken");
+            }
+        }
+        if c.hdr {
+            // The SEI a decoder tone-maps by: a BT.2020 display of 1000
+            // cd/m², the capture's canonical HDR10 (the client also hears
+            // it in `HdrMetadata`).
+            let (display, content) = hdr10_sei(1000);
+            for (key, value, what) in unsafe {
+                [
+                    (
+                        kVTCompressionPropertyKey_MasteringDisplayColorVolume,
+                        CFData::from_bytes(&display),
+                        "mastering display",
+                    ),
+                    (
+                        kVTCompressionPropertyKey_ContentLightLevelInfo,
+                        CFData::from_bytes(&content),
+                        "content light level",
+                    ),
+                ]
+            } {
+                let status = unsafe { VTSessionSetProperty(&self.session, key, Some(&value)) };
+                if status != 0 {
+                    tracing::debug!(what, status, "HDR metadata not taken");
+                }
             }
         }
         // Long-term references: the way back from a lost frame without a

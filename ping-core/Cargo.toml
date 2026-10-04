@@ -35,7 +35,7 @@ dispatch2 = "0.3"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["std", "NSString", "NSError", "NSRunLoop", "NSObjCRuntime", "NSGeometry", "NSThread", "NSDate", "NSArray", "NSNotification", "NSValue", "NSProcessInfo", "NSDictionary"] }
 objc2-app-kit = { version = "0.3", features = ["std", "NSView", "NSResponder", "NSWindow", "NSApplication", "NSEvent", "NSScreen", "NSGraphics", "NSCursor", "NSImage", "NSRunningApplication", "NSMenu", "NSGraphicsContext", "NSColor", "NSPasteboard", "objc2-core-foundation", "objc2-quartz-core"] }
-objc2-quartz-core = { version = "0.3", features = ["std", "CALayer", "CAMetalLayer", "CAMetalDisplayLink", "CAFrameRateRange", "CABase", "objc2-metal", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "0.3", features = ["std", "CALayer", "CAMetalLayer", "CAMetalDisplayLink", "CAFrameRateRange", "CABase", "CAEDRMetadata", "objc2-metal", "objc2-core-foundation", "objc2-core-graphics"] }
 objc2-game-controller = { version = "0.3", features = ["std", "GCController", "GCDevice", "GCDeviceHaptics", "GCExtendedGamepad", "GCControllerButtonInput", "GCControllerAxisInput", "GCControllerDirectionPad", "GCControllerElement", "GCPhysicalInputProfile", "objc2-core-haptics"] }
 objc2-core-haptics = { version = "0.3", features = ["std", "CHHapticEngine", "CHHapticEvent", "CHHapticParameter", "CHHapticPattern", "CHHapticPatternPlayer"] }
 objc2-metal = { version = "0.3", features = ["std", "block2", "MTLDevice", "MTLCommandQueue", "MTLCommandBuffer", "MTLCommandEncoder", "MTLRenderCommandEncoder", "MTLRenderPass", "MTLRenderPipeline", "MTLLibrary", "MTLTexture", "MTLPixelFormat", "MTLDrawable", "MTLResource", "MTLTypes", "MTLSampler"] }

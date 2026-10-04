@@ -35,15 +35,15 @@ use objc2::runtime::ProtocolObject;
 use objc2_core_foundation::{CFRetained, CGSize};
 use objc2_core_video::{
     CVDisplayLink, CVImageBuffer, CVMetalTexture, CVMetalTextureCache, CVMetalTextureGetTexture,
-    CVPixelBufferGetHeightOfPlane, CVPixelBufferGetWidthOfPlane,
+    CVPixelBufferGetHeightOfPlane, CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidthOfPlane,
 };
 use objc2_foundation::NSString;
 use objc2_metal::*;
-use objc2_quartz_core::{CACurrentMediaTime, CAMetalDrawable, CAMetalLayer};
+use objc2_quartz_core::{CACurrentMediaTime, CAEDRMetadata, CAMetalDrawable, CAMetalLayer};
 use parking_lot::{Condvar, Mutex};
 use pingpong_decode::DecodedFrame;
 use pingpong_proto::clock;
-use pingpong_proto::control::CursorShape;
+use pingpong_proto::control::{CursorShape, HdrMetadata};
 
 use crate::stats::StatsCollector;
 use crate::stream::FrameTiming;
@@ -62,22 +62,34 @@ vertex VOut v_full(uint vid [[vertex_id]]) {
     return o;
 }
 
-struct VideoParams { float2 chroma_offset; };
+struct VideoParams {
+    // Where chroma is sampled from: half a luma pixel right for 4:2:0
+    // sited left (H.264/HEVC type 0), nothing for 4:4:4.
+    float2 chroma_offset;
+    // A sample, normalized, back to its code value: 255 for 8-bit; 65535/64
+    // for 10-bit held in the top bits of 16 (x420, x444).
+    float code_scale;
+    // Limited range: black and the span of Y, the middle and span of Cb/Cr.
+    float y_black, y_range, c_mid, c_range;
+    // The matrix's coefficients: R = Y + cr_r Cr, G = Y + cb_g Cb + cr_g Cr,
+    // B = Y + cb_b Cb.
+    float cr_r, cb_g, cr_g, cb_b;
+};
 
-// BT.709, limited range -- the inverse of the host's converter. Chroma is sited
-// left (H.264/HEVC type 0), so it is sampled half a luma pixel to the right of
-// the naive position.
+// Limited range Y'CbCr -> R'G'B', the inverse of the host's converter:
+// BT.709 for SDR; for HDR BT.2020, the result still PQ-encoded, which is
+// what an HDR layer (BT.2100 PQ) takes.
 fragment float4 f_video(VOut in [[stage_in]],
                         texture2d<float> luma [[texture(0)]],
                         texture2d<float> chroma [[texture(1)]],
                         constant VideoParams &p [[buffer(0)]]) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
-    float y = luma.sample(s, in.uv).r;
-    float2 c = chroma.sample(s, in.uv + p.chroma_offset).rg;
-    y = (y - 16.0 / 255.0) * (255.0 / 219.0);
-    float cb = (c.x - 128.0 / 255.0) * (255.0 / 224.0);
-    float cr = (c.y - 128.0 / 255.0) * (255.0 / 224.0);
-    float3 rgb = float3(y + 1.5748 * cr, y - 0.1873 * cb - 0.4681 * cr, y + 1.8556 * cb);
+    float y = luma.sample(s, in.uv).r * p.code_scale;
+    float2 c = chroma.sample(s, in.uv + p.chroma_offset).rg * p.code_scale;
+    y = (y - p.y_black) / p.y_range;
+    float cb = (c.x - p.c_mid) / p.c_range;
+    float cr = (c.y - p.c_mid) / p.c_range;
+    float3 rgb = float3(y + p.cr_r * cr, y + p.cb_g * cb + p.cr_g * cr, y + p.cb_b * cb);
     return float4(saturate(rgb), 1.0);
 }
 
@@ -94,6 +106,31 @@ vertex VOut v_quad(uint vid [[vertex_id]], constant Quad &q [[buffer(0)]]) {
 fragment float4 f_quad(VOut in [[stage_in]], texture2d<float> t [[texture(0)]]) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     return t.sample(s, in.uv);
+}
+
+// SMPTE ST 2084 (PQ): absolute light, as a fraction of 10000 cd/m2, to signal.
+float3 pq_encode(float3 l) {
+    const float m1 = 0.1593017578125, m2 = 78.84375;
+    const float c1 = 0.8359375, c2 = 18.8515625, c3 = 18.6875;
+    float3 lm = pow(clamp(l, 0.0, 1.0), m1);
+    return pow((c1 + c2 * lm) / (1.0 + c3 * lm), m2);
+}
+
+// An sRGB overlay (text, statistics) on an HDR layer: its white at the
+// stream's SDR white, in BT.2020 and PQ like the picture beneath; blended
+// premultiplied, as in SDR.
+fragment float4 f_quad_hdr(VOut in [[stage_in]], texture2d<float> t [[texture(0)]],
+                           constant float &sdr_white [[buffer(0)]]) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float4 c = t.sample(s, in.uv);
+    if (c.a <= 0.0) return float4(0.0);
+    float3 e = c.rgb / c.a;
+    float3 lin = select(pow((e + 0.055) / 1.055, 2.4), e / 12.92, e <= 0.04045);
+    const float3x3 bt709_to_bt2020 = float3x3(float3(0.6274, 0.0691, 0.0164),
+                                             float3(0.3293, 0.9195, 0.0880),
+                                             float3(0.0433, 0.0114, 0.8956));
+    float3 pq = pq_encode(bt709_to_bt2020 * lin * (sdr_white / 10000.0));
+    return float4(pq * c.a, c.a);
 }
 "#;
 
@@ -150,6 +187,8 @@ pub struct RenderShared {
     /// Drawables committed and not yet on the glass, and the signal that
     /// one got there. See `wait_for_glass`.
     glass: Arc<(Mutex<u32>, Condvar)>,
+    /// The stream is HDR, with this metadata: the layer is BT.2100 PQ.
+    hdr: Mutex<Option<HdrMetadata>>,
 }
 
 impl RenderShared {
@@ -179,7 +218,30 @@ impl RenderShared {
             vsync_ticks: Mutex::new(0),
             vsync_tick: Condvar::new(),
             glass: Arc::new((Mutex::new(0), Condvar::new())),
+            hdr: Mutex::new(None),
         })
+    }
+
+    /// The stream is HDR (or no longer): the layer follows at the next draw.
+    /// Until the host says more, its display is taken for a 1000 cd/m²
+    /// BT.2020 one with SDR white at BT.2408's 203.
+    pub fn set_hdr(&self, on: bool) {
+        let mut hdr = self.hdr.lock();
+        match (on, hdr.is_some()) {
+            (true, false) => *hdr = Some(HdrMetadata::bt2020(1000, 203)),
+            (false, true) => *hdr = None,
+            _ => return,
+        }
+        self.dirty.store(true, Ordering::Release);
+    }
+
+    /// The host's HDR metadata, while the stream is HDR.
+    pub fn set_hdr_metadata(&self, m: HdrMetadata) {
+        let mut hdr = self.hdr.lock();
+        if hdr.is_some_and(|h| h != m) {
+            *hdr = Some(m);
+            self.dirty.store(true, Ordering::Release);
+        }
     }
 
     /// Drawn frames that may wait for a refresh at once: one, full screen. In
@@ -328,6 +390,135 @@ struct GpuCursor {
     hot_y: f32,
 }
 
+/// The layer's format for SDR, and for HDR: 10 bits a channel, PQ-encoded
+/// BT.2020 (the layer's colour space says so), as Moonlight's HDR renderer
+/// (`vt_metal.mm`).
+const SDR_FORMAT: MTLPixelFormat = MTLPixelFormat::BGRA8Unorm;
+const HDR_FORMAT: MTLPixelFormat = MTLPixelFormat::BGR10A2Unorm;
+
+/// What a decoded picture is, from its pixel format: 8-bit (`420v`,
+/// `444v`) or 10-bit (`x420`, `x444`: HDR, BT.2020), 4:2:0 or 4:4:4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Picture {
+    ten_bit: bool,
+}
+
+impl Picture {
+    fn of(image: &CVImageBuffer) -> Picture {
+        let format = CVPixelBufferGetPixelFormatType(image);
+        Picture {
+            ten_bit: matches!(&format.to_be_bytes(), b"x420" | b"x444" | b"x422"),
+        }
+    }
+
+    fn luma_format(self) -> MTLPixelFormat {
+        if self.ten_bit {
+            MTLPixelFormat::R16Unorm
+        } else {
+            MTLPixelFormat::R8Unorm
+        }
+    }
+
+    fn chroma_format(self) -> MTLPixelFormat {
+        if self.ten_bit {
+            MTLPixelFormat::RG16Unorm
+        } else {
+            MTLPixelFormat::RG8Unorm
+        }
+    }
+
+    /// The shader's `VideoParams`. Chroma as wide as luma is 4:4:4: sampled
+    /// where it is; else half a luma pixel right (sited left).
+    fn params(self, luma_width: usize, chroma_width: usize) -> [f32; 12] {
+        let offset = if chroma_width >= luma_width {
+            0.0
+        } else {
+            0.5 / luma_width.max(1) as f32
+        };
+        // (code scale, Y black, Y span, C middle, C span), then the matrix:
+        // BT.709 for 8-bit SDR, BT.2020 (non-constant luminance) for HDR.
+        let (range, matrix) = if self.ten_bit {
+            (
+                [65535.0 / 64.0, 64.0, 876.0, 512.0, 896.0],
+                [1.4746, -0.164553, -0.571353, 1.8814],
+            )
+        } else {
+            (
+                [255.0, 16.0, 219.0, 128.0, 224.0],
+                [1.5748, -0.1873, -0.4681, 1.8556],
+            )
+        };
+        [
+            offset, 0.0, range[0], range[1], range[2], range[3], range[4], matrix[0], matrix[1],
+            matrix[2], matrix[3], 0.0,
+        ]
+    }
+}
+
+/// The layer set up for an HDR stream with `hdr`'s metadata, or for SDR.
+/// Its SDR white maps to the display's (EDR 1.0), as the client's own
+/// desktop shows white; brighter than that goes into the display's headroom.
+fn configure_layer(layer: &CAMetalLayer, hdr: Option<HdrMetadata>) {
+    use objc2_core_graphics::{kCGColorSpaceITUR_2100_PQ, CGColorSpace};
+    use objc2_foundation::NSData;
+    match hdr {
+        Some(m) => {
+            layer.setPixelFormat(HDR_FORMAT);
+            // SAFETY: a CoreGraphics constant.
+            let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceITUR_2100_PQ }));
+            layer.setColorspace(space.as_deref());
+            layer.setWantsExtendedDynamicRangeContent(true);
+            let (display, content) = edr_metadata(m);
+            let white = if m.sdr_white > 0 { m.sdr_white } else { 203 };
+            let edr = CAEDRMetadata::HDR10MetadataWithDisplayInfo_contentInfo_opticalOutputScale(
+                Some(&NSData::with_bytes(&display)),
+                Some(&NSData::with_bytes(&content)),
+                white as f32,
+            );
+            layer.setEDRMetadata(Some(&edr));
+            tracing::info!(
+                max_nits = m.max_luminance,
+                sdr_white = white,
+                "the stream is HDR: the layer is BT.2100 PQ"
+            );
+        }
+        None => {
+            layer.setEDRMetadata(None);
+            layer.setWantsExtendedDynamicRangeContent(false);
+            layer.setColorspace(None);
+            layer.setPixelFormat(SDR_FORMAT);
+        }
+    }
+}
+
+/// The metadata as Core Animation takes it: the mastering display's colour
+/// volume and the content's light levels, each as its SEI message would
+/// carry it (big-endian; primaries green, blue, red; luminance in
+/// 0.0001 cd/m²).
+fn edr_metadata(m: HdrMetadata) -> ([u8; 24], [u8; 4]) {
+    let mut display = [0u8; 24];
+    let [r, g, b] = m.primaries;
+    let values = [
+        g[0],
+        g[1],
+        b[0],
+        b[1],
+        r[0],
+        r[1],
+        m.white_point[0],
+        m.white_point[1],
+    ];
+    for (i, v) in values.iter().enumerate() {
+        display[i * 2..i * 2 + 2].copy_from_slice(&v.to_be_bytes());
+    }
+    display[16..20].copy_from_slice(&(m.max_luminance as u32 * 10_000).to_be_bytes());
+    display[20..24].copy_from_slice(&(m.min_luminance as u32).to_be_bytes());
+    let mut content = [0u8; 4];
+    content[..2].copy_from_slice(&m.max_cll.to_be_bytes());
+    content[2..].copy_from_slice(&m.max_fall.to_be_bytes());
+    (display, content)
+}
+
 /// Everything that must outlive a command buffer.
 struct KeepAlive {
     _frame: DecodedFrame,
@@ -340,6 +531,11 @@ pub struct Renderer {
     queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     video: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     quad: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    /// The same, drawing into an HDR layer.
+    video_hdr: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    quad_hdr: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    /// What the layer is set up for: HDR with this metadata, or SDR.
+    hdr: Option<HdrMetadata>,
     cache: CFRetained<CVMetalTextureCache>,
     cursors: HashMap<u8, GpuCursor>,
     overlay: Option<(String, Tex, f32, f32)>,
@@ -359,6 +555,7 @@ fn pipeline(
     vertex: &str,
     fragment: &str,
     blend: bool,
+    format: MTLPixelFormat,
 ) -> Result<Retained<ProtocolObject<dyn MTLRenderPipelineState>>, String> {
     let desc = MTLRenderPipelineDescriptor::new();
     let v = library
@@ -370,7 +567,7 @@ fn pipeline(
     desc.setVertexFunction(Some(&v));
     desc.setFragmentFunction(Some(&f));
     let color = unsafe { desc.colorAttachments().objectAtIndexedSubscript(0) };
-    color.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
+    color.setPixelFormat(format);
     if blend {
         color.setBlendingEnabled(true);
         color.setSourceRGBBlendFactor(MTLBlendFactor::One);
@@ -392,7 +589,7 @@ impl Renderer {
     ) -> Result<Renderer, String> {
         let device = MTLCreateSystemDefaultDevice().ok_or("no Metal device")?;
         layer.setDevice(Some(&device));
-        layer.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
+        layer.setPixelFormat(SDR_FORMAT);
         layer.setFramebufferOnly(true);
         layer.setDisplaySyncEnabled(vsync);
         // How many of them may queue for the glass is `wait_for_glass`'s.
@@ -400,8 +597,10 @@ impl Renderer {
         let library = device
             .newLibraryWithSource_options_error(&NSString::from_str(SHADERS), None)
             .map_err(|e| format!("shaders: {e}"))?;
-        let video = pipeline(&device, &library, "v_full", "f_video", false)?;
-        let quad = pipeline(&device, &library, "v_quad", "f_quad", true)?;
+        let video = pipeline(&device, &library, "v_full", "f_video", false, SDR_FORMAT)?;
+        let quad = pipeline(&device, &library, "v_quad", "f_quad", true, SDR_FORMAT)?;
+        let video_hdr = pipeline(&device, &library, "v_full", "f_video", false, HDR_FORMAT)?;
+        let quad_hdr = pipeline(&device, &library, "v_quad", "f_quad_hdr", true, HDR_FORMAT)?;
         let queue = device.newCommandQueue().ok_or("no command queue")?;
 
         let mut cache: *mut CVMetalTextureCache = std::ptr::null_mut();
@@ -425,6 +624,9 @@ impl Renderer {
             queue,
             video,
             quad,
+            video_hdr,
+            quad_hdr,
+            hdr: None,
             cache,
             cursors: HashMap::new(),
             overlay: None,
@@ -525,6 +727,13 @@ impl Renderer {
         target_time: Option<f64>,
         shown: Option<(u32, u32)>,
     ) {
+        // An HDR stream (or no longer): the layer follows, for the drawables
+        // after this one.
+        let hdr = *shared.hdr.lock();
+        if hdr != self.hdr {
+            configure_layer(&self.layer, hdr);
+            self.hdr = hdr;
+        }
         let layout = *shared.layout.lock();
         let target = drawable.texture();
         let (dw, dh) = (target.width() as f64, target.height() as f64);
@@ -547,13 +756,27 @@ impl Renderer {
             return;
         };
 
+        // The drawable's format says which pipelines draw into it (the layer
+        // may have changed format since it was taken).
+        let hdr_target = target.pixelFormat() == HDR_FORMAT;
+        let (video_pipeline, quad_pipeline) = if hdr_target {
+            (&self.video_hdr, &self.quad_hdr)
+        } else {
+            (&self.video, &self.quad)
+        };
+        let sdr_white: f32 = self.hdr.map_or(
+            203.0,
+            |m| if m.sdr_white > 0 { m.sdr_white } else { 203 } as f32,
+        );
+
         let mut keep: Option<KeepAlive> = None;
         let mut video_rect = (0.0, 0.0, dw, dh);
         if let Some((frame, _)) = &self.current {
             let image: &CVImageBuffer = unsafe { &*(frame.pixel_buffer as *const CVImageBuffer) };
+            let picture = Picture::of(image);
             if let (Some(luma), Some(chroma)) = (
-                self.plane(image, 0, MTLPixelFormat::R8Unorm),
-                self.plane(image, 1, MTLPixelFormat::RG8Unorm),
+                self.plane(image, 0, picture.luma_format()),
+                self.plane(image, 1, picture.chroma_format()),
             ) {
                 if let (Some(lt), Some(ct)) = (
                     CVMetalTextureGetTexture(&luma),
@@ -576,12 +799,12 @@ impl Renderer {
                         znear: 0.0,
                         zfar: 1.0,
                     });
-                    enc.setRenderPipelineState(&self.video);
-                    let params: [f32; 2] = [0.5 / lt.width() as f32, 0.0];
+                    enc.setRenderPipelineState(video_pipeline);
+                    let params = picture.params(lt.width(), ct.width());
                     unsafe {
                         enc.setFragmentBytes_length_atIndex(
                             NonNull::new(params.as_ptr() as *mut c_void).unwrap(),
-                            8,
+                            std::mem::size_of_val(&params),
                             0,
                         );
                         enc.setFragmentTexture_atIndex(Some(&lt), 0);
@@ -616,13 +839,20 @@ impl Renderer {
             let (x0, y0) = ndc(x, y);
             let (x1, y1) = ndc(x + w, y + h);
             let rect: [f32; 4] = [x0, y0, x1, y1];
-            enc.setRenderPipelineState(&self.quad);
+            enc.setRenderPipelineState(quad_pipeline);
             unsafe {
                 enc.setVertexBytes_length_atIndex(
                     NonNull::new(rect.as_ptr() as *mut c_void).unwrap(),
                     16,
                     0,
                 );
+                if hdr_target {
+                    enc.setFragmentBytes_length_atIndex(
+                        NonNull::new(&sdr_white as *const f32 as *mut c_void).unwrap(),
+                        4,
+                        0,
+                    );
+                }
                 enc.setFragmentTexture_atIndex(Some(tex), 0);
                 enc.drawPrimitives_vertexStart_vertexCount(MTLPrimitiveType::TriangleStrip, 0, 4);
             }

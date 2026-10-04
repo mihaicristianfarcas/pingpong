@@ -45,9 +45,12 @@ fn request(flags: &[String]) -> StreamRequest {
                 r.codecs = match it.next().map(String::as_str) {
                     Some("h264") => codec::H264,
                     Some("hevc") => codec::HEVC,
+                    Some("av1") => codec::AV1,
                     _ => r.codecs,
                 }
             }
+            "--hdr" => r.hdr = true,
+            "--yuv444" => r.yuv444 = true,
             "--windowed" => r.fullscreen = false,
             "--no-vsync" => r.vsync = false,
             "--frame-pacing" => r.frame_pacing = true,

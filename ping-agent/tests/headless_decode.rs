@@ -46,7 +46,7 @@ fn access_units(data: &[u8]) -> Vec<&[u8]> {
 fn a_real_stream_decodes_into_the_store_in_the_right_colours() {
     let store = Arc::new(FrameStore::default());
     let mut video = HeadlessVideo::new(store.clone(), Arc::new(StatsCollector::default()));
-    video.configure(Codec::H264, 1920, 1080).unwrap();
+    video.configure(Codec::H264, 1920, 1080, 0).unwrap();
     let aus = access_units(STREAM);
     assert!(aus.len() >= 60);
     let started = Instant::now();

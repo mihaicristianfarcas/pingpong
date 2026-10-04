@@ -155,6 +155,7 @@ impl HeadlessSession {
             watch: false,
             clipboard: false,
             mouse: Default::default(),
+            video: 0,
         };
         let video = Box::new(HeadlessVideo::new(frames.clone(), stats.clone()));
         let stream = Stream::start(identity, target, settings, video, events, stats.clone())?;

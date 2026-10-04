@@ -90,6 +90,9 @@ pub struct StreamSettings {
     pub clipboard: bool,
     /// Swapped buttons, reversed scrolling.
     pub mouse: crate::input::MouseOptions,
+    /// `control::video::*` to ask for: what the user wants and this
+    /// computer can show (HDR, 4:4:4).
+    pub video: u8,
 }
 
 impl Default for StreamSettings {
@@ -110,6 +113,7 @@ impl Default for StreamSettings {
             watch: false,
             clipboard: false,
             mouse: crate::input::MouseOptions::default(),
+            video: 0,
         }
     }
 }
@@ -169,8 +173,12 @@ pub struct FrameTiming {
 
 /// The platform's decoder + presenter.
 pub trait VideoOut: Send {
-    /// A session was (re)negotiated: expect `codec` at this size from now on.
-    fn configure(&mut self, codec: Codec, width: u32, height: u32) -> Result<(), String>;
+    /// A session was (re)negotiated: expect `codec` at this size from now
+    /// on, its pictures as `video` says (`control::video`: HDR, 4:4:4).
+    fn configure(&mut self, codec: Codec, width: u32, height: u32, video: u8)
+        -> Result<(), String>;
+    /// The host's HDR metadata, while the stream is HDR.
+    fn hdr_metadata(&mut self, _metadata: pingpong_proto::control::HdrMetadata) {}
     /// Decode one complete, decodable access unit.
     fn decode(&mut self, bitstream: &[u8], timing: FrameTiming) -> Result<(), String>;
 }

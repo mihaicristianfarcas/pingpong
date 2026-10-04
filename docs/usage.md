@@ -95,6 +95,8 @@ Windows and Linux) opens them.
 | | Frame rate | Frames per second the host sends; up to this display's maximum |
 | | Video codec | Automatic (HEVC when both ends can), HEVC, or H.264 |
 | | Display mode | Full screen or a window |
+| | HDR | Stream in HDR (HEVC Main10, BT.2020, PQ), as Moonlight's "HDR": offered on a Mac whose display shows HDR, from a host that can (NVIDIA on Windows, macOS 15 or later). Off by default, as in Moonlight |
+| | YUV 4:4:4 | Colour at full resolution: text without coloured fringes, for about a fifth more bitrate; offered where this computer decodes it (Apple silicon), from a host that encodes it (NVIDIA on Windows). Off by default, as in Moonlight |
 | | Bitrate | Automatic (Moonlight's table for the resolution and frame rate), or a fixed figure |
 | | V-Sync | Off: frames shown the moment they are decoded, tearing allowed |
 | | Frame pacing | One frame per display refresh (Moonlight's pacer): smoother, about a refresh more latency. Off by default, as in Moonlight |
@@ -152,6 +154,7 @@ window is an ordinary app: closing it quits it.
 | | Full GPU power for Pong (NVIDIA, after a restart) | on | `nvidia_max_power` |
 | | OpenGL and Vulkan through DXGI (NVIDIA, system-wide while Pong runs, after a restart) | on | `nvidia_dxgi_present` |
 | | Allow HEVC, Allow AV1 | on | `allow_hevc`, `allow_av1` |
+| | Allow HDR, Allow YUV 4:4:4 (for a client that asks) | on | `allow_hdr`, `allow_yuv444` |
 | | Maximum bitrate, maximum frame rate | the client's choice | `max_bitrate_kbps`, `max_fps` |
 | | Send pacing | 800 Mbit/s | `pace_mbps` |
 | | Adapt the bitrate to the network | on | `adaptive_bitrate` |

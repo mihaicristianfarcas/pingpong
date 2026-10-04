@@ -28,6 +28,7 @@ use pingpong_transport::{Endpoint, Peer};
 
 use crate::audio::AudioHandle;
 use crate::config::HostConfig;
+use crate::negotiate::Negotiated;
 use crate::portal::{Portal, PortalSink};
 use crate::power::Awake;
 use crate::session::Shared;
@@ -173,15 +174,25 @@ impl Platform {
     pub fn claim(&mut self) {}
 
     /// The display to stream: the screen, woken and kept on.
+    /// What of `control::video` the encoder can stream with `codec`: SDR
+    /// 4:2:0 (the X server and the portal share SDR pictures).
+    pub fn video_caps(&self, _codec: Codec, _asked: u8) -> u8 {
+        0
+    }
+
+    /// The HDR stream's metadata (never asked: no HDR here).
+    pub fn hdr_metadata(&self, _d: &Display) -> control::HdrMetadata {
+        control::HdrMetadata::bt2020(1000, 203)
+    }
+
     pub fn display(
         &mut self,
-        width: u16,
-        height: u16,
-        _fps_mhz: u32,
+        n: &Negotiated,
         _req: &SessionStart,
         _keep: bool,
         _cfg: &HostConfig,
     ) -> Result<Display, AckStatus> {
+        let (width, height) = (n.width, n.height);
         let (w, h) = (width as u32, height as u32);
         if self.wayland {
             let (portal, granted) = Portal::open(&self.data_dir, PORTAL_WAIT).map_err(|e| {

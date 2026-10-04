@@ -185,7 +185,7 @@ fn codec(c: Codec) -> pingpong_decode::Codec {
 
 #[cfg(target_os = "macos")]
 impl VideoOut for HeadlessVideo {
-    fn configure(&mut self, c: Codec, _width: u32, _height: u32) -> Result<(), String> {
+    fn configure(&mut self, c: Codec, _width: u32, _height: u32, _video: u8) -> Result<(), String> {
         let (store, stats) = (self.store.clone(), self.stats.clone());
         let sink: pingpong_decode::videotoolbox::FrameSink =
             Arc::new(move |f: pingpong_decode::DecodedFrame| {
@@ -214,7 +214,7 @@ impl VideoOut for HeadlessVideo {
 
 #[cfg(not(target_os = "macos"))]
 impl VideoOut for HeadlessVideo {
-    fn configure(&mut self, c: Codec, _width: u32, _height: u32) -> Result<(), String> {
+    fn configure(&mut self, c: Codec, _width: u32, _height: u32, _video: u8) -> Result<(), String> {
         // Software: a few frames a second of a desktop cost little, and the
         // pictures are wanted in memory anyway.
         self.decoder = Some(

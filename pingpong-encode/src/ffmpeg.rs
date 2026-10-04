@@ -142,6 +142,8 @@ impl FfmpegEncoder {
                 preset: 1,
                 two_pass: false,
                 slices: 1,
+                hdr: false,
+                yuv444: false,
             };
             if let Ok(e) = FfmpegEncoder::new(config) {
                 found.push((codec, e.backend));
@@ -550,6 +552,8 @@ mod tests {
             preset: 1,
             two_pass: false,
             slices: 1,
+            hdr: false,
+            yuv444: false,
         };
         let Ok(mut e) = FfmpegEncoder::with(Backend::Software, config) else {
             eprintln!("no libx264 here; skipped");

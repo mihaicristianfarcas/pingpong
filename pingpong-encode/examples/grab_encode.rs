@@ -61,6 +61,8 @@ fn main() {
         preset: 1,
         two_pass: true,
         slices: 1,
+        hdr: false,
+        yuv444: false,
     };
     let mut enc = NvencEncoder::new(&device, conv.output(), settings).expect("encoder");
 

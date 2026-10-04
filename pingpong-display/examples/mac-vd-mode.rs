@@ -19,6 +19,7 @@ fn main() {
             refresh_mhz: 60_000,
         },
         "Pong",
+        false,
     ) {
         Ok(vd) => println!(
             "{size}: {}x{} points, {}x{} pixels",

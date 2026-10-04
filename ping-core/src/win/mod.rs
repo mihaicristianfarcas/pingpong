@@ -86,7 +86,13 @@ impl WinVideo {
 }
 
 impl VideoOut for WinVideo {
-    fn configure(&mut self, codec: Codec, _width: u32, _height: u32) -> Result<(), String> {
+    fn configure(
+        &mut self,
+        codec: Codec,
+        _width: u32,
+        _height: u32,
+        _video: u8,
+    ) -> Result<(), String> {
         let codec = match codec {
             Codec::H264 => pingpong_decode::Codec::H264,
             Codec::Hevc => pingpong_decode::Codec::Hevc,
@@ -164,7 +170,9 @@ impl Session {
             );
         }
         let timer = TimerResolution::fine();
-        let s = opts.settings;
+        let mut s = opts.settings;
+        // Neither HDR nor 4:4:4 is drawn here yet.
+        s.video = crate::session::video_caps(s.video, s.codecs);
         let stats = Arc::new(StatsCollector::default());
         let gpu = Gpu::new()?;
         let render = RenderShared::new(gpu.clone(), stats.clone(), s.vsync, s.frame_pacing);

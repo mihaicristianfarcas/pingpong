@@ -9,11 +9,11 @@
 //!   ping add-host NAME ADDR X25519 MLKEM        pair by hand (see `pong identity`)
 //!   ping remove-host NAME
 //!   ping wake NAME                              Wake-on-LAN
-//!   ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc]
+//!   ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]
 //!                    [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]
 //!                    [--mute-in-background] [--audio-channels 2|6|8] [--steam]
 //!                    [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays]
-//!                    [--via ADDR] [--no-clipboard]
+//!                    [--via ADDR] [--no-clipboard] [--hdr] [--yuv444]
 //!
 //! `PING_TEST_INPUT` scripts input into a stream (see `script`).
 
@@ -30,11 +30,11 @@ fn usage() -> ExitCode {
         "usage: ping identity | discover | pair HOST[:PORT] | pair-agent HOST[:PORT] | hosts | remove-host NAME | wake NAME\n\
             \x20      ping watch NAME [stream flags]\n\
             \x20      ping add-host NAME ADDR X25519 MLKEM\n\
-            \x20      ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc]\n\
+            \x20      ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]\n\
             \x20                       [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]\n\
             \x20                       [--mute-in-background] [--audio-channels 2|6|8] [--steam]\n\
             \x20                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
-            \x20                       [--no-clipboard]"
+            \x20                       [--no-clipboard] [--hdr] [--yuv444]"
     );
     ExitCode::FAILURE
 }

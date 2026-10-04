@@ -252,6 +252,8 @@ fn sample(s: &mut Snapshot) {
             "nvenc_preset": 1,
             "nvenc_two_pass": true,
             "nvidia_max_power": true,
+            "allow_hdr": true,
+            "allow_yuv444": true,
             "nvidia_dxgi_present": true,
             "max_bitrate_kbps": 0,
             "max_fps": 0,

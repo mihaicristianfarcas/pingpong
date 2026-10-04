@@ -3,6 +3,7 @@
 //! what it does.
 
 use gpui::{div, prelude::*, px, AnyElement, App, Context, SharedString, Window};
+use pingpong_proto::control::{codec, video};
 use pingpong_ui::{button, rows, section, select, setting, slider, switch, Choice, Theme, Type};
 
 use crate::app::{page_body, toolbar, PingApp};
@@ -259,6 +260,8 @@ impl PingApp {
                     .child(mbps(shown)),
             );
 
+        // What this computer can show: HDR and 4:4:4 are offered where so.
+        let can = ping_core::session::video_caps(video::HDR | video::YUV444, codec::HEVC);
         let codecs = ["auto", "hevc", "h264"];
         let codec = select(
             "codec",
@@ -320,6 +323,38 @@ impl PingApp {
                             t,
                         )
                         .into_any_element(),
+                        self.toggle(
+                            "hdr",
+                            "HDR",
+                            if can & video::HDR != 0 {
+                                "High dynamic range from a host whose GPU can encode it: \
+                                    highlights brighter than white, in 10-bit colour. \
+                                    Needs HEVC."
+                            } else {
+                                "This display shows no more than SDR."
+                            },
+                            |p| p.hdr,
+                            |p, v| p.hdr = v,
+                            can & video::HDR != 0,
+                            t,
+                            cx,
+                        ),
+                        self.toggle(
+                            "yuv444",
+                            "YUV 4:4:4",
+                            if can & video::YUV444 != 0 {
+                                "Colour at full resolution: text without coloured \
+                                    fringes, for about a fifth more bitrate. From a host \
+                                    whose encoder can (NVIDIA on Windows; not a Mac)."
+                            } else {
+                                "This computer's decoder does not take 4:4:4 yet."
+                            },
+                            |p| p.yuv444,
+                            |p, v| p.yuv444 = v,
+                            can & video::YUV444 != 0,
+                            t,
+                            cx,
+                        ),
                     ],
                     t,
                 )),

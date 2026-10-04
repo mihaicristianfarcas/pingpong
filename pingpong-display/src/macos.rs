@@ -42,6 +42,9 @@ const PANEL: (u32, u32) = (3840, 2400);
 /// How long a display just online gets to offer the session's mode.
 const MODE_WITHIN: std::time::Duration = std::time::Duration::from_millis(1500);
 
+/// `CGVirtualDisplayMode`'s transfer function for an HDR display.
+const HDR_TRANSFER_FUNCTION: u32 = 1;
+
 /// How long macOS gets to bring a new virtual display online.
 const ONLINE_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
@@ -96,8 +99,9 @@ fn class(name: &CStr) -> Result<&'static AnyClass, DisplayError> {
 }
 
 impl VirtualDisplay {
-    /// Plug in a display of `mode` (pixels; HiDPI), named `name`.
-    pub fn new(mode: DisplayMode, name: &str) -> Result<VirtualDisplay, DisplayError> {
+    /// Plug in a display of `mode` (pixels; HiDPI), named `name`; an HDR one
+    /// with `hdr`.
+    pub fn new(mode: DisplayMode, name: &str, hdr: bool) -> Result<VirtualDisplay, DisplayError> {
         let (w, h) = (mode.width as u32 & !1, mode.height as u32 & !1);
         let hz = mode.refresh_mhz as f64 / 1000.0;
         let queue = DispatchQueue::new("pong.virtual-display", None);
@@ -137,8 +141,16 @@ impl VirtualDisplay {
             let (mw, mh) = if hidpi { (w / 2, h / 2) } else { (w, h) };
             let mode_alloc: Allocated<AnyObject> =
                 msg_send![class(c"CGVirtualDisplayMode")?, alloc];
-            let vmode: Retained<AnyObject> =
-                msg_send![mode_alloc, initWithWidth: mw, height: mh, refreshRate: hz];
+            // A mode's transfer function makes the display HDR: 1 (measured
+            // on macOS 26: the screen then has EDR headroom, 5x SDR white;
+            // 0 is SDR, 2 and 3 SDR too). The HDR display's pictures are
+            // what an HDR capture of it carries.
+            let vmode: Retained<AnyObject> = if hdr {
+                msg_send![mode_alloc, initWithWidth: mw, height: mh, refreshRate: hz,
+                    transferFunction: HDR_TRANSFER_FUNCTION]
+            } else {
+                msg_send![mode_alloc, initWithWidth: mw, height: mh, refreshRate: hz]
+            };
             let settings: Retained<AnyObject> = msg_send![class(c"CGVirtualDisplaySettings")?, new];
             let _: () = msg_send![&*settings, setHiDPI: hidpi as u32];
             let modes = NSArray::from_retained_slice(&[vmode]);
