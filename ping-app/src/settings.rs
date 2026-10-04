@@ -553,6 +553,26 @@ impl PingApp {
             t,
             cx,
         ));
+        first.push(self.toggle(
+            "swap-buttons",
+            "Swap mouse buttons",
+            "The left button clicks right on the host, and the right one left.",
+            |p| p.swap_mouse_buttons,
+            |p, v| p.swap_mouse_buttons = v,
+            true,
+            t,
+            cx,
+        ));
+        first.push(self.toggle(
+            "reverse-scroll",
+            "Reverse scrolling",
+            "The wheel and the trackpad scroll the host the other way from here.",
+            |p| p.reverse_scroll,
+            |p, v| p.reverse_scroll = v,
+            true,
+            t,
+            cx,
+        ));
         let shortcuts = [
             ("Q", "Stop streaming"),
             ("S", "Show or hide statistics"),

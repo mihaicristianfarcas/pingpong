@@ -71,6 +71,10 @@ pub struct StreamRequest {
     pub watch: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub clipboard: bool,
+    /// Left and right mouse buttons swapped (Moonlight's option).
+    pub swap_mouse_buttons: bool,
+    /// The wheel and the trackpad scroll the other way (Moonlight's option).
+    pub reverse_scroll: bool,
 }
 
 impl Default for StreamRequest {
@@ -97,6 +101,8 @@ impl Default for StreamRequest {
             via: Vec::new(),
             watch: false,
             clipboard: true,
+            swap_mouse_buttons: false,
+            reverse_scroll: false,
         }
     }
 }
@@ -118,6 +124,10 @@ impl StreamRequest {
                 app: self.app,
                 watch: self.watch,
                 clipboard: self.clipboard,
+                mouse: crate::input::MouseOptions {
+                    swap_buttons: self.swap_mouse_buttons,
+                    reverse_scroll: self.reverse_scroll,
+                },
                 // A watcher gets no sound (an agent's session has none).
                 ..StreamSettings::default()
             },

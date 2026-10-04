@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use pingpong_proto::clock;
 use pingpong_proto::input::{
-    InputEvent, InputRing, MotionBatcher, RepeatSchedule, BATCH_WINDOW, MAX_EVENTS_PER_PACKET,
-    MAX_INPUT_LEN,
+    Button, InputEvent, InputRing, MotionBatcher, RepeatSchedule, BATCH_WINDOW,
+    MAX_EVENTS_PER_PACKET, MAX_INPUT_LEN,
 };
 use pingpong_transport::{Endpoint, Peer};
 
@@ -26,9 +26,20 @@ enum Msg {
 /// Gap between the packets of a burst of keys; see `run`.
 const BURST_SPACING: Duration = Duration::from_millis(2);
 
+/// How this computer's mouse reaches the host (Moonlight's "swap mouse
+/// buttons" and "reverse scrolling").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MouseOptions {
+    /// Left is right and right is left.
+    pub swap_buttons: bool,
+    /// The wheel and the trackpad scroll the other way.
+    pub reverse_scroll: bool,
+}
+
 #[derive(Clone)]
 pub struct InputSender {
     tx: Sender<(Msg, u32)>,
+    mouse: MouseOptions,
 }
 
 impl InputSender {
@@ -45,11 +56,44 @@ impl InputSender {
             }
         });
         // The forwarding thread runs behind: tests read after a moment.
-        (InputSender { tx }, out_rx)
+        (
+            InputSender {
+                tx,
+                mouse: MouseOptions::default(),
+            },
+            out_rx,
+        )
     }
 
     pub fn send(&self, ev: InputEvent) {
         let _ = self.tx.send((Msg::Event(ev), clock::now_us()));
+    }
+
+    /// A button of this computer's mouse went down or up (swapped, if the
+    /// user asked). Not for buttons other devices click with (a controller
+    /// as a mouse, an agent): those mean what they say.
+    pub fn mouse_button(&self, b: Button, down: bool) {
+        let b = match (self.mouse.swap_buttons, b) {
+            (true, Button::Left) => Button::Right,
+            (true, Button::Right) => Button::Left,
+            (_, b) => b,
+        };
+        self.send(if down {
+            InputEvent::ButtonDown(b)
+        } else {
+            InputEvent::ButtonUp(b)
+        });
+    }
+
+    /// This computer's wheel or trackpad scrolled, in Windows' units (120
+    /// a notch); the other way if the user asked.
+    pub fn wheel(&self, dv: i16, dh: i16) {
+        let (dv, dh) = if self.mouse.reverse_scroll {
+            (dv.saturating_neg(), dh.saturating_neg())
+        } else {
+            (dv, dh)
+        };
+        self.send(InputEvent::Wheel { dv, dh });
     }
 
     pub fn motion(&self, dx: f64, dy: f64) {
@@ -94,7 +138,11 @@ pub struct InputThread {
 }
 
 impl InputThread {
-    pub fn spawn(endpoint: Arc<Endpoint>, peer: Arc<Peer>) -> (InputThread, InputSender) {
+    pub fn spawn(
+        endpoint: Arc<Endpoint>,
+        peer: Arc<Peer>,
+        mouse: MouseOptions,
+    ) -> (InputThread, InputSender) {
         let (tx, rx) = crossbeam_channel::unbounded();
         let stop = Arc::new(AtomicBool::new(false));
         let handle = {
@@ -104,7 +152,7 @@ impl InputThread {
                 .spawn(move || run(endpoint, peer, rx, stop))
                 .expect("spawning the input thread")
         };
-        (InputThread { stop, handle }, InputSender { tx })
+        (InputThread { stop, handle }, InputSender { tx, mouse })
     }
 
     pub fn stop(self) {
@@ -226,5 +274,53 @@ fn run(endpoint: Arc<Endpoint>, peer: Arc<Peer>, rx: Receiver<(Msg, u32)>, stop:
             Err(RecvTimeoutError::Timeout) => send(&ring, newest_ts, &mut wire),
             Err(RecvTimeoutError::Disconnected) => return,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn received(rx: &crossbeam_channel::Receiver<InputEvent>, n: usize) -> Vec<InputEvent> {
+        (0..n)
+            .map(|_| rx.recv_timeout(Duration::from_secs(1)).expect("an event"))
+            .collect()
+    }
+
+    #[test]
+    fn swapped_buttons_trade_left_and_right_only() {
+        let (mut sender, rx) = InputSender::for_test();
+        sender.mouse.swap_buttons = true;
+        sender.mouse_button(Button::Left, true);
+        sender.mouse_button(Button::Left, false);
+        sender.mouse_button(Button::Middle, true);
+        assert_eq!(
+            received(&rx, 3),
+            vec![
+                InputEvent::ButtonDown(Button::Right),
+                InputEvent::ButtonUp(Button::Right),
+                InputEvent::ButtonDown(Button::Middle),
+            ]
+        );
+    }
+
+    #[test]
+    fn reversed_scrolling_turns_both_axes_round() {
+        let (mut sender, rx) = InputSender::for_test();
+        sender.wheel(120, -40);
+        sender.mouse.reverse_scroll = true;
+        sender.wheel(120, -40);
+        sender.wheel(i16::MIN, 0);
+        assert_eq!(
+            received(&rx, 3),
+            vec![
+                InputEvent::Wheel { dv: 120, dh: -40 },
+                InputEvent::Wheel { dv: -120, dh: 40 },
+                InputEvent::Wheel {
+                    dv: i16::MAX,
+                    dh: 0
+                },
+            ]
+        );
     }
 }

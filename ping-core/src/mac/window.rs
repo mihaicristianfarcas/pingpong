@@ -150,7 +150,7 @@ impl Handler {
         }
         for b in self.held_buttons.drain() {
             if let Some(b) = button(b) {
-                self.input.send(InputEvent::ButtonUp(b));
+                self.input.mouse_button(b, false);
             }
         }
         self.ctrl = false;
@@ -439,10 +439,10 @@ impl Handler {
         let Some(b) = button(n) else { return };
         if down {
             if self.held_buttons.insert(n) {
-                self.input.send(InputEvent::ButtonDown(b));
+                self.input.mouse_button(b, true);
             }
         } else if self.held_buttons.remove(&n) {
-            self.input.send(InputEvent::ButtonUp(b));
+            self.input.mouse_button(b, false);
         }
     }
 
@@ -463,11 +463,11 @@ impl Handler {
         let (dv, dh) = (fy.trunc(), fx.trunc());
         self.scroll_residue = (fx - dh, fy - dv);
         if dv != 0.0 || dh != 0.0 {
-            self.input.send(InputEvent::Wheel {
-                dv: dv.clamp(i16::MIN as f64, i16::MAX as f64) as i16,
+            self.input.wheel(
+                dv.clamp(i16::MIN as f64, i16::MAX as f64) as i16,
                 // Windows' horizontal wheel runs the other way.
-                dh: (-dh).clamp(i16::MIN as f64, i16::MAX as f64) as i16,
-            });
+                (-dh).clamp(i16::MIN as f64, i16::MAX as f64) as i16,
+            );
         }
     }
 }

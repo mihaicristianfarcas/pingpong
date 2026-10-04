@@ -107,6 +107,8 @@ Windows and Linux) opens them.
 | Input | Use ⌘ as the Windows key | On a Mac: Command reaches a Windows host as the Windows key (a Mac host always gets Command) |
 | | Share the clipboard | See [below](#sharing-the-clipboard) |
 | | Controller as a mouse | Hold Start to drive the mouse with a controller |
+| | Swap mouse buttons | The left button clicks right on the host, and the right one left (Moonlight's option) |
+| | Reverse scrolling | The wheel and the trackpad scroll the host the other way (Moonlight's option) |
 
 Settings are kept in `settings.toml` in Ping's data folder, beside the paired
 hosts (`hosts.toml`) and this device's keys:
