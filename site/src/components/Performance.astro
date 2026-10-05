@@ -1,6 +1,6 @@
 ---
-// Ping + Pong against Moonlight + Apollo, same machines, same settings
-// (docs/benchmarks.md). The measures have different units, so each gets
+// Ping + Pong against Moonlight + Apollo (Sunshine's video path, with a
+// virtual display), same machines, same settings (docs/benchmarks.md). The measures have different units, so each gets
 // its own pair of bars, starting at zero; a range is drawn to its worse end.
 import { VERSUS } from '../lib/facts';
 import { onGitHub } from '../lib/repo';
@@ -18,7 +18,8 @@ const worse = (v: string, better: string) => {
       <h2 class="title">Measured against Moonlight + Apollo</h2>
       <p class="lede">
         The same MacBook, the same PC and the same demanding settings: 3024×1890 at 120 fps and 100 Mbit/s, HEVC, 7.1
-        sound, with the host’s screen full of noise.
+        sound, with the host’s screen full of noise. Apollo streams with Sunshine’s video path and adds a virtual
+        display at the client’s mode, as Pong does.
       </p>
     </div>
 
