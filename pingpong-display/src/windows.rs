@@ -276,8 +276,7 @@ pub fn mode_for_target(id: CcdId) -> Option<DisplayMode> {
     Some(DisplayMode {
         width: dm.dmPelsWidth as u16,
         height: dm.dmPelsHeight as u16,
-        // dmDisplayFrequency is whole Hz. 59.94 comes back as 59 or 60 and the
-        // session's own rounding (`encode_fps_for`) absorbs the difference.
+        // dmDisplayFrequency is whole Hz: 59.94 comes back as 59 or 60.
         refresh_mhz: dm.dmDisplayFrequency * 1000,
     })
 }
@@ -497,6 +496,38 @@ fn attached_displays() -> Vec<Attached> {
     out
 }
 
+/// The whole-hertz rates display `name` lists at `width` x `height`.
+fn listed_rates(name: &str, width: u32, height: u32) -> Vec<u32> {
+    let name_w = wide(name);
+    let mut rates = Vec::new();
+    for i in 0.. {
+        let mut dm = DEVMODEW {
+            dmSize: std::mem::size_of::<DEVMODEW>() as u16,
+            ..Default::default()
+        };
+        // SAFETY: dmSize is set and `name_w` is a NUL-terminated device
+        // name; the call fails past the last mode, which ends the walk.
+        if !unsafe {
+            EnumDisplaySettingsW(
+                PCWSTR(name_w.as_ptr()),
+                ENUM_DISPLAY_SETTINGS_MODE(i),
+                &mut dm,
+            )
+        }
+        .as_bool()
+        {
+            break;
+        }
+        if dm.dmPelsWidth == width
+            && dm.dmPelsHeight == height
+            && !rates.contains(&dm.dmDisplayFrequency)
+        {
+            rates.push(dm.dmDisplayFrequency);
+        }
+    }
+    rates
+}
+
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
@@ -511,11 +542,19 @@ fn wide(s: &str) -> Vec<u16> {
 ///
 /// Unlike `CDS_SET_PRIMARY`, a plain mode change *does* work on an indirect
 /// display -- verified return 0 with a matching read-back.
+///
+/// The rate is the one Windows lists nearest the mode's millihertz
+/// ([`DisplayMode::listed_hz`]): rounded down instead, a client's 143.972 Hz
+/// was asked for as 143, which Windows refused (DISP_CHANGE_BADMODE).
 fn force_mode(name: &str, mode: DisplayMode) -> Result<(), DisplayError> {
-    let want_hz = if mode.refresh_mhz >= 1000 {
-        mode.refresh_mhz / 1000
-    } else {
-        mode.refresh_mhz
+    let listed = listed_rates(name, mode.width as u32, mode.height as u32);
+    let Some(want_hz) = mode.listed_hz(listed.iter().copied()) else {
+        return Err(DisplayError::Os(format!(
+            "{name} offers no {}x{} mode at {:.3} Hz (it lists {listed:?} Hz)",
+            mode.width,
+            mode.height,
+            mode.refresh_mhz as f64 / 1000.0
+        )));
     };
     let dm = DEVMODEW {
         dmSize: std::mem::size_of::<DEVMODEW>() as u16,
