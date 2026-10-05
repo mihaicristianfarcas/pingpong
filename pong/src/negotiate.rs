@@ -32,7 +32,7 @@ pub fn negotiate(
 ) -> Result<Negotiated, AckStatus> {
     let codec = codec_for(req.codecs, supported, cfg.allow_hevc, cfg.allow_av1)
         .ok_or(AckStatus::NoCodec)?;
-    let mut fps_mhz = req.refresh_mhz.clamp(10_000, 240_000);
+    let mut fps_mhz = requested_mhz(req).clamp(10_000, 240_000);
     if cfg.max_fps > 0 {
         fps_mhz = fps_mhz.min(cfg.max_fps.saturating_mul(1000));
     }
@@ -55,6 +55,18 @@ pub fn negotiate(
         width: req.width & !1,
         height: req.height & !1,
     })
+}
+
+/// The rate the client asked for: its display's own when it sent one within
+/// 1% of the whole rate (the client's own rule; anything else is not taken
+/// from the network), else the whole rate.
+fn requested_mhz(req: &SessionStart) -> u32 {
+    let (whole, exact) = (req.refresh_mhz, req.exact_refresh_mhz);
+    if exact != 0 && exact.abs_diff(whole) as u64 * 100 <= whole as u64 {
+        exact
+    } else {
+        whole
+    }
 }
 
 /// The best codec both sides have: AV1, then HEVC, then H.264.
@@ -97,6 +109,7 @@ mod tests {
             repeat_delay_ms: 0,
             repeat_interval_ms: 0,
             video: 0,
+            exact_refresh_mhz: 0,
         }
     }
 
@@ -141,9 +154,24 @@ mod tests {
     #[test]
     fn a_fractional_rate_is_kept_to_the_millihertz() {
         let mut req = request(codec::HEVC, 1920, 1080, 60, 20_000);
-        req.refresh_mhz = 59_940;
+        req.exact_refresh_mhz = 59_940;
         let n = negotiate(&req, &HostConfig::default(), &[Codec::Hevc], |_, _| 0).unwrap();
         assert_eq!(n.fps_mhz, 59_940);
+    }
+
+    #[test]
+    fn an_exact_rate_far_from_the_whole_one_is_not_taken() {
+        let mut req = request(codec::HEVC, 1920, 1080, 60, 20_000);
+        req.exact_refresh_mhz = 143_972;
+        let n = negotiate(&req, &HostConfig::default(), &[Codec::Hevc], |_, _| 0).unwrap();
+        assert_eq!(n.fps_mhz, 60_000);
+    }
+
+    #[test]
+    fn an_older_clients_whole_rate_is_the_rate() {
+        let req = request(codec::HEVC, 1920, 1080, 144, 20_000);
+        let n = negotiate(&req, &HostConfig::default(), &[Codec::Hevc], |_, _| 0).unwrap();
+        assert_eq!(n.fps_mhz, 144_000);
     }
 
     #[test]
