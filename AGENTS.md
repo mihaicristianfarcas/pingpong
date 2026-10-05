@@ -11,7 +11,7 @@ change.
 ## What the project is
 
 pingpong streams a computer's desktop to another the way Moonlight and
-Apollo (Sunshine) do, inside one post-quantum WireGuard tunnel. **Ping** is
+Sunshine do, inside one post-quantum WireGuard tunnel. **Ping** is
 the client (`ping-app`, `ping-core`), **Pong** the host (`pong`,
 `pong-app`); both run on macOS, Windows and Linux, over shared libraries
 (`pingpong-*`). `ping-agent` lets AI agents use hosts as clients of their
@@ -24,11 +24,13 @@ own.
   decode → present) do not allocate per datagram, take locks another thread
   holds for long, block on I/O, or log per packet. Reuse buffers; keep work
   off the network thread.
-- **Moonlight and Sunshine/Apollo are the reference.** When in doubt about
+- **Moonlight and Sunshine are the reference.** When in doubt about
   behaviour — loss recovery, encoder settings, pacing, input, shortcuts,
   settings — do what they do, and say so in a comment with the source file
   (`VideoDepacketizer.c`, `stream.cpp`). Diverge only for a measured reason,
-  and write the reason down.
+  and write the reason down. Apollo, a fork of Sunshine with virtual
+  displays, is where pingpong's virtual display and SudoVDA come from; for
+  everything else, Sunshine's current source is the one to read.
 - **Measure, then change.** Claims about performance or platform behaviour
   come with numbers and the conditions they were taken under (in the
   comment, the commit and, for user-visible results,
@@ -131,15 +133,16 @@ own.
 
 - **Every file starts with a `//!` module doc**: what the module is, what
   it is for, and the non-obvious decisions (which platform API and why,
-  what Moonlight or Apollo do).
+  what Moonlight or Sunshine do).
 - **Say why, not what.** The code says what. A comment earns its place by
   explaining a reason, a constraint, a measurement or a trap ("looks
   removable, is not: …"). Delete comments that restate the code.
 - **Measurements are facts with conditions**: "3.9 s with the host's
   monitor asleep", not "slow".
-- **References**: Moonlight, Sunshine and Apollo by source file; the design
-  documents as `v1 design §5.1` or `v2 design §6.4`
-  ([docs/design/](docs/design/README.md)); other docs by path.
+- **References**: Moonlight and Sunshine (and Apollo, for what is its own)
+  by source file; the design documents as `v1 design §5.1` or
+  `v2 design §6.4` ([docs/design/](docs/design/README.md)); other docs by
+  path.
 - **No history in comments**: no dates, people's or machines' names, "we
   tried", "used to", ticket or plan numbers. Git holds the history; a
   comment describes the code as it is. ("An earlier version did X, which
@@ -155,7 +158,7 @@ own.
 | `README.md` | What pingpong is, what it can do, where to start |
 | `docs/install.md`, `docs/usage.md`, `docs/cli.md` | People installing and using it |
 | `docs/architecture.md`, `docs/networking.md`, `docs/platforms/*.md`, `docs/ai-agents.md`, `docs/ui.md` | How it works, and each platform's behaviour and limits |
-| `docs/benchmarks.md`, `docs/parity.md` | What it achieves, measured, against Moonlight + Apollo |
+| `docs/benchmarks.md`, `docs/parity.md` | What it achieves, measured, against Moonlight + Sunshine |
 | `docs/development.md`, `AGENTS.md`, `CONTRIBUTING.md` | People changing it |
 | `docs/design/` | The design history. Frozen: fix links and typos only |
 

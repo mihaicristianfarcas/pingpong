@@ -48,7 +48,7 @@ unpair a device you lost.
 
 **The host's privileges.** On Windows, Pong runs as SYSTEM so it can
 capture and control the secure desktop (UAC prompts, the lock screen), as
-Sunshine and Apollo do. Clipboard files are read and written as the
+Sunshine does. Clipboard files are read and written as the
 signed-in user, not as SYSTEM.
 
 **The update check** asks GitHub's public API, over HTTPS (Mozilla's root

@@ -1,7 +1,7 @@
 # Windows
 
-Pong on Windows is the host pingpong was built around: what Apollo is to
-Moonlight. Ping also runs on Windows 10 and 11.
+Pong on Windows is the host pingpong was built around: what Sunshine is to
+Moonlight, with Apollo's virtual display. Ping also runs on Windows 10 and 11.
 
 ## Pong, the host
 
@@ -13,7 +13,7 @@ Moonlight. Ping also runs on Windows 10 and 11.
 | An NVIDIA GPU with NVENC, and its driver | Encoding. NVENC is loaded from the driver (`nvEncodeAPI64.dll`) at runtime: no CUDA toolkit or Video Codec SDK is needed to build or run |
 | [SudoVDA](https://github.com/SudoMaker/SudoVDA) (SudoMaker Virtual Display Adapter) | A virtual display at each client's mode. Apollo installs it; it can also be installed on its own. Pong and Apollo cannot stream at the same time (they share the driver) |
 | [ViGEmBus](https://github.com/nefarius/ViGEmBus) (optional) | Controllers: each of the client's pads becomes a virtual Xbox 360 pad |
-| Steam's **Steam Streaming Speakers** (optional) | Sound only on the client: during a session the host's default output moves to this virtual device, so the host's speakers stay quiet (Apollo's approach). Without it, the sound plays on the host too |
+| Steam's **Steam Streaming Speakers** (optional) | Sound only on the client: during a session the host's default output moves to this virtual device, so the host's speakers stay quiet (Sunshine's approach, its `virtual_sink`). Without it, the sound plays on the host too |
 
 ### How it runs
 
@@ -22,8 +22,8 @@ active console session with a copy of its SYSTEM token, and relaunches it
 when the console session changes (sign-out, fast user switching, a reboot to
 the sign-in screen) or the host exits. Only SYSTEM can open the secure
 desktop, so only a host running this way can capture and control UAC
-prompts, the lock screen and the sign-in screen — the model Sunshine and
-Apollo use (`pong/src/service.rs`).
+prompts, the lock screen and the sign-in screen — the model Sunshine uses
+(`pong/src/service.rs`).
 
 State lives in `C:\ProgramData\Pong\`: `config.toml`, the host's identity,
 paired clients, the web UI's certificate and accounts, and `logs\`. The host
@@ -36,7 +36,7 @@ window to the Start menu; see [../install.md](../install.md).
 ### Pong's icon in the notification area
 
 Pong's window (`Pong Control.exe`) is also Pong's icon in the taskbar's
-notification area, as Apollo's is: it runs as the signed-in user, not as
+notification area, as Sunshine's is: it runs as the signed-in user, not as
 the service, so what its menu opens opens on that user's desktop. A click
 on the icon opens the window; the right button has the menu (what the host
 does, a device asking to pair, the window, an update, **Quit Pong
@@ -54,14 +54,15 @@ one's window.
   mode, made primary with the display-configuration (CCD) API, and — unless
   the client or the settings keep them — the host's own monitors are turned
   off, so the virtual display is the whole desktop and windows and games
-  open where the client can see them (Apollo's default). A keepalive thread
+  open where the client can see them (Sunshine's "deactivate other
+  displays", Apollo's default). A keepalive thread
   pings the driver every second: SudoVDA removes a monitor ~3 s after the
   last ping. At the end the virtual display goes first, then the host's
   arrangement comes back. `pingpong-display/src/windows.rs` explains each of
   these, and why the obvious alternatives fail.
 - **Capture.** DXGI Desktop Duplication, re-attached to the input desktop
   whenever duplication is lost, so the secure desktop is captured too. The
-  process's GPU scheduling priority is raised (as Apollo does) so a game
+  process's GPU scheduling priority is raised (as Sunshine does) so a game
   saturating the GPU does not starve capture and encode.
 - **Colour.** BGRA → NV12 in the host's own D3D11 shaders: BT.709, limited
   range, chroma sited left, the colour description written into the stream.
@@ -85,14 +86,14 @@ one's window.
 - **Sound.** WASAPI loopback of the session's virtual sink, stereo to 7.1,
   Opus as Sunshine configures it.
 - **Input.** `SendInput`: keys by scancode, the mouse relative (the host's
-  pointer speed applies, as with Apollo) or as positions over the display,
+  pointer speed applies, as with Sunshine) or as positions over the display,
   mapped from the desktop as it is at each move, so a game that changes the
   display's resolution does not move every click. Typed text (an agent's
   `type`, a pasted clipboard) goes one character every 15 ms: Windows 11's
   WinUI text fields garble faster Unicode keystrokes.
 - **The pointer.** Desktop Duplication reports the pointer beside the
   desktop image, never in it: its place, whether it shows, and its shape.
-  Pong draws it into a copy of the desktop on the GPU, as Apollo does, so
+  Pong draws it into a copy of the desktop on the GPU, as Sunshine does, so
   the client sees the pointer the host's screen shows, hidden whenever a
   game hides it. A pointer that moves over a still desktop makes a new
   frame.
@@ -129,7 +130,8 @@ From the tunnel up to the session started, 3024x1890@120:
 | Unplugged (headless) | 327–372 ms | 0.62–0.79 s |
 
 An asleep or switched-off monitor is still on the cable, and Windows spends
-~3.7 s on it whenever the display arrangement changes. Apollo pays the same.
+~3.7 s on it whenever the display arrangement changes. Apollo, measured on
+the same host, pays the same.
 
 ### Limits and known issues
 

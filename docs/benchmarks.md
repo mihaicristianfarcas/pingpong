@@ -1,8 +1,10 @@
 # Benchmarks
 
 What pingpong costs, measured: micro-benchmarks of its own code paths, and
-the real stream end to end, against Moonlight + Apollo where that means
-something. Every figure says what it was measured on; the earliest
+the real stream end to end, against Moonlight + Sunshine where that means
+something. The host comparisons so far were measured against Apollo, the
+Sunshine fork whose virtual display Pong follows: its capture, NVENC
+settings, FEC and pacing are Sunshine's. Every figure says what it was measured on; the earliest
 measurements (v1, v2) are in the [design history](design/README.md).
 
 ## Test setup
@@ -114,6 +116,12 @@ encoded 2.2–2.6 ms, in flight about half the ~9 ms Wi-Fi round trip, first
 packet to complete frame 1–1.6 ms, decode 1.5–2 ms.
 
 ## Against Moonlight + Apollo
+
+Apollo streams with Sunshine's video path and adds the virtual display at
+the client's mode, which is what made it the like-for-like host to measure
+Pong against (Sunshine itself streams a physical display). Not measured
+yet: Sunshine's own newer settings (split-frame NVENC on GPUs with two
+encoders), which do not apply to this host's single-encoder RTX 3070 Ti.
 
 2026-09-27, the same settings on both: 3024x1890 at 120 fps,
 100 Mbit/s, HEVC, 7.1 audio, V-Sync and frame pacing on; 60 fps noise on
