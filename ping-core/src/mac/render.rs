@@ -248,8 +248,12 @@ impl RenderShared {
     /// a window the window server composites each frame, up to two refreshes
     /// later, and only the layer's own three drawables keep up: at 120 fps a
     /// limit of two showed 80 frames a second, one showed 40 of 60 at 60.
+    /// An HDR layer is composited full screen too (the window server maps
+    /// it onto the display's headroom): with a limit of one, 58-104 of 118
+    /// frames a second were shown at 3024x1890@120; with the layer's three,
+    /// 116-120.
     fn glass_limit(&self) -> u32 {
-        if self.layout.lock().windowed {
+        if self.layout.lock().windowed || self.hdr.lock().is_some() {
             DRAWABLES
         } else {
             GLASS_QUEUE_MAX
@@ -456,8 +460,12 @@ impl Picture {
 }
 
 /// The layer set up for an HDR stream with `hdr`'s metadata, or for SDR.
-/// Its SDR white maps to the display's (EDR 1.0), as the client's own
-/// desktop shows white; brighter than that goes into the display's headroom.
+/// macOS tone-maps by the metadata, as with Moonlight (`vt_metal.mm`), which
+/// maps 203 cd/m² to the display's SDR white (EDR 1.0); here the host's own
+/// SDR white goes there, so its desktop is as bright as this one's, and
+/// brighter goes into the display's headroom. (A screenshot is macOS's SDR
+/// rendition, tone-mapped into no headroom at all: white comes out grey in
+/// it, whatever the metadata says the peak is.)
 fn configure_layer(layer: &CAMetalLayer, hdr: Option<HdrMetadata>) {
     use objc2_core_graphics::{kCGColorSpaceITUR_2100_PQ, CGColorSpace};
     use objc2_foundation::NSData;
