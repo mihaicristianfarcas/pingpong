@@ -132,6 +132,14 @@ fn service_body() -> Result<(), String> {
             match which.0 - WAIT_OBJECT_0.0 {
                 2 if unsafe { WTSGetActiveConsoleSessionId() } == session => continue,
                 0 | 2 => {
+                    if which == WAIT_OBJECT_0 {
+                        // Stopping, said at once as SunshineService says it
+                        // (`tools/sunshinesvc.cpp`): the host takes 4-5 s
+                        // while it removes a virtual display a session left,
+                        // and `Stop-Service` gives up on a service that is
+                        // neither stopped nor stopping after 2 s.
+                        set(ServiceState::StopPending, ServiceControlAccept::empty());
+                    }
                     // Stopping, or the console moved to another session: ask
                     // the host to wind down, then insist.
                     unsafe { SetEvent(host_stop).ok() };
