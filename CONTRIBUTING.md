@@ -24,9 +24,9 @@ Security problems go privately instead: see [SECURITY.md](SECURITY.md).
 
 For anything larger than a fix, open an issue first and say what you want
 to change and why: a design that fits in the first try saves both of us
-time. Moonlight and Sunshine are the reference for streaming behaviour, so
-"Moonlight does it this way" is a good argument, and a measurement is the
-best one.
+time. Moonlight and Sunshine/Apollo are the reference for streaming
+behaviour, so "Moonlight does it this way" is a good argument, and a
+measurement is the best one.
 
 ## Making the change
 

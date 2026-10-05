@@ -24,13 +24,14 @@ own.
   decode → present) do not allocate per datagram, take locks another thread
   holds for long, block on I/O, or log per packet. Reuse buffers; keep work
   off the network thread.
-- **Moonlight and Sunshine are the reference.** When in doubt about
+- **Moonlight and Sunshine/Apollo are the reference.** When in doubt about
   behaviour — loss recovery, encoder settings, pacing, input, shortcuts,
   settings — do what they do, and say so in a comment with the source file
   (`VideoDepacketizer.c`, `stream.cpp`). Diverge only for a measured reason,
-  and write the reason down. Apollo, a fork of Sunshine with virtual
-  displays, is where pingpong's virtual display and SudoVDA come from; for
-  everything else, Sunshine's current source is the one to read.
+  and write the reason down. Apollo is a fork of Sunshine: for what it adds
+  (the virtual display and SudoVDA, client permissions, clipboard sync),
+  read Apollo; for everything else, Sunshine's current source, which is the
+  one that is maintained.
 - **Measure, then change.** Claims about performance or platform behaviour
   come with numbers and the conditions they were taken under (in the
   comment, the commit and, for user-visible results,
@@ -158,7 +159,7 @@ own.
 | `README.md` | What pingpong is, what it can do, where to start |
 | `docs/install.md`, `docs/usage.md`, `docs/cli.md` | People installing and using it |
 | `docs/architecture.md`, `docs/networking.md`, `docs/platforms/*.md`, `docs/ai-agents.md`, `docs/ui.md` | How it works, and each platform's behaviour and limits |
-| `docs/benchmarks.md`, `docs/parity.md` | What it achieves, measured, against Moonlight + Sunshine |
+| `docs/benchmarks.md`, `docs/parity.md` | What it achieves, measured, against Moonlight + Sunshine/Apollo |
 | `docs/development.md`, `AGENTS.md`, `CONTRIBUTING.md` | People changing it |
 | `docs/design/` | The design history. Frozen: fix links and typos only |
 

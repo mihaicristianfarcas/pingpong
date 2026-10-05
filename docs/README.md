@@ -14,7 +14,7 @@
 - [platforms/macos.md](platforms/macos.md), [platforms/windows.md](platforms/windows.md), [platforms/linux.md](platforms/linux.md) — each system's behaviour and limits
 - [ui.md](ui.md) — the two windows, and checking them without clicking
 - [benchmarks.md](benchmarks.md) — what it costs, measured
-- [parity.md](parity.md) — against Moonlight + Sunshine, feature by feature
+- [parity.md](parity.md) — against Moonlight + Sunshine/Apollo, feature by feature
 - [design/](design/README.md) — the design history
 
 **Changing pingpong**

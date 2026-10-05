@@ -20,7 +20,7 @@ local: a device is paired once, at home, and then connects from anywhere.
 The client's own tunnel port is chosen once and kept (`port` in its data
 folder), so its NAT keeps giving it the same public port.
 
-## What Moonlight + Sunshine do, and why it is not enough
+## What Moonlight + Sunshine/Apollo do, and why it is not enough
 
 Sunshine asks the router for a port mapping over UPnP (when its `upnp`
 setting is on; it is off by default), and Moonlight connects
