@@ -328,3 +328,29 @@ Switches for diagnosis: `PINGPONG_SEND_BATCH=N` (0: one datagram per call),
 `PINGPONG_RECV_BATCH=N` (0: one per call), `PINGPONG_LAN_SHARDS=0` (client:
 path-sized datagrams on the LAN too), `PINGPONG_SERVICE_CLASS=0` (see
 [cli.md](cli.md#environment-variables)).
+
+## Ping 0.8.0 against 0.7.0 (2026-10-05)
+
+Whether the renderer's HDR and 4:4:4 paths cost an SDR stream anything, and
+what the Windows host's streaming set-up (full GPU power, a 1 ms timer, DWM
+under MMCSS, Wi-Fi in media-streaming mode) does to host processing. Ping
+(Mac, Wi-Fi) against Pong 0.8.0 (the Windows host, Wi-Fi), through a VPN
+overlay rather than the LAN: 3024x1890 at 120 fps, 100 Mbit/s, HEVC, 7.1
+audio, frame pacing on, full screen, 60 fps noise on the host. Two pairs of
+runs, 0.7.0 then 0.8.0 and then the other way round; each figure is a run's
+62 s under load.
+
+| | Ping 0.7.0 | Ping 0.8.0 |
+|---|---|---|
+| Frames received | 116.8-118.4 fps | 117.3-117.7 fps |
+| Frames shown | 111.6 fps | 110.9-111.6 fps |
+| Decode | 1.49-1.58 ms | 1.52-1.58 ms |
+| Decode to glass (median) | 15.1-16.6 ms | 16.5 ms |
+| Host processing | 5.1-5.2 ms | 5.2 ms |
+
+The new paths cost the SDR stream nothing measurable. Host processing is
+5.1-5.2 ms against 5.0 ms on 2026-09-27 before the streaming set-up: no gain
+at this load, where the GPU's clocks are up anyway (full power is for light
+scenes, which this did not measure). Fewer frames were shown than on
+2026-09-28 (116.2 of 118.5) with both versions alike: the VPN path delivers
+frames less evenly. Not measured: round trip and loss over the LAN.
