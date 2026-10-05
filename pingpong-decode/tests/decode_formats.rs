@@ -15,7 +15,11 @@
 //! low-overhead format a host sends (`-frames:v 3 -c:v libsvtav1
 //! -svtav1-params pred-struct=1:keyint=-1 -f obu`), 8-bit (`av1-420-8.obu`)
 //! and `yuv420p10le` (`av1-420-10.obu`); they decode only on a Mac with an
-//! AV1 decoder (M3 and later).
+//! AV1 decoder (M3 and later), so that test is ignored unless asked for:
+//!
+//! ```sh
+//! cargo test -p pingpong-decode --test decode_formats -- --include-ignored
+//! ```
 
 #![cfg(target_os = "macos")]
 
@@ -138,6 +142,7 @@ fn ten_bit_444_comes_as_x444() {
 }
 
 #[test]
+#[ignore = "requires a Mac with an AV1 decoder (M3 and later)"]
 fn av1_decodes_as_420v_and_ten_bit_as_x420() {
     if !pingpong_decode::videotoolbox::av1_in_hardware() {
         eprintln!("no AV1 decoder on this Mac; skipped");
