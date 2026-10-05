@@ -1,5 +1,4 @@
-//! What a Windows host asks of Windows while it streams, as Sunshine and
-//! Apollo ask (`src/platform/windows/misc.cpp`, `streaming_will_start`),
+//! What a Windows host asks of Windows while it streams, as Sunshine asks (`src/platform/windows/misc.cpp`, `streaming_will_start`),
 //! all put back when the session ends:
 //!
 //! - **A 1 ms timer.** Waits with a timeout (the session thread's 8 ms

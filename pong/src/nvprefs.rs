@@ -1,5 +1,5 @@
-//! The NVIDIA driver's settings a streaming host wants, set as Sunshine and
-//! Apollo set them (`src/platform/windows/nvprefs/driver_settings.cpp`),
+//! The NVIDIA driver's settings a streaming host wants, set as Sunshine sets
+//! them (`src/platform/windows/nvprefs/driver_settings.cpp`),
 //! through NVAPI's driver settings (DRS) in `nvapi64.dll`:
 //!
 //! - **Pong prefers maximum performance** (`PREFERRED_PSTATE`, in a profile

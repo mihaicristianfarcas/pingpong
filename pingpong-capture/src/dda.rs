@@ -1,7 +1,7 @@
 //! DXGI Desktop Duplication of one output, with the pointer drawn in.
 //!
 //! Duplication hands the pointer over beside the desktop image, never in it;
-//! it is drawn into a copy (`overlay`), as Apollo does (`display_vram.cpp`).
+//! it is drawn into a copy (`overlay`), as Sunshine does (`display_vram.cpp`).
 //! So there are two textures: the desktop as duplicated, kept clean for the
 //! pointer's next move, and the picture the encoder reads, the desktop with
 //! the pointer on it. A pointer that moves over a still desktop makes a new

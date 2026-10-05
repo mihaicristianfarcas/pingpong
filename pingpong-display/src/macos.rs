@@ -201,7 +201,8 @@ impl VirtualDisplay {
 
 impl VirtualDisplay {
     /// Make this the main display (menu bar, Dock, new windows) for the
-    /// session: Apollo's rule that the virtual display is the desktop. With
+    /// session: the virtual display is the desktop, as Sunshine's "deactivate other
+    /// displays" makes the streamed one (`ensure_only_display`). With
     /// `mirror`, the Mac's own displays show it too, so no window is left
     /// where the client cannot see it; without, they extend it to the right.
     /// Undone when the display is unplugged.

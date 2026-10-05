@@ -6,7 +6,7 @@
 //! - Linux: X11 through MIT-SHM (`x11`), Wayland through the desktop portal
 //!   and PipeWire (`pipewire`), and the sound through PulseAudio (`pulse`).
 //!
-//! On Windows, Desktop Duplication is the capture Sunshine and Apollo use by
+//! On Windows, Desktop Duplication is the capture Sunshine uses by
 //! default. Two properties decided it over Windows Graphics Capture, which
 //! pingpong's first versions used:
 //!

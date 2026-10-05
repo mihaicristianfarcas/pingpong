@@ -1,5 +1,5 @@
 //! PongService: the Windows service that keeps a host running, the way
-//! ApolloService keeps sunshine.exe running (`tools/sunshinesvc.cpp`).
+//! SunshineService keeps sunshine.exe running (`tools/sunshinesvc.cpp`).
 //!
 //! The service runs as LocalSystem in session 0, which has no desktop. It
 //! launches `pong host` into the active console session with a copy of its own

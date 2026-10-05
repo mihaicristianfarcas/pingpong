@@ -536,7 +536,7 @@ impl PingApp {
     }
 
     /// Stream from `item`, Steam Big Picture when `steam` (opened on the host
-    /// for the stream and closed after, as Apollo's app does). The stream has
+    /// for the stream and closed after, as Sunshine's Steam Big Picture app does). The stream has
     /// its own window; ours gets out of the way, as Moonlight's does.
     pub fn stream(
         &mut self,

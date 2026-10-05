@@ -3,7 +3,7 @@
 //! count we stream. And client playback ([`open_output`]).
 //!
 //! Unless the client wants sound on the host too, the session's audio goes to
-//! a virtual sink (Steam Streaming Speakers, as Apollo prefers) made the
+//! a virtual sink (Steam Streaming Speakers, as Sunshine prefers) made the
 //! default device for its duration, so the PC's own speakers stay quiet; the
 //! previous defaults come back when capture stops. A silent stream is kept
 //! playing into the captured endpoint so loopback delivers a continuous clock

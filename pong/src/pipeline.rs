@@ -2,13 +2,18 @@
 //! platform's capture and encoder, in `video`) feeding the paced send thread
 //! (`sender`), and the handle the session drives them with.
 //!
-//! Timing follows Apollo's capture loop (`display_base.cpp`), on every host:
-//! - never faster than the negotiated frame rate: after a frame, wait for the
-//!   next frame slot before accepting another;
+//! Timing follows Sunshine's capture and encode loops (`display_base.cpp`,
+//! `video.cpp`), on every host:
+//! - never faster than the negotiated frame rate, to the millihertz: after a
+//!   frame, wait for the next frame slot before accepting another;
 //! - a desktop that presents nothing is re-encoded at a minimum rate of
 //!   max(fps / 5, 10) frames per second, so a still image keeps sharpening
 //!   (CBR spends the idle budget refining it) instead of freezing at whatever
-//!   quality the last motion left it;
+//!   quality the last motion left it. Sunshine re-encodes at half the frame
+//!   rate (`minimum_fps_target`), because some of Moonlight's clients expect
+//!   a steady stream of frames; Ping does not, so a still desktop here costs
+//!   two fifths of the frames (24 rather than 60 a second at 120 fps) and
+//!   sharpens the same way;
 //! - loss recovery (IDR / reference invalidation) is applied between frames,
 //!   within a few milliseconds of the request arriving.
 

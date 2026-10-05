@@ -13,7 +13,7 @@
 //! An earlier version handed NVENC the BGRA desktop and let it convert
 //! internally. That path writes no colour description into the stream and
 //! subsamples chroma however the driver likes, and text came out soft with
-//! coloured fringes. Apollo does the conversion itself, and so does this:
+//! coloured fringes. Sunshine does the conversion itself, and so does this:
 //!
 //! - Limited ("video") range and the matrix written into the VUI by the
 //!   encoder, so the decoder's idea of the colours is never a guess.

@@ -1,4 +1,4 @@
-//! Asking the router to forward the tunnel's port, as Apollo does: UPnP IGD
+//! Asking the router to forward the tunnel's port, as Sunshine does (`upnp.cpp`): UPnP IGD
 //! first, then NAT-PMP. With a mapping, a client anywhere reaches the host
 //! at the router's public address, with no hole punching (and past NATs
 //! that defeat it on the host's side).

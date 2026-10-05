@@ -203,7 +203,8 @@ fn submit(inputs: &[INPUT]) -> Result<(), InputError> {
     if sent as usize != inputs.len() && sync_thread_desktop() {
         // The input desktop changed under us (a UAC prompt or the lock
         // screen is up): SendInput only reaches the desktop the calling
-        // thread is attached to. Re-attach and retry once, as Apollo does.
+        // thread is attached to. Re-attach and retry once, as Sunshine's
+        // SendInput path does (`misc.cpp`, `syncThreadDesktop`).
         // Works for the secure desktop only when running as SYSTEM.
         sent = unsafe { SendInput(inputs, std::mem::size_of::<INPUT>() as i32) };
     }

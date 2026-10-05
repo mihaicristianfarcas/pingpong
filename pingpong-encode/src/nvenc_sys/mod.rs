@@ -3,7 +3,7 @@
 //! notices are in `LICENSE` beside this file).
 //!
 //! Types only. The function table is filled at runtime from
-//! `nvEncodeAPI64.dll`, which ships with the driver, exactly as Apollo does --
+//! `nvEncodeAPI64.dll`, which ships with the driver, exactly as Sunshine does --
 //! so building the host needs neither the Video Codec SDK nor an import library.
 
 #![allow(warnings)]

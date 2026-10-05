@@ -1,9 +1,9 @@
-//! NVENC on a D3D11 device, configured as Apollo configures it.
+//! NVENC on a D3D11 device, configured as Sunshine configures it.
 //!
 //! The runtime comes from `nvEncodeAPI64.dll`, installed with the driver, and is
-//! loaded on first use -- as Apollo does -- so the build needs no SDK.
+//! loaded on first use -- as Sunshine does -- so the build needs no SDK.
 //!
-//! Settings, each Apollo's (`src/nvenc/nvenc_base.cpp`):
+//! Settings, each Sunshine's (`src/nvenc/nvenc_base.cpp`):
 //! - P1 preset (configurable), ultra-low-latency tuning, no B-frames, no
 //!   lookahead, zero reorder delay.
 //! - CBR with a **single-frame VBV** (`bitrate / fps`): no frame may be larger
@@ -31,7 +31,7 @@ use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use crate::nvenc_sys::*;
 use crate::{Codec, EncodeError, EncodedFrame, EncoderConfig, FrameKind};
 
-/// Frames kept in the DPB. Apollo's default for H.264/HEVC.
+/// Frames kept in the DPB. Sunshine's default for H.264/HEVC.
 const DPB_FRAMES: u32 = 5;
 
 struct Api(NV_ENCODE_API_FUNCTION_LIST);
@@ -641,7 +641,7 @@ impl NvencEncoder {
     /// client). Returns `false` when that cannot recover the stream -- the loss
     /// reaches past the DPB, or RFI is unsupported -- and an IDR is needed.
     ///
-    /// Apollo's rules: the range is extended to the last encoded frame (the
+    /// Sunshine's rules: the range is extended to the last encoded frame (the
     /// client could not decode anything after the loss either), a range
     /// already invalidated is not redone, and the next frame out is marked as
     /// the recovery point.

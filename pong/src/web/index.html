@@ -332,11 +332,11 @@ const settingSections = [
   ['Host', [
     ['name', 'Host name', 'text', 'Shown to clients.'],
     ['allow_takeover', 'Let a client take over a running session', 'check', 'Otherwise a second client is refused while one is streaming.'],
-    ['keep_host_displays', "Keep this PC's monitors on while streaming", 'check', 'Off: the virtual display becomes the whole desktop, as in Apollo.'],
+    ['keep_host_displays', "Keep this PC's monitors on while streaming", 'check', 'Off: the virtual display becomes the whole desktop, so windows open where the client sees them.'],
     ['clipboard', 'Share the clipboard with clients', 'check', "Text, images and files copied on either side can be pasted on the other, when the client asks for it too. Password managers' copies are never shared."],
   ]],
   ['Encoder', [
-    ['nvenc_preset', 'Preset', 'select:1=P1 (fastest)|2=P2|3=P3|4=P4|5=P5|6=P6|7=P7 (best quality)', 'Lower is faster. Apollo uses P1.'],
+    ['nvenc_preset', 'Preset', 'select:1=P1 (fastest)|2=P2|3=P3|4=P4|5=P5|6=P6|7=P7 (best quality)', 'Lower is faster. Sunshine uses P1.'],
     ['nvenc_two_pass', 'Two-pass encoding', 'check', 'Quarter-resolution first pass: better bit allocation at no extra latency.'],
     ['nvidia_max_power', 'Full GPU power for Pong', 'check', "The NVIDIA driver keeps its clocks up for Pong instead of lowering them between frames, which slows the encoder. Applies after Pong restarts."],
     ['nvidia_dxgi_present', 'OpenGL and Vulkan through DXGI', 'check', "Full-screen OpenGL and Vulkan games are captured at their full frame rate. Changes the driver's setting for every program while Pong runs, and puts it back when Pong stops. Applies after Pong restarts."],
@@ -357,7 +357,7 @@ const settingSections = [
   ]],
   ['Network', [
     ['internet_access', 'Allow streaming over the internet', 'check', "Paired devices can connect from anywhere, with no port forwarding: this PC's public address is published sealed, readable only by them."],
-    ['port_mapping', 'Ask the router to forward the port', 'check', 'UPnP or NAT-PMP, as Apollo does. Helps where hole punching cannot; a router behind another NAT (the ISP\'s box) cannot help, and is left alone.'],
+    ['port_mapping', 'Ask the router to forward the port', 'check', 'UPnP or NAT-PMP, as Sunshine's UPnP option does. Helps where hole punching cannot; a router behind another NAT (the ISP\'s box) cannot help, and is left alone.'],
     ['port', 'Tunnel port (UDP)', 'number', 'Restart required.'],
     ['pairing_port', 'Pairing port (TCP)', 'number', 'Restart required.'],
     ['web_port', 'Web UI port (TCP)', 'number', 'Restart required.'],

@@ -1,4 +1,4 @@
-//! The client's controllers as virtual Xbox 360 pads (ViGEmBus), as Apollo
+//! The client's controllers as virtual Xbox 360 pads (ViGEmBus), as Sunshine
 //! does. One thread owns the pads: plugging one in takes a few milliseconds,
 //! which the receive thread must not wait for. Games' rumble goes back to the
 //! client, repeated while a motor runs so a lost packet cannot leave it on.

@@ -288,8 +288,9 @@ pub fn mode_for_target(id: CcdId) -> Option<DisplayMode> {
 /// is not enough: the physical displays stay attached, so apps still open on
 /// them, and any app that restores its last window position goes straight back
 /// there. From the client that looks like windows escaping to a monitor you
-/// cannot see. Apollo deactivates the other outputs for the duration of a
-/// session, which is exactly why it does not have this problem.
+/// cannot see. Sunshine deactivates the other outputs for the duration of a
+/// session when set to (`ensure_only_display`), as Apollo does by default,
+/// which is exactly why they do not have this problem.
 ///
 /// Returns the topology as it was, to be handed back to [`apply_topology`] on
 /// teardown. Restoring the saved paths verbatim is what puts the arrangement
@@ -763,7 +764,7 @@ pub struct WindowsDisplay {
     /// virtual display (not part of it) inactive.
     original_topology: Option<Topology>,
     /// Turn the host's own monitors off while the virtual display is active,
-    /// so it is the whole desktop (Apollo's default).
+    /// so it is the whole desktop (Sunshine's `ensure_only_display`).
     isolate: bool,
 }
 
