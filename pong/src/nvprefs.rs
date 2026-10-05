@@ -286,8 +286,9 @@ impl Drs {
         }
     }
 
-    /// Pong's own profile, holding `exe`; made if it is not there.
-    fn app_profile(&self, exe: &str) -> Result<Handle, String> {
+    /// Pong's own profile, holding the executable `exe_name`; made if it
+    /// is not there.
+    fn app_profile(&self, exe_name: &str) -> Result<Handle, String> {
         let name = unicode(PROFILE_NAME);
         let mut profile: Handle = std::ptr::null_mut();
         // SAFETY: a live session; the strings are full NvAPI_UnicodeStrings
@@ -317,7 +318,7 @@ impl Drs {
                     "NvAPI_DRS_CreateProfile",
                 )?;
             }
-            let path = unicode(exe);
+            let app_name = unicode(exe_name);
             let mut app: Box<Application> = Box::new_zeroed().assume_init();
             app.version = APPLICATION_VER1;
             let known = nvapi!(
@@ -326,14 +327,14 @@ impl Drs {
                 fn(Handle, Handle, *const u16, *mut Application),
                 self.session,
                 profile,
-                path.as_ptr(),
+                app_name.as_ptr(),
                 &mut *app
             )?;
             if known != OK {
                 let mut app: Box<Application> = Box::new_zeroed().assume_init();
                 app.version = APPLICATION_VER1;
-                app.name = *path;
-                app.friendly_name = *path;
+                app.name = *app_name;
+                app.friendly_name = *app_name;
                 check(
                     nvapi!(
                         self,
@@ -464,9 +465,19 @@ pub fn apply(data_dir: &Path, max_power: bool, dxgi_present: bool) -> Option<App
 }
 
 /// Maximum performance for `pong.exe`, or Pong's own setting removed.
+///
+/// The profile names the executable by its file name, as Sunshine names
+/// `sunshine.exe`. Looks interchangeable with the full path, is not: the
+/// driver does not find an application it was given by full path again
+/// (`NvAPI_DRS_GetApplicationInfo` fails), and adding it a second time is
+/// `NVAPI_EXECUTABLE_ALREADY_IN_USE`, so after the first start Pong could
+/// no longer change the setting.
 fn app_power(drs: &Drs, max_power: bool) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let profile = drs.app_profile(&exe.to_string_lossy())?;
+    let name = exe
+        .file_name()
+        .ok_or_else(|| format!("{} has no file name", exe.display()))?;
+    let profile = drs.app_profile(&name.to_string_lossy())?;
     let current = drs.get(profile, PREFERRED_PSTATE)?;
     let ours = current.as_ref().is_some_and(|s| {
         s.location == CURRENT_PROFILE_LOCATION && s.value() == PREFERRED_PSTATE_PREFER_MAX
