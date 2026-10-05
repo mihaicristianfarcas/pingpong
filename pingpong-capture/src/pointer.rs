@@ -2,7 +2,7 @@
 //!
 //! Desktop Duplication leaves the pointer out of the desktop image and hands
 //! it over beside each frame -- where it is, whether it shows, and, when it
-//! changes, its shape. Drawing it in is the capturer's job, and Apollo does
+//! changes, its shape. Drawing it in is the capturer's job, and Sunshine does
 //! it (`display_vram.cpp`), so the pointer a client sees is the one the
 //! host's screen shows: hidden when a game hides it, wherever a game, the
 //! Steam overlay or a controller puts it. An earlier pingpong drew the

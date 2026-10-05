@@ -1,5 +1,5 @@
 //! Video encoding: on Windows a D3D11 colour converter feeding NVENC,
-//! configured the way Apollo configures it (see "The video path" in
+//! configured the way Sunshine configures it (see "The video path" in
 //! docs/architecture.md); VideoToolbox on macOS; FFmpeg on Linux.
 
 #[derive(Debug)]
@@ -50,9 +50,9 @@ pub struct EncoderConfig {
     /// 59.94 Hz, and a stream at 60 would show a frame twice every 17 s.
     pub fps_mhz: u32,
     pub bitrate_bps: u32,
-    /// NVENC preset P1 (fastest) .. P7 (best). Apollo defaults to P1.
+    /// NVENC preset P1 (fastest) .. P7 (best). Sunshine defaults to P1.
     pub preset: u8,
-    /// Quarter-resolution two-pass rate control (Apollo's default).
+    /// Quarter-resolution two-pass rate control (Sunshine's default).
     pub two_pass: bool,
     /// Slices per frame. More slices decode in parallel and localise damage.
     pub slices: u32,

@@ -1,6 +1,6 @@
 //! The session's video pipeline on Windows: Desktop Duplication → BGRA→NV12
 //! → NVENC, on one thread and one D3D11 device, feeding the paced sender.
-//! The pipeline's shape and timing (Apollo's) are shared with the other
+//! The pipeline's shape and timing (Sunshine's) are shared with the other
 //! hosts: see `pipeline`.
 
 use std::sync::atomic::Ordering;

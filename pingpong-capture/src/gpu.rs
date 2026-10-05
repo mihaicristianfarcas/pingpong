@@ -166,8 +166,8 @@ impl Gpu {
     ///
     /// Without this, capture+encode queue behind the game's own rendering: an
     /// earlier version measured 190 ms per frame with CS2 running, against
-    /// ~7 ms idle. Apollo
-    /// avoids it the same way: the process's GPU scheduling class goes to
+    /// ~7 ms idle. Sunshine
+    /// avoids it the same way (`display_base.cpp`, `display_vram.cpp`): the process's GPU scheduling class goes to
     /// REALTIME (HIGH on NVIDIA with hardware-accelerated scheduling, where
     /// realtime is known to hang the encoder), and the device asks for the top
     /// GPU thread priority. Both need admin or SYSTEM; failure is logged, not

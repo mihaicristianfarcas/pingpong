@@ -1,6 +1,6 @@
 //! Encoded frames → FEC packets → the tunnel, paced.
 //!
-//! Pacing is Apollo's (`stream.cpp`, videoBroadcastThread): packets go out in
+//! Pacing is Sunshine's (`stream.cpp`, videoBroadcastThread): packets go out in
 //! groups no larger than 1 ms's worth of the pacing rate, and a group waits
 //! until its share of time has come. A frame therefore leaves as a short,
 //! even stream instead of one burst -- the burst is what overflows a Wi-Fi

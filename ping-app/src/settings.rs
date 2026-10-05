@@ -528,7 +528,7 @@ impl PingApp {
                     self.toggle(
                         "host-audio",
                         "Play on the host too",
-                        "Off: the host's speakers stay quiet while you stream, as with Apollo.",
+                        "Off: the host's speakers stay quiet while you stream, as with Sunshine.",
                         |p| p.host_audio,
                         |p, v| p.host_audio = v,
                         p.audio,

@@ -30,7 +30,8 @@ pub struct SavedState {
     /// A session owns the desktop: leaving the physical displays attached means
     /// apps still open on them and remember positions there, which is the
     /// "windows keep appearing on my other monitor" fault. Turning them off is
-    /// what Apollo does and is why it does not have that problem.
+    /// what Sunshine's "deactivate other displays" (`ensure_only_display`) does,
+    /// and Apollo's default, and why they do not have that problem.
     ///
     /// It is also the one change here a crash strands VISIBLY -- a dead server
     /// leaves the host's monitors dark, which is much worse than a stranded

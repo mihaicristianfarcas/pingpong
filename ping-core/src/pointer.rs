@@ -4,7 +4,7 @@
 //!
 //! **Moonlight's way, against a host that draws the pointer into the
 //! picture** (`features::POINTER_IN_PICTURE`, every current host, as
-//! Apollo does): the client draws no pointer, and motion is relative
+//! Sunshine does): the client draws no pointer, and motion is relative
 //! unless the user switches to positions with Ctrl+Alt+Shift+M (Moonlight's
 //! "remote desktop" mouse). Relative motion is what games read (raw input),
 //! and the pointer seen is the host's own, so it cannot disagree with where

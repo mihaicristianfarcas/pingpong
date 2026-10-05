@@ -6,7 +6,7 @@
 //! it and the shape's two layers and writes `pointer::composite` of them.
 //! Reading the desktop in the shader rather than blending against the target
 //! makes the XOR exact: D3D11 has no XOR blend for a BGRA target (logic ops
-//! want an integer format), where Apollo approximates it with an inverting
+//! want an integer format), where Sunshine approximates it with an inverting
 //! blend (`display_vram.cpp`).
 //!
 //! On an HDR desktop (FP16 scRGB, linear) the shape's sRGB colours are made

@@ -1,4 +1,4 @@
-//! Pong's web UI: what Apollo's web UI is to Apollo. HTTPS on the web port,
+//! Pong's web UI: what Sunshine's web UI is to Sunshine. HTTPS on the web port,
 //! with a self-signed certificate generated on first run; an admin account is
 //! created on the first visit.
 //!

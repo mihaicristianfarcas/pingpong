@@ -1,6 +1,6 @@
-//! Apps a session can start with, as Apollo's: something opened as the
+//! Apps a session can start with, as Sunshine's (`apps.json`): something opened as the
 //! signed-in user when the stream starts, and closed again when it ends
-//! (Apollo's "Steam Big Picture": `steam://open/bigpicture`, undone by
+//! (Sunshine's "Steam Big Picture": `steam://open/bigpicture`, undone by
 //! `steam://close/bigpicture`).
 
 use windows::core::{PCWSTR, PWSTR};

@@ -1,5 +1,5 @@
 //! Session lifecycle, the same on every host. One streaming session at a
-//! time, as in Apollo: a new client's `SessionStart` takes over (or is
+//! time, at the client's mode on a display made for it: a new client's `SessionStart` takes over (or is
 //! refused, per config); a session is acked only once its video pipeline
 //! runs, and ends when the client says so, goes quiet, or the pipeline dies.
 //! What differs per platform -- the display streamed, capture, input, audio,

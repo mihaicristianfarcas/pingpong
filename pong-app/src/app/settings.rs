@@ -77,8 +77,8 @@ impl PongApp {
                                     } else {
                                         "Keep this PC's monitors on while streaming"
                                     },
-                                    "Off: the virtual display becomes the whole desktop, as in \
-                                        Apollo, so windows open where the client sees them.",
+                                    "Off: the virtual display becomes the whole desktop, so \
+                                        windows open where the client sees them.",
                                     t,
                                     cx,
                                 ),
@@ -113,7 +113,7 @@ impl PongApp {
                     encoder.push(
                         setting(
                             "NVENC preset",
-                            Some("Lower is faster. Apollo uses P1.".into()),
+                            Some("Lower is faster. Sunshine uses P1.".into()),
                             select("nvenc-preset", presets, Some(preset), t)
                                 .width(170.0)
                                 .on_select(move |i, _, cx| {
@@ -272,7 +272,7 @@ impl PongApp {
                             self.toggle(
                                 "port_mapping",
                                 "Ask the router to forward the port",
-                                "UPnP or NAT-PMP, as Apollo does. Helps where hole \
+                                "UPnP or NAT-PMP, as Sunshine's UPnP option does. Helps where hole \
                                     punching cannot; a router behind another NAT (the \
                                     ISP's box) cannot help, and is left alone.",
                                 t,

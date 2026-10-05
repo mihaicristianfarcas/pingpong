@@ -390,8 +390,8 @@ pub fn host_input_idle() -> Option<Duration> {
 }
 
 /// The session's virtual display is the whole desktop and the host's own
-/// monitors are off (Apollo's way, unless the client or the config keeps
-/// them): someone at the host sees nothing.
+/// monitors are off (Sunshine's `ensure_only_display`, unless the client or
+/// the config keeps them): someone at the host sees nothing.
 pub fn isolates_host_displays(req: &SessionStart, cfg: &HostConfig) -> bool {
     !cfg.keep_host_displays && req.flags & pingpong_proto::control::flags::KEEP_HOST_DISPLAYS == 0
 }

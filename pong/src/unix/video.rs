@@ -3,7 +3,7 @@
 //! X11 and FFmpeg) on one thread, feeding the same paced sender as on
 //! Windows.
 //!
-//! Timing is Apollo's capture loop, as on Windows (see `pipeline`): never
+//! Timing is Sunshine's capture loop, as on Windows (see `pipeline`): never
 //! faster than the negotiated frame rate, a still desktop re-encoded at
 //! max(fps / 5, 10) frames a second so it keeps sharpening, and recovery
 //! requests acted on between frames.

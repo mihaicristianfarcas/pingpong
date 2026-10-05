@@ -93,10 +93,11 @@ pub struct HostConfig {
     /// Stream 4:4:4 to a client that asks, where the encoder can.
     pub allow_yuv444: bool,
     /// Ceiling on the video send rate, Mbit/s. Frames go out in 1 ms groups
-    /// under this rate instead of as one burst (Apollo uses ~80% of 1 Gbit/s).
+    /// under this rate instead of as one burst (Sunshine uses ~80% of 1 Gbit/s, `stream.cpp`).
     pub pace_mbps: u32,
     /// Leave the host's own monitors on while streaming. Off by default, as
-    /// in Apollo: the virtual display becomes the whole desktop, so windows
+    /// Sunshine's `ensure_only_display` would have it: the virtual display
+    /// becomes the whole desktop, so windows
     /// and games open where the client can see them.
     pub keep_host_displays: bool,
     /// Let a client take over a session another client is running.
@@ -113,7 +114,7 @@ pub struct HostConfig {
     /// the host's own (seconds; 0: never hold).
     pub agent_local_input_hold_secs: u32,
     /// Ask the router to forward the tunnel's port (UPnP, NAT-PMP), as
-    /// Apollo does: clients on the internet then reach the host at the
+    /// Sunshine's `upnp` does (on here, off there): clients on the internet then reach the host at the
     /// router's public address. Only with `internet_access`.
     pub port_mapping: bool,
     /// Share the clipboard with a person's client that asks for it: text,

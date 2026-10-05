@@ -23,8 +23,9 @@ pub mod codec {
 /// `SessionStart::flags`.
 pub mod flags {
     // 1 is retired: sessions always stream a virtual display.
-    /// Keep the host's own monitors on during the session (Apollo's default is
-    /// to turn them off so the virtual display is the whole desktop).
+    /// Keep the host's own monitors on during the session (by default they
+    /// are turned off, so the virtual display is the whole desktop, as
+    /// Sunshine's `ensure_only_display` makes the streamed display the only one).
     pub const KEEP_HOST_DISPLAYS: u8 = 2;
     /// Play audio on the host as well as streaming it.
     pub const HOST_AUDIO: u8 = 4;
@@ -50,7 +51,7 @@ pub mod features {
     /// host's local network.
     pub const LAN_SHARDS: u8 = 2;
     /// The pointer is in the picture, drawn by the host where the host's
-    /// desktop shows it, as Apollo draws it (`display_vram.cpp`). The client
+    /// desktop shows it, as Sunshine draws it (`display_vram.cpp`). The client
     /// draws none, and the mouse mode is the user's: relative motion unless
     /// they switch (Moonlight's default). Hosts without it leave drawing the
     /// pointer to the client and steer its mode with `CursorState`.
@@ -77,7 +78,7 @@ pub struct SessionStart {
     /// identical parameters; an unchanged one makes a retransmit a no-op.
     pub nonce: u32,
     /// What to show: `app::DESKTOP`, or an app the host starts for the
-    /// session (Apollo's apps). Absent on the wire from older clients.
+    /// session (Sunshine's default apps, `apps.json`). Absent on the wire from older clients.
     pub app: u8,
     /// The client's keyboard repeat: a held key repeats after this many
     /// milliseconds, then every `repeat_interval_ms`. The host makes the
@@ -142,7 +143,7 @@ impl HdrMetadata {
     }
 }
 
-/// Apps a session can start with (Apollo's defaults).
+/// Apps a session can start with (Sunshine's defaults, `apps.json`).
 pub mod app {
     pub const DESKTOP: u8 = 0;
     pub const STEAM_BIG_PICTURE: u8 = 1;
