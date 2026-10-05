@@ -917,7 +917,7 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
     SessionStart {
         width: settings.width & !1,
         height: settings.height & !1,
-        refresh_mhz: exact_rate(settings.fps, display_refresh_mhz()),
+        refresh_mhz: settings.fps.saturating_mul(1000),
         bitrate_kbps: settings.bitrate_kbps,
         codecs: settings.codecs,
         audio_channels: settings.audio_channels,
@@ -928,6 +928,7 @@ fn session_start(settings: &StreamSettings, nonce: u32) -> SessionStart {
         repeat_delay_ms,
         repeat_interval_ms,
         video: settings.video,
+        exact_refresh_mhz: exact_rate(settings.fps, display_refresh_mhz()),
     }
 }
 
@@ -948,15 +949,15 @@ fn display_refresh_mhz() -> Option<u32> {
     }
 }
 
-/// The frame rate to ask for: the display's own when `fps` is it, rounded
-/// (59.94 Hz for "60"), so the stream neither drops nor repeats a frame
-/// every few seconds against the display's refresh. Within 1%, as Sunshine
+/// The display's own rate when `fps` is it, rounded (59.94 Hz for "60"),
+/// so the stream neither drops nor repeats a frame every few seconds
+/// against the display's refresh; 0 when it is not. Within 1%, as Sunshine
 /// takes Moonlight's `clientRefreshRateX100` (`rtsp.cpp`).
 fn exact_rate(fps: u32, display_mhz: Option<u32>) -> u32 {
     let asked = fps.saturating_mul(1000);
     match display_mhz {
         Some(d) if d.abs_diff(asked) as u64 * 100 <= asked as u64 => d,
-        _ => asked,
+        _ => 0,
     }
 }
 
@@ -1068,8 +1069,8 @@ mod tests {
         assert_eq!(exact_rate(60, Some(59_940)), 59_940);
         assert_eq!(exact_rate(120, Some(119_880)), 119_880);
         assert_eq!(exact_rate(144, Some(143_981)), 143_981);
-        // A rate the user chose below the display's is theirs.
-        assert_eq!(exact_rate(60, Some(120_000)), 60_000);
-        assert_eq!(exact_rate(60, None), 60_000);
+        // A rate the user chose below the display's is theirs alone.
+        assert_eq!(exact_rate(60, Some(120_000)), 0);
+        assert_eq!(exact_rate(60, None), 0);
     }
 }

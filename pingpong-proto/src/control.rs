@@ -63,7 +63,8 @@ pub mod features {
 pub struct SessionStart {
     pub width: u16,
     pub height: u16,
-    /// Millihertz: fractional refresh rates (59.94) are real.
+    /// Millihertz, the frame rate asked for in whole hertz (60 000): what
+    /// every host reads. The display's own rate goes in `exact_refresh_mhz`.
     pub refresh_mhz: u32,
     pub bitrate_kbps: u32,
     /// `codec::*` bitmask, preference by capability: the host picks the best
@@ -89,6 +90,13 @@ pub struct SessionStart {
     /// `video::*` the client can show and asks for. Absent from older
     /// clients (none).
     pub video: u8,
+    /// The client display's own refresh in millihertz (59 940) when the
+    /// frame rate asked is it, else 0. A field of its own beside the whole
+    /// rate, as Moonlight sends `clientRefreshRateX100` beside its frame
+    /// rate (Sunshine's `rtsp.cpp`): older hosts read only `refresh_mhz`, and
+    /// a 0.7 Windows host refused a fractional one there. Absent from older
+    /// clients (0).
+    pub exact_refresh_mhz: u32,
 }
 
 /// `SessionStart::video` (what the client can show and asks for) and
@@ -586,6 +594,7 @@ impl Control {
                 w.u16(s.repeat_delay_ms);
                 w.u16(s.repeat_interval_ms);
                 w.u8(s.video);
+                w.u32(s.exact_refresh_mhz);
             }
             Control::SessionAck(a) => {
                 w.u8(OP_SESSION_ACK);
@@ -753,6 +762,7 @@ impl Control {
                 repeat_delay_ms: r.u16().unwrap_or(0),
                 repeat_interval_ms: r.u16().unwrap_or(0),
                 video: r.u8().unwrap_or(0),
+                exact_refresh_mhz: r.u32().unwrap_or(0),
             }),
             OP_SESSION_ACK => Control::SessionAck(SessionAck {
                 status: AckStatus::from_code(r.u8()?)?,
@@ -886,6 +896,7 @@ mod tests {
             repeat_delay_ms: 225,
             repeat_interval_ms: 30,
             video: video::HDR | video::YUV444,
+            exact_refresh_mhz: 119_880,
         }));
         round_trip(Control::SessionAck(SessionAck {
             status: AckStatus::Ok,
@@ -1012,10 +1023,11 @@ mod tests {
             repeat_delay_ms: 500,
             repeat_interval_ms: 40,
             video: video::YUV444,
+            exact_refresh_mhz: 59_940,
         })
         .encode(0, &mut out);
         // What follows the nonce is optional: an older client's request.
-        let optional = 1 + 2 + 2 + 1;
+        let optional = 1 + 2 + 2 + 1 + 4;
         for cut in HEADER_LEN..n - optional {
             assert_eq!(Control::decode(&out[HEADER_LEN..cut]), None);
         }
@@ -1026,15 +1038,26 @@ mod tests {
             ),
             other => panic!("{other:?}"),
         }
-        match Control::decode(&out[HEADER_LEN..n - 3]) {
+        match Control::decode(&out[HEADER_LEN..n - 4 - 3]) {
             Some(Control::SessionStart(s)) => assert_eq!(
                 (s.app, s.repeat_delay_ms, s.repeat_interval_ms, s.video),
                 (app::STEAM_BIG_PICTURE, 500, 0, 0)
             ),
             other => panic!("{other:?}"),
         }
-        match Control::decode(&out[HEADER_LEN..n - 1]) {
+        match Control::decode(&out[HEADER_LEN..n - 4 - 1]) {
             Some(Control::SessionStart(s)) => assert_eq!((s.repeat_interval_ms, s.video), (40, 0)),
+            other => panic!("{other:?}"),
+        }
+        // A client from before the exact refresh: the whole rate alone.
+        match Control::decode(&out[HEADER_LEN..n - 4]) {
+            Some(Control::SessionStart(s)) => {
+                assert_eq!((s.video, s.exact_refresh_mhz), (video::YUV444, 0))
+            }
+            other => panic!("{other:?}"),
+        }
+        match Control::decode(&out[HEADER_LEN..n]) {
+            Some(Control::SessionStart(s)) => assert_eq!(s.exact_refresh_mhz, 59_940),
             other => panic!("{other:?}"),
         }
         // So is the ack's last (the host's system): an older host is Windows.
