@@ -33,11 +33,11 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | The client display's exact refresh (`clientRefreshRateX100`, 59.94 Hz), the host capturing at it | Same, in millihertz from negotiation to the virtual display, the capture cadence and the encoder | done (no 59.94 Hz display here) |
 | HEVC, H.264 | Same | done |
 | AV1 | Pong encodes it with NVENC on GPUs that have it (not the RTX 3070 Ti); Ping decodes it in hardware on a Mac with an AV1 decoder (M3 and later; its Video codec setting offers AV1 there), and with FFmpeg on Windows and Linux (`--codec av1`, untested) | done on a Mac (decoder tested on an M4 Pro); n/a on an RTX 3070 Ti host |
-| HDR (HEVC Main10, BT.2020, PQ) | Same: Ping on a Mac with an HDR display draws it in a BT.2100 PQ layer with the host's metadata; a Windows host switches its virtual display to HDR and converts the FP16 desktop to PQ; a Mac host (macOS 15+) makes an HDR virtual display and captures it in HDR10, which Sunshine's macOS host does not | done Mac to Mac; built on Windows |
-| YUV 4:4:4 | Same: NVENC (Windows), NVENC or x264 (Linux); Ping decodes it on Apple silicon and Linux. Not with HDR on Windows (NVENC takes 10-bit 4:4:4 only from CUDA; Sunshine uses CUDA there) | done Linux to Linux, Mac decode tested; built on Windows |
+| HDR (HEVC Main10, BT.2020, PQ) | Same: Ping on a Mac with an HDR display draws it in a BT.2100 PQ layer with the host's metadata; a Windows host switches its virtual display to HDR and converts the FP16 desktop to PQ; a Mac host (macOS 15+) makes an HDR virtual display and captures it in HDR10, which Sunshine's macOS host does not | done: Mac to Mac, Windows to Mac (116-120 of 118-120 fps shown at 3024x1890, no loss) |
+| YUV 4:4:4 | Same: NVENC (Windows), NVENC or x264 (Linux); Ping decodes it on Apple silicon and Linux. Not with HDR on Windows (NVENC takes 10-bit 4:4:4 only from CUDA; Sunshine uses CUDA there) | done: Windows to Mac (117-119 fps decoded), Linux to Linux |
 | NVENC: P1, ultra-low latency, single-frame VBV, quarter-resolution two pass, reference invalidation | Same | done |
 | NVENC split-frame encoding on GPUs with two encoders | The driver decides, Sunshine's default | done (one encoder here) |
-| The NVIDIA driver set for streaming (full power for the host, OpenGL/Vulkan through DXGI) | Same, put back when Pong stops | built |
+| The NVIDIA driver set for streaming (full power for the host, OpenGL/Vulkan through DXGI) | Same, put back when Pong stops | done |
 | V-Sync, frame pacing | Moonlight's pacer: display-link tick, oldest queued frame | done |
 | Loss recovery (reference invalidation) | Same, plus adaptive FEC that learns the link's own loss (Sunshine sends a fixed 20%) | done |
 | Automatic bitrate | Adapts to congestion, not to random loss | done |
@@ -60,7 +60,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | Moonlight + Sunshine | Ping + Pong | Status |
 |---|---|---|
 | Keyboard and mouse capture, Ctrl-Alt-Shift-Z | Same | done |
-| A held key repeats (Sunshine repeats on the host, 500 ms then 24.9 a second) | Same, at the delay and rate of the keyboard in front of you (sent with the session) | done in tests; not run on a host with a key held |
+| A held key repeats (Sunshine repeats on the host, 500 ms then 24.9 a second) | Same, at the delay and rate of the keyboard in front of you (sent with the session) | done: on a Windows host, "a" held 2 s typed 55 at a Mac's 250 ms delay and 33 ms interval |
 | The host's pointer drawn into the picture | Same, on every host (Desktop Duplication's pointer drawn in on the GPU, ScreenCaptureKit's, XFixes'); on an HDR desktop at SDR white | done |
 | Relative mouse by default; "Optimize mouse for remote desktop" sends positions | Relative by default; positions with the mode toggle | done |
 | Mouse mode toggle (Ctrl-Alt-Shift-M) | Same | done |
@@ -82,7 +82,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | Apps: Desktop, Steam Big Picture (closed at the end) | Same | done |
 | Apps of your own, with commands before and after | Not built | no |
 | Runs at boot, streams UAC prompts and the lock screen | Windows service; sessions also start while the host is locked (after sleep) | done |
-| Windows asked for streaming: 0.5-1 ms timer, DWM by MMCSS, Wi-Fi in media-streaming mode, Mouse Keys without a mouse | Same (1 ms), undone when the session ends | built |
+| Windows asked for streaming: 0.5-1 ms timer, DWM by MMCSS, Wi-Fi in media-streaming mode, Mouse Keys without a mouse | Same (1 ms), undone when the session ends | done |
 | Web UI | Pairing, clients, settings, logs, ending a session; and Pong's own window | done |
 | Host shutting down or restarting mid-stream | Ping says so at once | done |
 | Host software restarting mid-stream | Ping resumes by itself (~10 s) | done |
