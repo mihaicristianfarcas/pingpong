@@ -2,8 +2,8 @@
 
 pingpong streams a computer's desktop — picture, sound, keyboard, mouse,
 controllers and clipboard — to another computer, the way Moonlight and
-Apollo (Sunshine) do, with every byte inside one post-quantum WireGuard
-tunnel. **Ping** is the client, **Pong** the host.
+Sunshine do, with every byte inside one post-quantum WireGuard tunnel.
+**Ping** is the client, **Pong** the host.
 
 This page is the map: what runs where, how a frame gets from the host's
 screen to the client's, and which crate does what. Why each piece is the way
@@ -31,9 +31,9 @@ it is, and what was measured on the way, is in the
 - Inside the tunnel, pingpong's own **wire format**: a 20-byte header that
   *is* the inner IPv4 header, and four kinds of payload — video, audio,
   input, control (`pingpong-proto`).
-- **One session at a time** per host, as in Apollo. A new client takes over
-  or is refused (per the host's settings); AI agents follow stricter rules
-  ([ai-agents.md](ai-agents.md)).
+- **One session at a time** per host, on a display made for its client's
+  mode. A new client takes over or is refused (per the host's settings); AI
+  agents follow stricter rules ([ai-agents.md](ai-agents.md)).
 
 ### Crates
 
@@ -122,13 +122,17 @@ process runs:
    a virtual one on Windows and macOS, made primary, the host's own
    monitors off (unless asked otherwise) so windows open where the client
    can see them.
-2. **Capture**, paced to the negotiated frame rate: never faster, and a
-   still desktop re-encoded at max(fps/5, 10) frames a second so it keeps
-   sharpening. This is Apollo's capture loop (`pong/src/pipeline.rs`).
+2. **Capture**, paced to the negotiated frame rate — the client display's
+   own, to the millihertz (59.94 Hz is not 60), as Sunshine takes
+   Moonlight's: never faster, and a still desktop re-encoded at max(fps/5,
+   10) frames a second so it keeps sharpening. This is Sunshine's capture
+   loop, re-encoding less often than its half rate (`pong/src/pipeline.rs`
+   says why).
 3. **Colour conversion** on Windows: BGRA → NV12 in D3D11 shaders,
    BT.709 limited range, chroma sited left, the colour description written
-   into the stream (`pingpong-encode/src/convert.rs`).
-4. **Encode**, configured as Apollo configures NVENC: CBR with a
+   into the stream (`pingpong-encode/src/convert.rs`). For HDR, the FP16
+   desktop → BT.2020 PQ in P010; for 4:4:4, packed AYUV.
+4. **Encode**, configured as Sunshine configures NVENC: CBR with a
    single-frame VBV, no B-frames, an endless GOP, a few reference frames so
    a loss can be repaired by reference invalidation instead of a keyframe.
 5. **Packetize and FEC.** The frame (behind a 4-byte prefix carrying the
@@ -136,7 +140,7 @@ process runs:
    path, 1400 on the local network — and Reed-Solomon parity is added per
    block, per frame: recovery never waits for a later frame.
 6. **Pace.** Datagrams leave in 1 ms groups under the pacing rate, as
-   Apollo sends, not as one burst that overflows a Wi-Fi queue; batched into
+   Sunshine sends, not as one burst that overflows a Wi-Fi queue; batched into
    a few system calls (USO, GSO, `sendmsg_x`).
 7. **Tunnel.** Each datagram is encrypted and sent to the client, then to
    anyone watching an agent's session (the same encode, a second recipient).
@@ -149,16 +153,18 @@ process runs:
    (`pingpong-proto/src/video.rs`).
 10. **Decode and present.** Hardware decode, then the newest frame to the
     screen at once — or, with frame pacing on, Moonlight's pacer: one frame
-    per display refresh.
+    per display refresh. An HDR stream is drawn PQ-encoded into an HDR
+    layer with the host's metadata (on a Mac with an HDR display).
 
 The client reports loss and round trip once a second; the host adapts the
 bitrate to congestion and the FEC to the link's own loss
 (`pong/src/bitrate.rs`).
 
-### Why the video path looks like Apollo's
+### Why the video path looks like Sunshine's
 
-Each of these was a visible artefact until it was done the Apollo/Moonlight
-way (the full table, with the source it was checked against, is in
+Each of these was a visible artefact until it was done the Sunshine and
+Moonlight way, first learnt from Apollo, Sunshine's fork (the full table,
+with the source it was checked against, is in
 [design/v3-design.md](design/v3-design.md)):
 
 | Choice | Without it |
@@ -201,7 +207,7 @@ Input is sent unreliably on purpose: a retransmission would hold every later
 event back by a round trip. Keys travel as physical scancodes (the host's
 layout applies, as games expect); the mouse as relative motion, or
 absolute stream pixels when the user switches to positions. The host draws
-its pointer into the picture, as Apollo does, so the pointer the client
+its pointer into the picture, as Sunshine does, so the pointer the client
 sees is the host's own.
 
 ## Pairing and trust

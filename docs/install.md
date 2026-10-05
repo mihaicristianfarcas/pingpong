@@ -179,7 +179,7 @@ First, on the host PC:
    installed, stop its service while Pong runs (they share the driver).
 3. Optional: **[ViGEmBus](https://github.com/nefarius/ViGEmBus)**, for
    controllers; **Steam** (its *Steam Streaming Speakers* device keeps the
-   sound on the client only, as Apollo does).
+   sound on the client only, as Sunshine does).
 
 Then, from the repository, in an **administrator** PowerShell:
 

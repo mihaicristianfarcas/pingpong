@@ -1,17 +1,18 @@
 # pingpong
 
 Stream a computer's desktop — games included — to another computer, with the
-latency of Moonlight and Apollo, inside one post-quantum WireGuard tunnel.
+latency of Moonlight and Sunshine, inside one post-quantum WireGuard tunnel.
 **Ping** is the client, **Pong** the host; both run on macOS, Windows and
 Linux.
 
 ![Pong's window during a session](docs/images/pong-overview.png)
 
 - **Moonlight-class streaming**: up to 4K and 120+ fps, HEVC or H.264,
-  hardware encode and decode, loss repaired by reference invalidation, frame
-  pacing, stereo to 7.1 sound, controllers with rumble. At 3024x1890@120 and
-  100 Mbit/s it matched Moonlight + Apollo on the same machines
-  ([benchmarks](docs/benchmarks.md)).
+  hardware encode and decode, HDR and YUV 4:4:4, loss repaired by
+  reference invalidation, frame pacing at the client display's exact rate,
+  stereo to 7.1 sound, controllers with rumble. At 3024x1890@120 and
+  100 Mbit/s it matched Moonlight + Apollo (a fork of Sunshine with the
+  same video path) on the same machines ([benchmarks](docs/benchmarks.md)).
 - **Post-quantum**: every packet travels in pq-boringtun (WireGuard with
   ML-KEM-768), and pairing is a hybrid SPAKE2 + ML-KEM PIN exchange.
 - **A virtual display at the client's exact mode** on Windows and macOS
@@ -48,7 +49,7 @@ Linux.
 
 What is verified and what is not, per platform:
 [docs/platforms/](docs/platforms/). Feature by feature against Moonlight +
-Apollo: [docs/parity.md](docs/parity.md).
+Sunshine: [docs/parity.md](docs/parity.md).
 
 ## Documentation
 
@@ -64,11 +65,12 @@ Security problems: [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 
-pingpong follows the lead of [Moonlight](https://moonlight-stream.org),
-[Sunshine](https://github.com/LizardByte/Sunshine) and
-[Apollo](https://github.com/ClassicOldSong/Apollo): where it had to choose
+pingpong follows the lead of [Moonlight](https://moonlight-stream.org) and
+[Sunshine](https://github.com/LizardByte/Sunshine): where it had to choose
 how streaming should behave, it chose what they do, and says so in its
-comments. It is a separate implementation, written from scratch in Rust.
+comments. Its virtual displays follow
+[Apollo](https://github.com/ClassicOldSong/Apollo), the Sunshine fork that
+made them, and use its driver, SudoVDA, on Windows. It is a separate implementation, written from scratch in Rust.
 The tunnel is
 [pq-boringtun](https://github.com/mihaicristianfarcas/pq-boringtun), a
 post-quantum fork of Cloudflare's boringtun; the windows are drawn with

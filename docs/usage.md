@@ -149,7 +149,7 @@ window is an ordinary app: closing it quits it.
 | | Let a client take over a session | on | `allow_takeover` |
 | | Keep this PC's monitors on while streaming | off: the virtual display is the whole desktop | `keep_host_displays` |
 | | Share the clipboard with clients | on | `clipboard` |
-| Video | NVENC preset | P1 (fastest), as Apollo | `nvenc_preset` |
+| Video | NVENC preset | P1 (fastest), as Sunshine | `nvenc_preset` |
 | | Two-pass encoding | on | `nvenc_two_pass` |
 | | Full GPU power for Pong (NVIDIA, after a restart) | on | `nvidia_max_power` |
 | | OpenGL and Vulkan through DXGI (NVIDIA, system-wide while Pong runs, after a restart) | on | `nvidia_dxgi_present` |

@@ -20,9 +20,10 @@ local: a device is paired once, at home, and then connects from anywhere.
 The client's own tunnel port is chosen once and kept (`port` in its data
 folder), so its NAT keeps giving it the same public port.
 
-## What Moonlight + Apollo do, and why it is not enough
+## What Moonlight + Sunshine do, and why it is not enough
 
-Apollo asks the router for a port mapping over UPnP, and Moonlight connects
+Sunshine asks the router for a port mapping over UPnP (when its `upnp`
+setting is on; it is off by default), and Moonlight connects
 to the host's public address. That needs a router that speaks UPnP and has a
 public address. Double NAT (a router behind the ISP's box) and carrier-grade
 NAT are common, so a mapping is an optimisation, not the path. pingpong asks
