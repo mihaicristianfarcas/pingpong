@@ -36,6 +36,22 @@ pub struct DisplayMode {
     pub refresh_mhz: u32,
 }
 
+impl DisplayMode {
+    /// Of the whole-hertz rates a display lists, the one that is this
+    /// mode's refresh: the nearest, less than a hertz off. Windows' mode
+    /// APIs speak whole hertz, and whether a 143.972 Hz mode is listed as
+    /// 143 or 144 is the driver's say, so the listing is asked rather than
+    /// the rate rounded (Sunshine's libdisplaydevice matches refresh rates
+    /// with a tolerance too).
+    pub fn listed_hz(&self, listed: impl IntoIterator<Item = u32>) -> Option<u32> {
+        let off = |hz: u32| (hz as u64 * 1000).abs_diff(self.refresh_mhz as u64);
+        listed
+            .into_iter()
+            .filter(|&hz| off(hz) < 1000)
+            .min_by_key(|&hz| off(hz))
+    }
+}
+
 /// Which display the pipeline should capture, and what it is set to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveDisplay {
@@ -76,4 +92,36 @@ pub trait DisplayControl {
 
     /// Put the display back the way it was found.
     fn restore(&mut self) -> Result<(), DisplayError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mode(refresh_mhz: u32) -> DisplayMode {
+        DisplayMode {
+            width: 2560,
+            height: 1440,
+            refresh_mhz,
+        }
+    }
+
+    #[test]
+    fn a_fractional_rate_is_the_nearest_listed_whole_one() {
+        assert_eq!(mode(143_972).listed_hz([60, 143, 144]), Some(144));
+        assert_eq!(mode(143_972).listed_hz([60, 143]), Some(143));
+        assert_eq!(mode(59_940).listed_hz([59, 60, 120]), Some(60));
+        assert_eq!(mode(59_940).listed_hz([59, 120]), Some(59));
+    }
+
+    #[test]
+    fn a_whole_rate_is_itself() {
+        assert_eq!(mode(120_000).listed_hz([60, 119, 120, 121]), Some(120));
+    }
+
+    #[test]
+    fn no_listed_rate_within_a_hertz_is_none() {
+        assert_eq!(mode(143_972).listed_hz([60, 120, 165]), None);
+        assert_eq!(mode(60_000).listed_hz([]), None);
+    }
 }
