@@ -346,7 +346,7 @@ impl PingApp {
                             if can & video::HDR != 0 {
                                 "High dynamic range from a host whose GPU can encode it: \
                                     highlights brighter than white, in 10-bit colour. \
-                                    Needs HEVC."
+                                    Needs HEVC or AV1."
                             } else {
                                 "This display shows no more than SDR."
                             },
@@ -362,7 +362,7 @@ impl PingApp {
                             if can & video::YUV444 != 0 {
                                 "Colour at full resolution: text without coloured \
                                     fringes, for about a fifth more bitrate. From a host \
-                                    whose encoder can (NVIDIA on Windows; not a Mac)."
+                                    whose encoder can: NVIDIA, or x264 on Linux; not a Mac."
                             } else {
                                 "This computer's decoder does not take 4:4:4 yet."
                             },
