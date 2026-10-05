@@ -150,7 +150,12 @@ the same host, pays the same.
   from deep sleep blocks the display change for as long as it takes to wake
   (up to ~26 s measured); a client connecting meanwhile waits.
 - **AV1** needs an NVIDIA GPU that encodes it (RTX 40 series and later).
-- HDR and YUV 4:4:4 are not built.
+- **Switching between HDR and SDR.** Windows keeps a virtual display's
+  HDR state for the next one, so a session that wants the other state than
+  the last switches it. The first switch on a new virtual display takes
+  Windows 3.8 s, later ones 25 ms (Windows 11 25H2, RTX 3070 Ti): a client
+  that changes between HDR and SDR sessions starts 3.8 s later unless the
+  previous session's display is still kept (for a minute after it ends).
 - **Not code-signed.** Pong and Ping for Windows are not signed:
   SmartScreen asks before each first start, and Smart App Control, where
   it is on, blocks them ([../install.md](../install.md#on-windows)).
