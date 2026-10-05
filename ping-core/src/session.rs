@@ -153,6 +153,19 @@ impl StreamRequest {
     }
 }
 
+/// Whether this computer decodes AV1 (on a Mac, in hardware: an M3 or
+/// later).
+pub fn decodes_av1() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        pingpong_decode::videotoolbox::av1_in_hardware()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 /// What of `asked` (`control::video::*`) this computer can show, with these
 /// codecs: HDR needs HEVC or AV1, and a display with headroom above SDR
 /// white; 4:4:4 a decoder for it. On a Mac, call on the main thread.

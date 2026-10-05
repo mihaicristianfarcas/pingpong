@@ -32,7 +32,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | 3024x1890 native, 120 fps, 100 Mbit/s | Same; 115.6 fps shown vs Moonlight's 110.0 under full load (against Apollo, Sunshine's video path). Host on Ethernet: 0% loss at 113 Mbit/s, 117 of 118 fps shown, decode to glass 10 ms | done |
 | The client display's exact refresh (`clientRefreshRateX100`, 59.94 Hz), the host capturing at it | Same, in millihertz from negotiation to the virtual display, the capture cadence and the encoder | done (no 59.94 Hz display here) |
 | HEVC, H.264 | Same | done |
-| AV1 | Pong encodes it with NVENC on GPUs that have it (not the RTX 3070 Ti); Ping asks for it only from the command line (`--codec av1`), and decodes it with FFmpeg on Windows and Linux, untested; not on a Mac | no |
+| AV1 | Pong encodes it with NVENC on GPUs that have it (not the RTX 3070 Ti); Ping decodes it in hardware on a Mac with an AV1 decoder (M3 and later; its Video codec setting offers AV1 there), and with FFmpeg on Windows and Linux (`--codec av1`, untested) | done on a Mac (decoder tested on an M4 Pro); n/a on an RTX 3070 Ti host |
 | HDR (HEVC Main10, BT.2020, PQ) | Same: Ping on a Mac with an HDR display draws it in a BT.2100 PQ layer with the host's metadata; a Windows host switches its virtual display to HDR and converts the FP16 desktop to PQ; a Mac host (macOS 15+) makes an HDR virtual display and captures it in HDR10, which Sunshine's macOS host does not | done Mac to Mac; built on Windows |
 | YUV 4:4:4 | Same: NVENC (Windows), NVENC or x264 (Linux); Ping decodes it on Apple silicon and Linux. Not with HDR on Windows (NVENC takes 10-bit 4:4:4 only from CUDA; Sunshine uses CUDA there) | done Linux to Linux, Mac decode tested; built on Windows |
 | NVENC: P1, ultra-low latency, single-frame VBV, quarter-resolution two pass, reference invalidation | Same | done |
@@ -107,7 +107,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 
 ## Not built
 
-AV1 on a Mac client, PlayStation pads with motion and touchpad, apps of
+PlayStation pads with motion and touchpad, apps of
 your own, AMD and Intel encoders on a Windows host, and Linux capture and
 input beyond X11 and the portal. Phones, tablets and TVs are out of scope:
 pingpong is for desktops.

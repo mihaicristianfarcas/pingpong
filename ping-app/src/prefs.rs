@@ -19,7 +19,7 @@ pub struct Prefs {
     pub fps: u32,
     pub auto_bitrate: bool,
     pub bitrate_kbps: u32,
-    /// "auto", "hevc" or "h264".
+    /// "auto", "av1" (AV1 when the host has it), "hevc" or "h264".
     pub codec: String,
     pub vsync: bool,
     pub frame_pacing: bool,
@@ -181,6 +181,8 @@ impl Prefs {
             codecs: match self.codec.as_str() {
                 "h264" => codec::H264,
                 "hevc" => codec::HEVC,
+                // The host takes AV1 first, else HEVC, else H.264.
+                "av1" => codec::AV1 | codec::HEVC | codec::H264,
                 _ => codec::H264 | codec::HEVC,
             },
             vsync: self.vsync,
@@ -316,13 +318,18 @@ impl Prefs {
             self.bitrate_kbps = kbps as u32;
             done.push(format!("{} Mbps", kbps / 1000));
         }
-        // Moonlight's video codec choice: 0 automatic, 1 H.264, 2 HEVC.
+        // Moonlight's video codec choice: 0 automatic, 1 H.264, 2 HEVC,
+        // 3 HEVC with HDR (an older setting), 4 AV1.
         self.codec = match m.int("videocfg") {
             Some(1) => "h264",
-            Some(2) => "hevc",
+            Some(2) | Some(3) => "hevc",
+            Some(4) => "av1",
             _ => "auto",
         }
         .into();
+        if m.int("videocfg") == Some(3) {
+            self.hdr = true;
+        }
         if let Some(v) = m.bool("vsync") {
             self.vsync = v;
         }

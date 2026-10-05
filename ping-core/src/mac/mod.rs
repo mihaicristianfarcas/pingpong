@@ -122,6 +122,10 @@ impl Session {
     ) -> Result<Session, String> {
         let mtm = MainThreadMarker::new().ok_or("a stream opens on the main thread")?;
         let mut s = opts.settings;
+        if !pingpong_decode::videotoolbox::av1_in_hardware() {
+            // No AV1 decoder here: the host picks among the rest.
+            s.codecs &= !pingpong_proto::control::codec::AV1;
+        }
         s.video = crate::session::video_caps(s.video, s.codecs);
         let stats = Arc::new(StatsCollector::default());
         let render = RenderShared::new(stats.clone(), s.vsync, s.frame_pacing);

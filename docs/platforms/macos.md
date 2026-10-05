@@ -16,6 +16,11 @@ measurements here are from an M4 Pro).
   (`CVMetalTextureCache`). Without frame pacing the newest frame is drawn at
   once; with it, Moonlight's pacer draws one frame per display refresh on a
   `CVDisplayLink` tick.
+- **AV1.** On a Mac with an AV1 decoder (M3 and later), VideoToolbox
+  decodes it in hardware, 8- and 10-bit: the format description carries an
+  `av1C` record built from the stream's sequence header, and samples go in
+  without temporal delimiters, as MP4 stores them. Settings > Video offers
+  AV1 only there.
 - **HDR and 4:4:4.** On Apple silicon, VideoToolbox decodes HEVC Main10
   and HEVC 4:4:4 (8- and 10-bit) in hardware (measured on an M4 Pro); Ping
   asks for 10-bit pictures as `x420`/`x444`, which Metal samples plane by
