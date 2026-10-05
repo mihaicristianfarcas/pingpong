@@ -182,7 +182,9 @@ impl Platform {
         match self.display.activate(mode) {
             Ok(active) => {
                 // HDR on for a session that streams it, off otherwise (the
-                // display's identity keeps what the last session left).
+                // display's identity keeps what the last session left). The
+                // first switch on a new display blocks in Windows for 3.8 s,
+                // later ones take 25 ms (Windows 11 25H2, RTX 3070 Ti).
                 let hdr = n.video & control::video::HDR != 0;
                 match self.display.set_hdr(hdr) {
                     Ok(true) => tracing::info!(hdr, "virtual display switched"),
