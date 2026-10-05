@@ -11,7 +11,11 @@
 //!
 //! and the same with `yuv420p10le` (`hevc420-10.hevc`), `yuv444p10le`
 //! (`hevc444-10.hevc`), and `-pix_fmt yuv444p -c:v libx264 -bf 0`
-//! (`h264-444.h264`).
+//! (`h264-444.h264`). The AV1 ones are three frames from SVT-AV1 in the
+//! low-overhead format a host sends (`-frames:v 3 -c:v libsvtav1
+//! -svtav1-params pred-struct=1:keyint=-1 -f obu`), 8-bit (`av1-420-8.obu`)
+//! and `yuv420p10le` (`av1-420-10.obu`); they decode only on a Mac with an
+//! AV1 decoder (M3 and later).
 
 #![cfg(target_os = "macos")]
 
@@ -24,8 +28,16 @@ use pingpong_decode::videotoolbox::{PictureFormat, VtDecoder};
 use pingpong_decode::{Codec, VideoDecoder};
 
 /// The first access unit: everything up to the end of the first picture's
-/// slice (parameter sets included).
+/// slice (parameter sets included); for AV1, the first temporal unit.
 fn first_frame(codec: Codec, data: &[u8]) -> &[u8] {
+    if codec == Codec::Av1 {
+        let second = pingpong_decode::av1::obus(data)
+            .filter(|o| o.kind == pingpong_decode::av1::OBU_TEMPORAL_DELIMITER)
+            .nth(1)
+            .expect("a second temporal unit");
+        let end = second.whole.as_ptr() as usize - data.as_ptr() as usize;
+        return &data[..end];
+    }
     let mut starts = Vec::new();
     let mut i = 0;
     while i + 3 <= data.len() {
@@ -123,4 +135,27 @@ fn ten_bit_444_comes_as_x444() {
         },
     );
     assert_eq!(got, (*b"x444", 320, 320));
+}
+
+#[test]
+fn av1_decodes_as_420v_and_ten_bit_as_x420() {
+    if !pingpong_decode::videotoolbox::av1_in_hardware() {
+        eprintln!("no AV1 decoder on this Mac; skipped");
+        return;
+    }
+    let got = decode(
+        Codec::Av1,
+        include_bytes!("fixtures/av1-420-8.obu"),
+        PictureFormat::default(),
+    );
+    assert_eq!(got, (*b"420v", 320, 160));
+    let got = decode(
+        Codec::Av1,
+        include_bytes!("fixtures/av1-420-10.obu"),
+        PictureFormat {
+            ten_bit: true,
+            yuv444: false,
+        },
+    );
+    assert_eq!(got, (*b"x420", 320, 160));
 }

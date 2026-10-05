@@ -262,10 +262,25 @@ impl PingApp {
 
         // What this computer can show: HDR and 4:4:4 are offered where so.
         let can = ping_core::session::video_caps(video::HDR | video::YUV444, codec::HEVC);
-        let codecs = ["auto", "hevc", "h264"];
+        // AV1 where this computer decodes it (a Mac with an AV1 decoder).
+        let av1 = ping_core::session::decodes_av1();
+        let codecs: Vec<&'static str> = if av1 {
+            vec!["auto", "av1", "hevc", "h264"]
+        } else {
+            vec!["auto", "hevc", "h264"]
+        };
+        let labels: Vec<&'static str> = codecs
+            .iter()
+            .map(|c| match *c {
+                "av1" => "AV1",
+                "hevc" => "HEVC (H.265)",
+                "h264" => "H.264",
+                _ => "Automatic",
+            })
+            .collect();
         let codec = select(
             "codec",
-            ["Automatic", "HEVC (H.265)", "H.264"],
+            labels,
             codecs.iter().position(|c| *c == p.codec),
             t,
         )
@@ -309,7 +324,9 @@ impl PingApp {
                             "Video codec",
                             Some(
                                 "Automatic uses HEVC when the host offers \
-                                    it: sharper at the same bitrate."
+                                    it: sharper at the same bitrate. AV1 is \
+                                    sharper still, from a host whose GPU \
+                                    encodes it."
                                     .into(),
                             ),
                             codec,

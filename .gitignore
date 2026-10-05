@@ -23,6 +23,7 @@ interactive-run.log
 # ...but test fixtures are inputs, not output, and must be committed.
 !pingpong-decode/tests/fixtures/*.h264
 !pingpong-decode/tests/fixtures/*.hevc
+!pingpong-decode/tests/fixtures/*.obu
 # ...and so are the apps' icons (drawn by ping-app/examples/make-icon.rs).
 !ping-app/assets/*.png
 !pong-app/assets/*.png

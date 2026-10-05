@@ -1,6 +1,9 @@
-//! H.264 and HEVC decode through VideoToolbox, in real-time mode: 8-bit
-//! and 10-bit (HDR), 4:2:0 and 4:4:4 (Apple silicon decodes HEVC 4:4:4 in
-//! hardware: measured on an M4 Pro, 8- and 10-bit).
+//! H.264, HEVC and AV1 decode through VideoToolbox, in real-time mode:
+//! 8-bit and 10-bit (HDR), 4:2:0 and 4:4:4 (Apple silicon decodes HEVC 4:4:4
+//! in hardware: measured on an M4 Pro, 8- and 10-bit). AV1 needs a Mac with
+//! an AV1 decoder (M3 and later; `av1_in_hardware`): its format
+//! description carries an `av1C` record built from the stream's sequence
+//! header (`crate::av1`).
 //!
 //! Measured: 0.96 ms p50 / 1.12 ms p95 at 1080p60, one callback per
 //! submit, no buffering or reordering -- which is why the client has no jitter
@@ -13,11 +16,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use objc2_core_foundation::{
-    kCFBooleanTrue, CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType,
+    kCFBooleanTrue, CFBoolean, CFData, CFDictionary, CFNumber, CFRetained, CFString, CFType,
 };
 use objc2_core_media::{
-    kCMBlockBufferAssureMemoryNowFlag, CMBlockBuffer, CMFormatDescription, CMSampleBuffer,
-    CMSampleTimingInfo, CMTime, CMTimeFlags, CMVideoFormatDescription,
+    kCMBlockBufferAssureMemoryNowFlag,
+    kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms, kCMVideoCodecType_AV1,
+    CMBlockBuffer, CMFormatDescription, CMSampleBuffer, CMSampleTimingInfo, CMTime, CMTimeFlags,
+    CMVideoFormatDescription, CMVideoFormatDescriptionCreate,
     CMVideoFormatDescriptionCreateFromH264ParameterSets,
     CMVideoFormatDescriptionCreateFromHEVCParameterSets,
 };
@@ -176,11 +181,6 @@ impl VtDecoder {
     }
 
     fn build(codec: Codec, sink: Option<FrameSink>) -> Result<VtDecoder, DecodeError> {
-        if codec == Codec::Av1 {
-            return Err(DecodeError::Bitstream(
-                "AV1 decode is not implemented".into(),
-            ));
-        }
         Ok(VtDecoder {
             shared: Box::new(Shared {
                 sink,
@@ -249,7 +249,8 @@ impl VtDecoder {
                     ),
                     "CMVideoFormatDescriptionCreateFromH264ParameterSets",
                 ),
-                _ => (
+                Codec::Av1 => av1_format(params[0], &mut fmt),
+                Codec::Hevc => (
                     CMVideoFormatDescriptionCreateFromHEVCParameterSets(
                         None,
                         params.len(),
@@ -353,11 +354,13 @@ impl VtDecoder {
     ) -> Result<(), DecodeError> {
         let session = self.session.as_ref().expect("checked by caller");
         let fmt = self.format.as_ref().expect("checked by caller");
-        let len: usize = self
-            .slices
-            .iter()
-            .map(|&(_, n)| LENGTH_BYTES as usize + n)
-            .sum();
+        // AV1's units carry their sizes; NAL units go behind 4-byte lengths.
+        let prefix = if self.codec == Codec::Av1 {
+            0
+        } else {
+            LENGTH_BYTES as usize
+        };
+        let len: usize = self.slices.iter().map(|&(_, n)| prefix + n).sum();
 
         let mut block: *mut CMBlockBuffer = std::ptr::null_mut();
         // SAFETY: CoreMedia allocates `len` bytes; `block` is a valid out-param.
@@ -402,9 +405,11 @@ impl VtDecoder {
         let out = unsafe { std::slice::from_raw_parts_mut(data as *mut u8, len) };
         let mut at = 0;
         for &(start, n) in &self.slices {
-            out[at..at + 4].copy_from_slice(&(n as u32).to_be_bytes());
-            out[at + 4..at + 4 + n].copy_from_slice(&annexb[start..start + n]);
-            at += 4 + n;
+            if prefix > 0 {
+                out[at..at + 4].copy_from_slice(&(n as u32).to_be_bytes());
+            }
+            out[at + prefix..at + prefix + n].copy_from_slice(&annexb[start..start + n]);
+            at += prefix + n;
         }
 
         let t = |value| CMTime {
@@ -466,6 +471,87 @@ impl VtDecoder {
     }
 }
 
+impl VtDecoder {
+    /// One AV1 temporal unit: its sequence header (re)builds the decoder;
+    /// its other units, but for temporal delimiters and padding, are the
+    /// sample.
+    fn decode_av1(&mut self, unit: &[u8], capture_ts_us: u32) -> Result<(), DecodeError> {
+        self.slices.clear();
+        let mut sequence_header = None;
+        for obu in crate::av1::obus(unit) {
+            if obu.kind == crate::av1::OBU_SEQUENCE_HEADER && sequence_header.is_none() {
+                sequence_header = Some(obu.whole);
+            }
+            if crate::av1::in_sample(obu.kind) {
+                let start = obu.whole.as_ptr() as usize - unit.as_ptr() as usize;
+                self.slices.push((start, obu.whole.len()));
+            }
+        }
+        if let Some(seq) = sequence_header {
+            let changed = self.params.first().is_none_or(|p| p.as_slice() != seq);
+            if changed || self.session.is_none() {
+                self.rebuild(&[seq])?;
+            }
+        }
+        if self.session.is_none() {
+            self.skipped_before_parameter_sets += 1;
+            return Ok(());
+        }
+        if self.slices.is_empty() {
+            return Ok(());
+        }
+        let index = self.frame_index;
+        self.frame_index += 1;
+        self.submit(unit, capture_ts_us, index)
+    }
+}
+
+/// An AV1 format description: the sequence header's size and an `av1C`
+/// record made from it.
+///
+/// # Safety
+///
+/// `fmt` must be a valid out-pointer.
+unsafe fn av1_format(
+    sequence_header: &[u8],
+    fmt: &mut *const CMFormatDescription,
+) -> (i32, &'static str) {
+    const CALL: &str = "CMVideoFormatDescriptionCreate(AV1)";
+    let header = crate::av1::obus(sequence_header)
+        .next()
+        .and_then(|obu| crate::av1::parse_sequence_header(obu.payload));
+    let Some(header) = header else {
+        // kCMFormatDescriptionError_InvalidParameter
+        return (-12710, CALL);
+    };
+    let record = CFData::from_bytes(&crate::av1::av1c(sequence_header, &header));
+    let atom = CFString::from_static_str("av1C");
+    let atoms = CFDictionary::<CFString, CFType>::from_slices(&[&*atom], &[&*record]);
+    // SAFETY: CoreMedia's constant key.
+    let key: &CFString = unsafe { kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms };
+    let extensions = CFDictionary::<CFString, CFType>::from_slices(&[key], &[&*atoms]);
+    // SAFETY: a valid out-pointer (the caller's), and dictionaries that
+    // outlive the call (CoreMedia copies them).
+    let status = unsafe {
+        CMVideoFormatDescriptionCreate(
+            None,
+            kCMVideoCodecType_AV1,
+            header.max_width as i32,
+            header.max_height as i32,
+            Some(extensions.as_opaque()),
+            NonNull::new(fmt as *mut *const CMFormatDescription as *mut _).unwrap(),
+        )
+    };
+    (status, CALL)
+}
+
+/// Whether this Mac decodes AV1 in hardware (an M3 or later): VideoToolbox
+/// has no AV1 decoder otherwise.
+pub fn av1_in_hardware() -> bool {
+    // SAFETY: a plain query.
+    unsafe { objc2_video_toolbox::VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1) }
+}
+
 /// What a NAL unit is, independent of codec.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NalKind {
@@ -506,6 +592,9 @@ fn param_count(codec: Codec) -> usize {
 
 impl VideoDecoder for VtDecoder {
     fn decode(&mut self, annexb: &[u8], capture_ts_us: u32) -> Result<(), DecodeError> {
+        if self.codec == Codec::Av1 {
+            return self.decode_av1(annexb, capture_ts_us);
+        }
         let n = param_count(self.codec);
         let mut params: [Option<&[u8]>; 3] = [None; 3];
         self.slices.clear();

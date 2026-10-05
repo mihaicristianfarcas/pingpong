@@ -93,7 +93,7 @@ Windows and Linux) opens them.
 | | Check for Updates | Asks GitHub now, whatever the setting |
 | Video | Resolution | This display's native size (the default), the scaled desktop size (Mac), or a custom size. Each is fitted to the nearest standard aspect ratio (16:10, 16:9, 21:9...): a size between them makes games draw a smaller picture with strips around it, which a Windows host does not refresh. Below a MacBook's notch that is 16:10, 3024 × 1890 on a 14" |
 | | Frame rate | Frames per second the host sends; up to this display's maximum |
-| | Video codec | Automatic (HEVC when both ends can), HEVC, or H.264 |
+| | Video codec | Automatic (HEVC when both ends can), AV1 (on a Mac that decodes it, an M3 or later: AV1 when the host's GPU encodes it, else HEVC or H.264), HEVC, or H.264 |
 | | Display mode | Full screen or a window |
 | | HDR | Stream in HDR (HEVC Main10, BT.2020, PQ), as Moonlight's "HDR": offered on a Mac whose display shows HDR, from a host that can (NVIDIA on Windows, macOS 15 or later). Off by default, as in Moonlight |
 | | YUV 4:4:4 | Colour at full resolution: text without coloured fringes, for about a fifth more bitrate; offered where this computer decodes it (Apple silicon), from a host that encodes it (NVIDIA on Windows). Off by default, as in Moonlight |

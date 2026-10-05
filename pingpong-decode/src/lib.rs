@@ -90,6 +90,7 @@ pub trait VideoDecoder {
 }
 
 pub mod annexb;
+pub mod av1;
 
 #[cfg(target_os = "macos")]
 pub mod videotoolbox;
