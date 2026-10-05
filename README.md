@@ -1,7 +1,8 @@
 # pingpong
 
 Stream a computer's desktop — games included — to another computer, with the
-latency of Moonlight and Sunshine, inside one post-quantum WireGuard tunnel.
+latency of Moonlight and Sunshine/Apollo, inside one post-quantum WireGuard
+tunnel.
 **Ping** is the client, **Pong** the host; both run on macOS, Windows and
 Linux.
 

@@ -1,11 +1,12 @@
 # Benchmarks
 
 What pingpong costs, measured: micro-benchmarks of its own code paths, and
-the real stream end to end, against Moonlight + Sunshine where that means
-something. The host comparisons so far were measured against Apollo, the
-Sunshine fork whose virtual display Pong follows: its capture, NVENC
-settings, FEC and pacing are Sunshine's. Every figure says what it was measured on; the earliest
-measurements (v1, v2) are in the [design history](design/README.md).
+the real stream end to end, against Moonlight + Sunshine/Apollo where that
+means something. The host comparisons so far were measured against Apollo,
+the Sunshine fork whose virtual display Pong follows: its capture, NVENC
+settings, FEC and pacing are Sunshine's. Every figure says what it was
+measured on; the earliest measurements (v1, v2) are in the
+[design history](design/README.md).
 
 ## Test setup
 

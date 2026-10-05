@@ -1,22 +1,26 @@
-# Ping + Pong against Moonlight + Sunshine
+# Ping + Pong against Moonlight + Sunshine/Apollo
 
 pingpong set out to replace a Moonlight + Apollo setup feature for feature,
-and now measures itself against Moonlight + Sunshine: Apollo is a fork of
-Sunshine that adds virtual displays and has not moved in a long while,
-while Sunshine keeps improving. This is the checklist, compared against
-Moonlight on a 14" MacBook Pro (3024x1890, 120 fps, 100 Mbit/s, V-Sync and
-frame pacing on, 7.1 audio, connection warnings, gamepad mouse, keep awake,
-mute on focus loss) and, on a Windows 11 PC with an RTX 3070 Ti, Apollo
-(defaults, apps Desktop and Steam Big Picture), whose video path is
-Sunshine's. Sunshine's own source was read for what it does differently or
-added since. Numbers are in [benchmarks.md](benchmarks.md).
+and measures itself against Moonlight with both hosts: Sunshine, whose
+streaming (capture, encoding, pacing, input) Apollo shares, and Apollo, the
+Sunshine fork that adds a virtual display at the client's mode, client
+permissions, clipboard sync and commands when a client connects. Where the
+two behave differently, pingpong follows Sunshine's current source:
+Sunshine keeps improving, and Apollo has not moved in a long while. This is
+the checklist, compared against Moonlight on a 14" MacBook Pro (3024x1890,
+120 fps, 100 Mbit/s, V-Sync and frame pacing on, 7.1 audio, connection
+warnings, gamepad mouse, keep awake, mute on focus loss) and, on a Windows
+11 PC with an RTX 3070 Ti, Apollo (defaults, apps Desktop and Steam Big
+Picture), whose video path is Sunshine's. Sunshine's and Apollo's own
+source were read for what each does. Numbers are in
+[benchmarks.md](benchmarks.md).
 
 Status: **done** (built and verified), **built** (built, not yet run where
 it applies), **no** (not built, with the reason), **n/a** (does not apply).
 
 ## Connecting
 
-| Moonlight + Sunshine | Ping + Pong | Status |
+| Moonlight + Sunshine/Apollo | Ping + Pong | Status |
 |---|---|---|
 | Hosts found on the LAN (mDNS) | Same; every address a host announces is kept, LAN first, VPN overlays (such as Tailscale) last | done |
 | PIN pairing | PIN shown in Ping, entered in Pong's window or web UI; hybrid post-quantum (SPAKE2 + ML-KEM-768) | done |
@@ -27,13 +31,13 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 
 ## Video
 
-| Moonlight + Sunshine | Ping + Pong | Status |
+| Moonlight + Sunshine/Apollo | Ping + Pong | Status |
 |---|---|---|
 | 3024x1890 native, 120 fps, 100 Mbit/s | Same; 115.6 fps shown vs Moonlight's 110.0 under full load (against Apollo, Sunshine's video path). Host on Ethernet: 0% loss at 113 Mbit/s, 117 of 118 fps shown, decode to glass 10 ms | done |
 | The client display's exact refresh (`clientRefreshRateX100`, 59.94 Hz), the host capturing at it | Same, in millihertz from negotiation to the virtual display, the capture cadence and the encoder | done (no 59.94 Hz display here) |
 | HEVC, H.264 | Same | done |
 | AV1 | Pong encodes it with NVENC on GPUs that have it (not the RTX 3070 Ti); Ping decodes it in hardware on a Mac with an AV1 decoder (M3 and later; its Video codec setting offers AV1 there), and with FFmpeg on Windows and Linux (`--codec av1`, untested) | done on a Mac (decoder tested on an M4 Pro); n/a on an RTX 3070 Ti host |
-| HDR (HEVC Main10, BT.2020, PQ) | Same: Ping on a Mac with an HDR display draws it in a BT.2100 PQ layer with the host's metadata; a Windows host switches its virtual display to HDR and converts the FP16 desktop to PQ; a Mac host (macOS 15+) makes an HDR virtual display and captures it in HDR10, which Sunshine's macOS host does not | done: Mac to Mac, Windows to Mac (116-120 of 118-120 fps shown at 3024x1890, no loss) |
+| HDR (HEVC Main10, BT.2020, PQ) | Same: Ping on a Mac with an HDR display draws it in a BT.2100 PQ layer with the host's metadata; a Windows host switches its virtual display to HDR and converts the FP16 desktop to PQ; a Mac host (macOS 15+) makes an HDR virtual display and captures it in HDR10, which neither Sunshine's nor Apollo's macOS host does | done: Mac to Mac, Windows to Mac (116-120 of 118-120 fps shown at 3024x1890, no loss) |
 | YUV 4:4:4 | Same: NVENC (Windows), NVENC or x264 (Linux); Ping decodes it on Apple silicon and Linux. Not with HDR on Windows (NVENC takes 10-bit 4:4:4 only from CUDA; Sunshine uses CUDA there) | done: Windows to Mac (117-119 fps decoded), Linux to Linux |
 | NVENC: P1, ultra-low latency, single-frame VBV, quarter-resolution two pass, reference invalidation | Same | done |
 | NVENC split-frame encoding on GPUs with two encoders | The driver decides, Sunshine's default | done (one encoder here) |
@@ -49,7 +53,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 
 ## Audio
 
-| Moonlight + Sunshine | Ping + Pong | Status |
+| Moonlight + Sunshine/Apollo | Ping + Pong | Status |
 |---|---|---|
 | Stereo, 5.1, 7.1 | Same, Opus multistream in Moonlight's channel order; a Mac host from a Core Audio tap of a surround output, as Sunshine's from BlackHole | done (Mac host: through BlackHole 16ch) |
 | Sound only on the client (host muted) | Virtual sink for the session, default device restored after | done |
@@ -57,7 +61,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 
 ## Input
 
-| Moonlight + Sunshine | Ping + Pong | Status |
+| Moonlight + Sunshine/Apollo | Ping + Pong | Status |
 |---|---|---|
 | Keyboard and mouse capture, Ctrl-Alt-Shift-Z | Same | done |
 | A held key repeats (Sunshine repeats on the host, 500 ms then 24.9 a second) | Same, at the delay and rate of the keyboard in front of you (sent with the session) | done: on a Windows host, "a" held 2 s typed 55 at a Mac's 250 ms delay and 33 ms interval |
@@ -67,20 +71,23 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | Swap mouse buttons, reverse scrolling | Same, Input settings (imported from Moonlight) | done |
 | Command as the Windows key (option) | Same; always Command on a Mac host | done |
 | Paste the clipboard (Ctrl-Alt-Shift-V) | Same, Unicode, survives 10% burst loss | done |
-| (Moonlight has none) Clipboard shared both ways | Text, images, files and folders; password managers' copies stay put ([usage.md](usage.md#sharing-the-clipboard)) | done, beyond parity |
+| Clipboard sync (Apollo, with its Artemis client: text, when the client asks) | Both ways as you copy: text, images, files and folders; password managers' copies stay put ([usage.md](usage.md#sharing-the-clipboard)) | done, beyond Apollo's |
 | Controllers, several, with rumble | Same (virtual Xbox 360 pads); rumble reaches the pad ~7 ms after the game sets it | done (Xbox Wireless Controller) |
 | Controller's Xbox button | Reaches the host as Guide (read from the pad's HID reports, as Moonlight does); macOS 26 opens its Games overlay too, as with Moonlight | done |
 | Controller as a mouse (hold Start) | Same | done |
+| A client that only sends input, with no stream (Apollo) | Not built | no |
 | PlayStation controllers as DualShock 4 / DualSense pads, with motion and touchpad | Not built: Xbox 360 pads only | no |
 | Windows host input through a virtual HID driver (Sunshine's libvirtualhid) | `SendInput` and ViGEmBus, as Sunshine without its driver: the driver needs a paid, source-available licence, which a GPL-3.0 project cannot ship | n/a |
 
 ## Host
 
-| Sunshine (and Apollo) | Pong | Status |
+| Sunshine/Apollo | Pong | Status |
 |---|---|---|
 | Streams a physical display, changing its mode to the client's (Sunshine); a virtual display at the client's mode (Apollo) | A virtual display at the client's mode on Windows (SudoVDA, Apollo's driver) and macOS (`CGVirtualDisplay`), primary, the host's monitors off for the session (Sunshine's "deactivate other displays") | done |
+| A virtual display identity for each client, so Windows remembers each one's settings (Apollo) | One identity for every client: a session that wants the other HDR state than the last waits 3.8 s while Windows switches it ([platforms/windows.md](platforms/windows.md)) | no |
 | Apps: Desktop, Steam Big Picture (closed at the end) | Same | done |
-| Apps of your own, with commands before and after | Not built | no |
+| Apps of your own, with commands before and after; commands when a client connects or disconnects (Apollo) | Not built | no |
+| Permissions per client (Apollo): which inputs, the clipboard, files, launching apps; a new client may only watch | For AI agents: control, view or nothing, each agent on its own, and actions that ask first ([ai-agents.md](ai-agents.md#the-rules-the-host-holds-agents-to)). A person you pair has full control | no (agents only) |
 | Runs at boot, streams UAC prompts and the lock screen | Windows service; sessions also start while the host is locked (after sleep) | done |
 | Windows asked for streaming: 0.5-1 ms timer, DWM by MMCSS, Wi-Fi in media-streaming mode, Mouse Keys without a mouse | Same (1 ms), undone when the session ends | done |
 | Web UI | Pairing, clients, settings, logs, ending a session; and Pong's own window | done |
@@ -92,22 +99,24 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | A macOS host: AVFoundation capture of a physical display, sound from a loopback device (BlackHole), gamepads through a licensed driver | ScreenCaptureKit of a virtual display at the client's size, HDR, 5.1/7.1 through a tap; no gamepads (Apple grants the virtual HID entitlement on request) | done: see [platforms/macos.md](platforms/macos.md) |
 | Linux: KMS, wlroots and KWin capture, uinput keyboard, mouse and pads, Vulkan encoding | X11 (MIT-SHM) and the desktop portal (PipeWire), XTest and the portal's input; no pads | no (beyond X11 and the portal) |
 
-## Beyond Moonlight + Sunshine
+## Beyond Moonlight + Sunshine/Apollo
 
 - Clients and hosts on macOS, Windows and Linux, from one code base.
 - Everything in one post-quantum tunnel (WireGuard with ML-KEM), paired
   with a hybrid post-quantum PIN exchange.
 - Reaching the host from anywhere without port forwarding or a VPN.
-- A virtual display at the client's exact mode on Windows and macOS hosts.
-- HDR from a Mac host.
+- A virtual display at the client's exact mode on macOS hosts too, in HDR
+  (Apollo's is Windows only).
 - Held keys repeat at the client keyboard's own pace.
-- The clipboard shared both ways, files included.
+- The clipboard shared both ways as you copy, images and files included
+  (Apollo's: text, when the client asks).
 - AI agents as clients of their own, held to the host's rules
   ([ai-agents.md](ai-agents.md)).
 
 ## Not built
 
-PlayStation pads with motion and touchpad, apps of
-your own, AMD and Intel encoders on a Windows host, and Linux capture and
-input beyond X11 and the portal. Phones, tablets and TVs are out of scope:
-pingpong is for desktops.
+PlayStation pads with motion and touchpad, apps of your own and commands
+when a client connects, Apollo's permissions per client for people, clients
+that only send input, a virtual display identity per client, AMD and Intel
+encoders on a Windows host, and Linux capture and input beyond X11 and the
+portal. Phones, tablets and TVs are out of scope: pingpong is for desktops.
