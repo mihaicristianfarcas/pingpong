@@ -179,6 +179,10 @@ First, on the host PC:
    [Apollo](https://github.com/ClassicOldSong/Apollo), or from
    [SudoMaker/SudoVDA](https://github.com/SudoMaker/SudoVDA). If Apollo is
    installed, stop its service while Pong runs (they share the driver).
+   Without it, Pong streams the PC's main display as it is.
+
+   [platforms/windows.md](platforms/windows.md#without-nvenc-or-sudovda)
+   says what a host without them can do.
 3. Optional: **[ViGEmBus](https://github.com/nefarius/ViGEmBus)**, for
    controllers; **Steam** (its *Steam Streaming Speakers* device keeps the
    sound on the client only, as Sunshine does).

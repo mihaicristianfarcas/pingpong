@@ -79,7 +79,7 @@ So there is one client and one host, with a platform layer each:
 | Client present | Metal | Direct3D 11 | wgpu (Vulkan or GL) |
 | Client controllers | GameController + IOHID | XInput | gilrs (evdev) |
 | Client audio out | CoreAudio | WASAPI | cpal |
-| Host display | `CGVirtualDisplay` at the client's mode | SudoVDA at the client's mode | the screen as it is, scaled |
+| Host display | `CGVirtualDisplay` at the client's mode | SudoVDA at the client's mode (without it, the main display, scaled) | the screen as it is, scaled |
 | Host capture | ScreenCaptureKit | Desktop Duplication | MIT-SHM (X11), PipeWire through the desktop portal (Wayland) |
 | Host encode | VideoToolbox | NVENC, else Media Foundation (H.264, software) | FFmpeg: VA-API, NVENC or x264 |
 | Host input | CoreGraphics events | `SendInput`, ViGEm pads | XTest (X11), the RemoteDesktop portal (Wayland) |

@@ -83,7 +83,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 
 | Sunshine/Apollo | Pong | Status |
 |---|---|---|
-| Streams a physical display, changing its mode to the client's (Sunshine); a virtual display at the client's mode (Apollo) | A virtual display at the client's mode on Windows (SudoVDA, Apollo's driver) and macOS (`CGVirtualDisplay`), primary, the host's monitors off for the session (Sunshine's "deactivate other displays") | done |
+| Streams a physical display, changing its mode to the client's (Sunshine); a virtual display at the client's mode (Apollo) | A virtual display at the client's mode on Windows (SudoVDA, Apollo's driver) and macOS (`CGVirtualDisplay`), primary, the host's monitors off for the session (Sunshine's "deactivate other displays"); without one, the main display as it is, scaled (not its mode changed) | done |
 | A virtual display identity for each client, so Windows remembers each one's settings (Apollo) | One identity for every client: a session that wants the other HDR state than the last waits 3.8 s while Windows switches it ([platforms/windows.md](platforms/windows.md)) | no |
 | Apps: Desktop, Steam Big Picture (closed at the end) | Same | done |
 | Apps of your own, with commands before and after; commands when a client connects or disconnects (Apollo) | Not built | no |
