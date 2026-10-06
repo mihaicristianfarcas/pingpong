@@ -17,6 +17,8 @@ mod messages;
 mod net;
 mod quality;
 
+pub(crate) use net::start_audio;
+
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -131,12 +133,17 @@ impl Default for StreamSettings {
 }
 
 /// What a stream comes from.
+// One is made per stream and moved once: boxing the larger variant would
+// save nothing worth an allocation.
+#[allow(clippy::large_enum_variant)]
 pub enum Source {
     /// A paired Pong host, through the tunnel.
     Pong {
         identity: Arc<Identity>,
         host: HostTarget,
     },
+    /// An Xbox console or a cloud game, over WebRTC (`crate::xbox`).
+    Xbox(crate::xbox::XboxSource),
 }
 
 impl Source {
@@ -144,6 +151,7 @@ impl Source {
     pub fn name(&self) -> &str {
         match self {
             Source::Pong { host, .. } => &host.name,
+            Source::Xbox(x) => x.target.name(),
         }
     }
 
@@ -151,6 +159,7 @@ impl Source {
     pub fn host_id(&self) -> Option<String> {
         match self {
             Source::Pong { host, .. } => Some(host.public.short_id()),
+            Source::Xbox(_) => None,
         }
     }
 }
@@ -255,6 +264,7 @@ pub struct Stream(Inner);
 
 enum Inner {
     Pong(PongStream),
+    Xbox(crate::xbox::XboxStream),
 }
 
 /// A stream from a Pong host.
@@ -302,6 +312,7 @@ pub struct ControlSender(Controls);
 #[derive(Clone)]
 enum Controls {
     Pong(Arc<Ctx>),
+    Xbox(crate::xbox::Controls),
 }
 
 impl ControlSender {
@@ -309,12 +320,14 @@ impl ControlSender {
     pub fn set_audio_muted(&self, muted: bool) {
         match &self.0 {
             Controls::Pong(ctx) => ctx.audio_muted.store(muted, Ordering::Relaxed),
+            Controls::Xbox(c) => c.set_audio_muted(muted),
         }
     }
 
     pub fn send(&self, msg: Control) {
         match &self.0 {
             Controls::Pong(ctx) => send_control(ctx, msg),
+            Controls::Xbox(c) => c.send(msg),
         }
     }
 
@@ -322,12 +335,15 @@ impl ControlSender {
     pub fn agent_state(&self) -> Option<AgentState> {
         match &self.0 {
             Controls::Pong(ctx) => *ctx.agent_state.lock(),
+            Controls::Xbox(_) => None,
         }
     }
 
     /// Watching an agent: take the keyboard and mouse, or give them back.
     pub fn toggle_take_over(&self) {
-        let Controls::Pong(ctx) = &self.0;
+        let Controls::Pong(ctx) = &self.0 else {
+            return;
+        };
         let taken = self
             .agent_state()
             .is_some_and(|s| s.flags & agent_state::TAKEN_OVER != 0);
@@ -381,6 +397,9 @@ impl Stream {
             Source::Pong { identity, host } => {
                 Stream::start(identity, host, settings, video, events, stats)
             }
+            Source::Xbox(x) => Ok(Stream(Inner::Xbox(crate::xbox::XboxStream::start(
+                x, settings, video, events, stats,
+            )?))),
         }
     }
 
@@ -484,12 +503,14 @@ impl Stream {
     pub fn input(&self) -> &InputSender {
         match &self.0 {
             Inner::Pong(p) => &p.input_tx,
+            Inner::Xbox(x) => x.input(),
         }
     }
 
     pub fn controls(&self) -> ControlSender {
         match &self.0 {
             Inner::Pong(p) => ControlSender(Controls::Pong(p.ctx.clone())),
+            Inner::Xbox(x) => ControlSender(Controls::Xbox(x.controls())),
         }
     }
 
@@ -497,6 +518,7 @@ impl Stream {
     pub fn candidates(&self) -> Option<Candidates> {
         match &self.0 {
             Inner::Pong(p) => Some(Candidates(p.ctx.clone())),
+            Inner::Xbox(_) => None,
         }
     }
 
@@ -507,6 +529,7 @@ impl Stream {
     pub fn stats_collector(&self) -> &Arc<StatsCollector> {
         match &self.0 {
             Inner::Pong(p) => &p.ctx.stats,
+            Inner::Xbox(x) => x.stats_collector(),
         }
     }
 
@@ -514,12 +537,14 @@ impl Stream {
     pub fn ack(&self) -> Option<SessionAck> {
         match &self.0 {
             Inner::Pong(p) => *p.ctx.ack.lock(),
+            Inner::Xbox(_) => None,
         }
     }
 
     pub fn is_running(&self) -> bool {
         match &self.0 {
             Inner::Pong(p) => p.net.as_ref().is_some_and(|n| !n.is_finished()),
+            Inner::Xbox(x) => x.is_running(),
         }
     }
 
@@ -527,6 +552,7 @@ impl Stream {
     pub fn stop(&mut self) {
         match &mut self.0 {
             Inner::Pong(p) => p.stop(),
+            Inner::Xbox(x) => x.stop(),
         }
     }
 }

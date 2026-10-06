@@ -14,6 +14,7 @@
 //!                    [--mute-in-background] [--audio-channels 2|6|8] [--steam]
 //!                    [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays]
 //!                    [--via ADDR] [--no-clipboard] [--hdr] [--yuv444]
+//!   ping xbox …                                 an Xbox console or cloud game (`xbox`)
 //!
 //! `PING_TEST_INPUT` scripts input into a stream (see `script`).
 
@@ -21,11 +22,13 @@
 mod script;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 mod stream;
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+mod xbox;
 
 use std::path::Path;
 use std::process::ExitCode;
 
-fn usage() -> ExitCode {
+pub(crate) fn usage() -> ExitCode {
     eprintln!(
         "usage: ping identity | discover | pair HOST[:PORT] | pair-agent HOST[:PORT] | hosts | remove-host NAME | wake NAME\n\
             \x20      ping watch NAME [stream flags]\n\
@@ -34,7 +37,10 @@ fn usage() -> ExitCode {
             \x20                       [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]\n\
             \x20                       [--mute-in-background] [--audio-channels 2|6|8] [--steam]\n\
             \x20                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
-            \x20                       [--no-clipboard] [--hdr] [--yuv444]"
+            \x20                       [--no-clipboard] [--hdr] [--yuv444]\n\
+            \x20      ping xbox sign-in | sign-out | consoles | wake NAME | off NAME | games\n\
+            \x20      ping xbox stream CONSOLE [--keyboard] [stream flags]\n\
+            \x20      ping xbox play GAME [--keyboard] [--region NAME] [stream flags]"
     );
     ExitCode::FAILURE
 }
@@ -83,15 +89,20 @@ fn main() -> ExitCode {
         },
         #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
         Some("stream") => match args.get(1) {
-            Some(name) => stream::run(name, &args[2..]),
+            Some(name) => stream::run(
+                stream::What::Host(name.clone()),
+                stream::request(&args[2..]),
+            ),
             None => usage(),
         },
+        #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+        Some("xbox") => xbox::run(&args[1..]),
         #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
         Some("watch") => match args.get(1) {
             Some(name) => {
                 let mut flags = args[2..].to_vec();
                 flags.push("--watch".into());
-                stream::run(name, &flags)
+                stream::run(stream::What::Host(name.clone()), stream::request(&flags))
             }
             None => usage(),
         },
@@ -100,7 +111,7 @@ fn main() -> ExitCode {
 }
 
 /// Print `e` and fail.
-fn fail(e: impl std::fmt::Display) -> ExitCode {
+pub(crate) fn fail(e: impl std::fmt::Display) -> ExitCode {
     eprintln!("{e}");
     ExitCode::FAILURE
 }

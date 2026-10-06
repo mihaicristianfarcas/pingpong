@@ -6,6 +6,7 @@
 - [usage.md](usage.md) — streaming, shortcuts, settings, the clipboard, Wake-on-LAN, troubleshooting
 - [cli.md](cli.md) — `ping`, `pong`, `ping-agent`, and environment variables
 - [ai-agents.md](ai-agents.md) — AI agents on your hosts (computer use, MCP)
+- [xbox.md](xbox.md) — streaming an Xbox console, or Xbox Cloud Gaming
 
 **How it works**
 

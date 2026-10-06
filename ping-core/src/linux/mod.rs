@@ -62,10 +62,35 @@ pub fn spawn(
     request: &StreamRequest,
     on_end: EndCallback,
 ) -> Result<Session, String> {
+    spawn_with(STREAM_FLAG, key_or_name, request, on_end)
+}
+
+/// Stream from an Xbox in a process of its own, as [`spawn`].
+pub fn spawn_xbox(
+    source: &crate::xbox::XboxSource,
+    request: &StreamRequest,
+    on_end: EndCallback,
+) -> Result<Session, String> {
+    let source = serde_json::to_string(source).map_err(|e| e.to_string())?;
+    spawn_with(XBOX_STREAM_FLAG, &source, request, on_end)
+}
+
+/// What the app is started with to be a stream process: from a Pong host
+/// (`KEY_OR_NAME REQUEST_JSON`), or from an Xbox (`SOURCE_JSON
+/// REQUEST_JSON`).
+pub const STREAM_FLAG: &str = "--ping-stream";
+pub const XBOX_STREAM_FLAG: &str = "--ping-stream-xbox";
+
+fn spawn_with(
+    flag: &str,
+    what: &str,
+    request: &StreamRequest,
+    on_end: EndCallback,
+) -> Result<Session, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let request = serde_json::to_string(request).map_err(|e| e.to_string())?;
     let mut child = Command::new(exe)
-        .args(["--ping-stream", key_or_name, &request])
+        .args([flag, what, &request])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -153,24 +178,30 @@ impl Drop for Session {
     }
 }
 
-/// The stream process: `PROGRAM --ping-stream KEY REQUEST_JSON`. Runs the
+/// The stream process: `PROGRAM --ping-stream KEY REQUEST_JSON`, or
+/// `--ping-stream-xbox SOURCE_JSON REQUEST_JSON`. Runs the
 /// stream, says how it ended on stdout, and exits. "quit" on stdin ends it.
 pub fn child_main() -> ! {
     crate::logging::init();
     let args: Vec<String> = std::env::args().collect();
-    let (Some(key), Some(request)) = (args.get(2), args.get(3)) else {
-        eprintln!("usage: --ping-stream KEY REQUEST_JSON");
+    let (Some(flag), Some(what), Some(request)) = (args.get(1), args.get(2), args.get(3)) else {
+        eprintln!(
+            "usage: --ping-stream KEY REQUEST_JSON | --ping-stream-xbox SOURCE_JSON REQUEST_JSON"
+        );
         std::process::exit(2)
     };
+    let hooks = Hooks {
+        stdin_quit: true,
+        ..Default::default()
+    };
     let outcome = match serde_json::from_str::<StreamRequest>(request) {
-        Ok(request) => run(
-            key,
-            &request,
-            Hooks {
-                stdin_quit: true,
-                ..Default::default()
-            },
-        ),
+        Ok(request) if flag == XBOX_STREAM_FLAG => {
+            match serde_json::from_str::<crate::xbox::XboxSource>(what) {
+                Ok(source) => run_source(Source::Xbox(source), &request, hooks),
+                Err(e) => Err(format!("bad Xbox source: {e}")),
+            }
+        }
+        Ok(request) => run(what, &request, hooks),
         Err(e) => Err(format!("bad stream request: {e}")),
     };
     let reason = match outcome {
@@ -816,6 +847,16 @@ pub fn run(
         host.wan = None;
     }
     let identity = Arc::new(crate::store::identity(&dir)?);
+    run_source(Source::Pong { identity, host }, request, hooks)
+}
+
+/// Run a stream from `source` on this thread, as [`run`].
+pub fn run_source(
+    source: Source,
+    request: &StreamRequest,
+    hooks: Hooks,
+) -> Result<Option<String>, String> {
+    let dir = crate::store::data_dir();
     let event_loop = EventLoop::<UserEvent>::with_user_event()
         .build()
         .map_err(|e| format!("no display: {e}"))?;
@@ -835,7 +876,7 @@ pub fn run(
     }
     let mut app = StreamApp {
         request: request.clone(),
-        source: Some(Source::Pong { identity, host }),
+        source: Some(source),
         dir,
         proxy,
         hooks: hooks.started,

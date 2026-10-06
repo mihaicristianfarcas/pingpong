@@ -105,6 +105,9 @@ tools/linux-dev tools/linux/loopback-test        # a Linux host streaming to a L
 - `tools/linux/gnome-desktop` runs a GNOME desktop (mutter nested in an X
   screen, the portal, PipeWire) to test the Wayland host by hand;
   `pingpong-capture`'s `x11-poke` example answers its dialogs.
+- `tools/linux/xbox-test` runs Linux Ping against the mock Xbox: it signs
+  in, lists the console, streams it with a scripted controller, and saves a
+  picture in `target/linux-out/xbox` that shows the input the mock received.
 - `tools/linux/agent-desktop` is a small desktop (openbox, a terminal, an
   editor, a calculator, a file manager) with a Linux Pong, for AI agents to
   work on; `tools/linux/agent-tests/` has scripted clients for it.
@@ -163,6 +166,7 @@ normal use.
 | `PING_AGENT_PATH_MAP=LOCAL=REMOTE` | Rewrites paths passed to such a server |
 | `PING_AGENT_FREE_ONLY=1` | OpenRouter runs use free models only |
 | `PINGPONG_PORTMAP_TEST=1` | Run the port-mapping test against this network's real router |
+| `PING_XBOX_MOCK=URL` | Ping's Xbox requests (sign-in, Xbox Live, the console list, the streaming service) go to a mock console (`xbox-mock`, the `pingpong-xbox-mock` crate) at `URL`, not to Microsoft ([xbox.md](xbox.md#testing-without-a-console)) |
 
 Per-second statistics: `RUST_LOG=info,ping_core::stats=debug` on the client
 (`lost_frames` and `recoveries` in that line are cumulative), and the host's

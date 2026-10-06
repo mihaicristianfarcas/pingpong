@@ -4,7 +4,8 @@
 //! loss recovery, decoding, presentation, input capture -- so the app
 //! (`ping-app`) is only a launcher over it, and the `ping` CLI drives exactly
 //! the same code. The platform's window, decoder and presenter are in `mac`
-//! and `win`, behind [`session::Session`].
+//! and `win`, behind [`session::Session`]. A stream comes from a Pong host
+//! or from an Xbox ([`xbox`]), through the same platform layer.
 
 pub mod aspect;
 pub mod input;
@@ -21,6 +22,7 @@ pub mod store;
 pub mod stream;
 pub mod wake;
 pub mod wan;
+pub mod xbox;
 
 #[cfg(target_os = "linux")]
 pub mod linux;

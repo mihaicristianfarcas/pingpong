@@ -21,6 +21,7 @@ The same streaming code as the app, with a window of the platform's own.
 | `ping wake NAME` | Send Wake-on-LAN packets to a paired host |
 | `ping stream NAME [FLAGS]` | Stream a paired host |
 | `ping watch NAME [FLAGS]` | Watch the AI agent working on a host |
+| `ping xbox …` | An Xbox console or Xbox Cloud Gaming: [below](#ping-xbox) |
 
 `ping stream` flags (the defaults come from this display, fitted to the
 nearest standard aspect ratio as in the app, at 60 fps and Moonlight's
@@ -52,6 +53,30 @@ bitrate for the mode):
 Ctrl-C ends the stream properly, as Ctrl+Alt+Shift+Q does, so the host puts
 its displays back at once. The exit status is 1 when the stream ended for a
 reason other than you quitting.
+
+### `ping xbox`
+
+Streaming from an Xbox ([xbox.md](xbox.md)). A console or a game is named
+by its name (any case) or its id.
+
+| Command | Does |
+|---|---|
+| `ping xbox` | Say who is signed in |
+| `ping xbox sign-in` | Sign in with a Microsoft account: shows a code to enter at microsoft.com/link |
+| `ping xbox sign-out` | Forget the account |
+| `ping xbox consoles` | The account's consoles: name, model, state, id |
+| `ping xbox wake NAME`, `ping xbox off NAME` | Turn a console on (from sleep), or off |
+| `ping xbox games` | The cloud games the account may play |
+| `ping xbox stream CONSOLE [FLAGS]` | Stream a console |
+| `ping xbox play GAME [FLAGS]` | Play a cloud game (a part of its name will do) |
+
+`stream` and `play` take `ping stream`'s flags that apply (the size, the
+window, the statistics, the sound), and:
+
+| Flag | |
+|---|---|
+| `--keyboard` | Keys reach the console as a keyboard, not as the first controller |
+| `--region NAME` | Play in this cloud region rather than the account's default |
 
 ## `pong` — the host
 

@@ -52,6 +52,8 @@ it is, and what was measured on the way, is in the
 | `pingpong-clipboard` | Sharing the clipboard both ways during a session |
 | `pingpong-ui` | The design system both windows use (GPUI): theme, icons, controls, Markdown; and what they need of the desktop: menus, the tray icon, one running copy, starting at login |
 | `pingpong-update` | Whether a newer release, or newer commits on `main`, exist (GitHub's public API, once a day), and installing a release from the app: the archive checked against GitHub's SHA-256, then each system's way of putting it in place |
+| `pingpong-xbox` | Streaming from an Xbox console or Xbox Cloud Gaming: Microsoft sign-in, the console and session APIs, the WebRTC connection (str0m) ([xbox.md](xbox.md)) |
+| `pingpong-xbox-mock` | A mock Xbox and Microsoft's services, for testing the above without either (`xbox-mock`) |
 | `ping-core` | The client: session, stream, input, statistics, the host store; per-platform window, decoder and renderer; the `ping` CLI |
 | `ping-app` | Ping's window (GPUI), and `Ping mcp` |
 | `ping-agent` | Computer use: a headless session, the actions, the MCP server, the agent runners; the `ping-agent` CLI |
@@ -257,6 +259,17 @@ on a session that cannot start. A client that goes quiet keeps its session
 (and its display) for 20 seconds: coming back within that resumes the
 stream. After a session, the host keeps the virtual display for a minute for
 a client coming back.
+
+## Xbox
+
+Ping also streams from an Xbox: a console of the user's, or a game in Xbox
+Cloud Gaming. A stream is opened from a *source* (`ping_core::stream::Source`):
+a Pong host through the tunnel, or an Xbox over WebRTC
+(`ping_core::xbox`, on `pingpong-xbox`). Either way the frames reach the
+same platform decoder and presenter, and the same keys, mouse and
+controllers drive it. The protocol is the one Microsoft's web client
+speaks, learnt from Greenlight; [xbox.md](xbox.md) has how it works and
+what is verified.
 
 ## Where to read next
 
