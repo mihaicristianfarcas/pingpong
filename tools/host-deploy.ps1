@@ -30,23 +30,48 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 $dest = 'C:\Program Files\Pong'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
+# Windows holds a program's file for a moment after its process is killed,
+# and a copy straight after fails ("being used by another process"): the
+# installer stops a program, waits for it to be gone, and copies over it
+# with a few tries.
+function Stop-Program([string]$Name) {
+    $running = @(Get-Process $Name -ErrorAction SilentlyContinue)
+    if ($running.Count -eq 0) { return }
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    $running | Wait-Process -Timeout 15 -ErrorAction SilentlyContinue
+}
+function Copy-Program([string]$From, [string]$To) {
+    for ($try = 1; ; $try++) {
+        try { Copy-Item -Force $From $To; return }
+        catch { if ($try -ge 20) { throw }; Start-Sleep -Milliseconds 250 }
+    }
+}
+
 $svc = Get-Service PongService -ErrorAction SilentlyContinue
 if ($svc -and $svc.Status -ne 'Stopped') {
     Stop-Service PongService -Force
     $svc.WaitForStatus('Stopped', '00:00:30')
 }
-# The host child may outlive a forced stop by a moment.
-Get-Process pong -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
-Copy-Item -Force $Source (Join-Path $dest 'pong.exe')
+try {
+    # The host child may outlive a forced stop by a moment.
+    Stop-Program pong
+    Copy-Program $Source (Join-Path $dest 'pong.exe')
+    if (Test-Path $Window) {
+        Stop-Program 'Pong Control'
+        Copy-Program $Window (Join-Path $dest 'Pong Control.exe')
+    }
+} catch {
+    # Leave the host running, on whichever pong.exe is in place, rather than
+    # stopped until someone notices.
+    if ($svc) { Start-Service PongService -ErrorAction SilentlyContinue }
+    throw
+}
 # A download's files carry the internet's mark, and SmartScreen would
 # question Pong's window at its first start: the copies are trusted as this
 # installer is.
 Unblock-File (Join-Path $dest 'pong.exe')
 if (Test-Path $Window) {
-    Get-Process 'Pong Control' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     $control = Join-Path $dest 'Pong Control.exe'
-    Copy-Item -Force $Window $control
     Unblock-File $control
     # For everyone on this PC: Start menu, "Pong".
     $shell = New-Object -ComObject WScript.Shell
