@@ -44,6 +44,9 @@ pub struct Prefs {
     pub yuv444: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub share_clipboard: bool,
+    /// In an Xbox stream, keys drive the first controller (Greenlight's
+    /// default) rather than reach the console as a keyboard.
+    pub xbox_keyboard_as_controller: bool,
     /// What the update check follows, once the user has chosen (until
     /// then, what suits the build that runs: see [`Prefs::update_channel`]).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -74,6 +77,7 @@ impl Default for Prefs {
             hdr: false,
             yuv444: false,
             share_clipboard: true,
+            xbox_keyboard_as_controller: true,
             updates: None,
         }
     }

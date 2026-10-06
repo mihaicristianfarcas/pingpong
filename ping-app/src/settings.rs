@@ -625,6 +625,18 @@ impl PingApp {
             t,
             cx,
         ));
+        first.push(self.toggle(
+            "xbox-keyboard",
+            "Keyboard as an Xbox controller",
+            "In an Xbox stream: Enter or Space is A, Backspace or Esc is B, the arrows the \
+                D-pad, [ ] the bumpers, - = the triggers, M Menu, V View, N the Xbox button. \
+                Off, games that take a keyboard get one.",
+            |p| p.xbox_keyboard_as_controller,
+            |p, v| p.xbox_keyboard_as_controller = v,
+            true,
+            t,
+            cx,
+        ));
         let shortcuts = [
             ("Q", "Stop streaming"),
             ("S", "Show or hide statistics"),

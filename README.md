@@ -25,6 +25,9 @@ Linux.
   screen, use the keyboard, mouse or controllers, copy and paste each way,
   start apps, take over or watch agents
   ([docs/usage.md](docs/usage.md#what-each-device-may-do)).
+- **Xbox too**: Ping streams your Xbox console, or a game in Xbox Cloud
+  Gaming, in the same window, decoder and controllers as a Pong host
+  ([docs/xbox.md](docs/xbox.md)).
 - **AI agents** can use your hosts as clients of their own — from Ping, or
   from any MCP client — held to rules the host enforces
   ([docs/ai-agents.md](docs/ai-agents.md)).
@@ -76,7 +79,9 @@ how streaming should behave, it chose what they do, and says so in its
 comments. Its virtual displays follow
 [Apollo](https://github.com/ClassicOldSong/Apollo), the Sunshine fork that
 made them, and use its driver, SudoVDA, on Windows. It is a separate implementation, written from scratch in Rust.
-The tunnel is
+Streaming from an Xbox follows
+[Greenlight](https://github.com/unknownskl/greenlight), the open-source
+client that worked out what Microsoft's services expect. The tunnel is
 [pq-boringtun](https://github.com/mihaicristianfarcas/pq-boringtun), a
 post-quantum fork of Cloudflare's boringtun; the windows are drawn with
 [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui).

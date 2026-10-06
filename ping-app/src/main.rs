@@ -15,6 +15,7 @@ mod notify;
 mod platform;
 mod prefs;
 mod settings;
+mod xbox;
 
 use gpui::{actions, App, AppContext, KeyBinding, Menu, MenuItem};
 use pingpong_ui::menus;
@@ -50,7 +51,9 @@ fn main() {
     }
     // Linux: the stream's own process (see ping_core::linux).
     #[cfg(target_os = "linux")]
-    if std::env::args().nth(1).as_deref() == Some("--ping-stream") {
+    if let Some(ping_core::linux::STREAM_FLAG | ping_core::linux::XBOX_STREAM_FLAG) =
+        std::env::args().nth(1).as_deref()
+    {
         ping_core::linux::child_main();
     }
     // Started by an update: the old copy quits first.

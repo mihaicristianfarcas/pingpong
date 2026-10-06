@@ -54,6 +54,9 @@ impl PingApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        if let Some(sheet) = self.xbox_sheet(t, cx) {
+            return Some(sheet);
+        }
         if let Some(p) = &self.pairing {
             let title = format!("Pair with {}", p.title);
             let body: AnyElement = match &p.state {

@@ -159,6 +159,8 @@ in points, to see a long page whole), `menu=NAME`, `open=ID` (the select
 with that id, open: `fps`, `codec`), `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
 `wait=SECS`, `close-login`, `vanish-login`, `step=N`, `panel-end`,
+`xbox` (the Xbox page), `xbox-sign-in` (its sign-in sheet), `xbox=NAME`
+(stream that console; with `PING_XBOX_MOCK`, the mock's account),
 `update` and `update-main` (the update check says there is a newer release,
 or newer commits on main), `installs` (this copy installs updates, as a
 release does), `installing` and `install-failed` (an installation under

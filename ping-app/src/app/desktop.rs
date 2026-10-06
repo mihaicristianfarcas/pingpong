@@ -36,6 +36,7 @@ impl PingApp {
             format!("{} h {} min", secs / 3600, secs / 60 % 60)
         };
         let host = s.host.clone();
+        let xbox = s.xbox;
         div()
             .size_full()
             .flex()
@@ -66,13 +67,25 @@ impl PingApp {
                     .gap(px(22.0))
                     .child(pingpong_ui::page_header(
                         host.clone(),
-                        Some(format!("Your desktop session, for {since}.").into()),
+                        Some(
+                            if xbox {
+                                format!("Your Xbox stream, for {since}.")
+                            } else {
+                                format!("Your desktop session, for {since}.")
+                            }
+                            .into(),
+                        ),
                         None,
                         t,
                     ))
                     .child(pingpong_ui::section("", t).child(pingpong_ui::rows(
                         [
-                            info("Mode", format!("{w} × {h} at {fps} FPS"), t),
+                            if xbox {
+                                // The console picks its own mode.
+                                info("Mode", format!("Up to 1080p, shown at {w} × {h}"), t)
+                            } else {
+                                info("Mode", format!("{w} × {h} at {fps} FPS"), t)
+                            },
                             info("Where", where_text(fullscreen), t),
                             info(
                                 "To end it",

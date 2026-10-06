@@ -111,6 +111,7 @@ Windows and Linux) opens them.
 | | Controller as a mouse | Hold Start to drive the mouse with a controller |
 | | Swap mouse buttons | The left button clicks right on the host, and the right one left (Moonlight's option) |
 | | Reverse scrolling | The wheel and the trackpad scroll the host the other way (Moonlight's option) |
+| | Keyboard as an Xbox controller | In an Xbox stream, keys are the first controller (Enter is A, Backspace B, the arrows the D-pad: [xbox.md](xbox.md#using-it)); off, the console gets a keyboard. On by default, as in Greenlight |
 
 Settings are kept in `settings.toml` in Ping's data folder, beside the paired
 hosts (`hosts.toml`) and this device's keys:
@@ -236,6 +237,12 @@ What the device hears:
 
 From a terminal: `pong permissions X25519 view,keyboard,mouse`
 ([cli.md](cli.md#pong--the-host)).
+
+## Xbox
+
+The sidebar's **Xbox** page streams your Xbox consoles and Xbox Cloud
+Gaming, after you sign in with your Microsoft account: see
+[xbox.md](xbox.md).
 
 ## Updates
 
