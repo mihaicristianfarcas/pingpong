@@ -6007,6 +6007,8 @@ dependencies = [
  "criterion",
  "proptest",
  "reed-solomon-simd",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

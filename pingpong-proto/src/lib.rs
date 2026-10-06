@@ -19,6 +19,7 @@ pub mod input;
 pub mod mackeys;
 pub mod pacer;
 pub mod packetize;
+pub mod permission;
 pub mod reassemble;
 pub mod repeat;
 pub mod telemetry;
