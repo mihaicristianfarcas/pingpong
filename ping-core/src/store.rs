@@ -4,7 +4,7 @@
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use pingpong_transport::{Identity, PublicIdentity};
 use serde::{Deserialize, Serialize};
@@ -244,22 +244,43 @@ fn file_lock() -> std::sync::MutexGuard<'static, ()> {
 impl Hosts {
     pub fn load(dir: &Path) -> Hosts {
         let path = dir.join("hosts.toml");
-        let list = Self::read(&path);
+        let list = Self::read(&path).unwrap_or_else(|e| {
+            // Loaded every few seconds (the host list's poll): said once.
+            static SAID: AtomicBool = AtomicBool::new(false);
+            if !SAID.swap(true, Ordering::Relaxed) {
+                tracing::error!(path = %path.display(), error = e, "the paired hosts could not \
+                    be read: Ping goes on with none, and leaves the file as it is");
+            }
+            Vec::new()
+        });
         Hosts { path, list }
     }
 
-    fn read(path: &Path) -> Vec<KnownHost> {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|t| toml::from_str::<File>(&t).ok())
-            .map(|f| f.hosts)
-            .unwrap_or_default()
+    /// The hosts in `path`: none if there is no file yet. Anything else that
+    /// is not a list of hosts (a damaged file, one a newer Ping wrote) is an
+    /// error, so that it is not taken for an empty list and saved over.
+    fn read(path: &Path) -> Result<Vec<KnownHost>, String> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => toml::from_str::<File>(&text)
+                .map(|f| f.hosts)
+                .map_err(|e| e.to_string().lines().next().unwrap_or_default().to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
-    /// Re-read, apply `f`, and save if it says it changed something.
+    /// Re-read, apply `f`, and save if it says it changed something. Refused
+    /// when the file cannot be read: saving would replace every pairing in
+    /// it.
     fn modify(&mut self, f: impl FnOnce(&mut Vec<KnownHost>) -> bool) -> std::io::Result<bool> {
         let _guard = file_lock();
-        self.list = Self::read(&self.path);
+        self.list = Self::read(&self.path).map_err(|e| {
+            std::io::Error::other(format!(
+                "Ping could not read {} ({e}) and will not save over it. Fix the file or move \
+                    it away, then try again.",
+                self.path.display()
+            ))
+        })?;
         let changed = f(&mut self.list);
         if changed {
             self.save()?;
@@ -453,6 +474,32 @@ pub(crate) mod tests {
         assert!(waiter.join().unwrap());
         assert!(started.elapsed() >= std::time::Duration::from_millis(50));
         assert!(!stream_waiting());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_hosts_file_that_cannot_be_read_is_left_as_it_is() {
+        let dir = scratch("hosts-damaged");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hosts.toml");
+        let damaged = "[[host]]\nname = \"gaming-pc\"\naddress = ";
+        std::fs::write(&path, damaged).unwrap();
+        let mut hosts = Hosts::load(&dir);
+        assert!(hosts.list().is_empty());
+        let refused = hosts
+            .upsert(KnownHost::by_hand("other", "192.168.1.20:47800", "x", "m"))
+            .unwrap_err();
+        assert!(
+            refused.to_string().contains("will not save over it"),
+            "{refused}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), damaged);
+        // No file yet is no hosts yet, and saving works.
+        std::fs::remove_file(&path).unwrap();
+        Hosts::load(&dir)
+            .upsert(KnownHost::by_hand("other", "192.168.1.20:47800", "x", "m"))
+            .unwrap();
+        assert_eq!(Hosts::load(&dir).list().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
