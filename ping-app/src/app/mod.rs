@@ -418,7 +418,8 @@ impl PingApp {
                 let address = field.read(cx).text().trim().to_string();
                 if !address.is_empty() {
                     this.add_host = None;
-                    this.pair_with(address.clone(), address, None, false, cx);
+                    let web = crate::model::web_url_for(&address);
+                    this.pair_with(address.clone(), address, web, false, cx);
                 }
             }
             FieldEvent::Cancel => {
