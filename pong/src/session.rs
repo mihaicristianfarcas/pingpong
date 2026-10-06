@@ -254,6 +254,7 @@ impl Clip {
                 rate,
                 offer_current: false,
                 peer: peer_name,
+                directions: pingpong_clipboard::Directions::BOTH,
             };
             Some(Clip::Here(pingpong_clipboard::ClipSync::start(opts, send)))
         }

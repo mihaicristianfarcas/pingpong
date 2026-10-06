@@ -286,6 +286,7 @@ pub fn run(args: &[String]) -> ExitCode {
         rate,
         offer_current: false,
         peer: "the client".into(),
+        directions: pingpong_clipboard::Directions::BOTH,
     };
     let sync = pingpong_clipboard::ClipSync::start(opts, move |p| {
         let _ = write_frame(&mut *out.lock(), PACKET, p);

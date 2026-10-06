@@ -13,11 +13,17 @@
 //! Left alone: copies a password manager marks as concealed, and copies
 //! larger than `clip::MAX_TRANSFER` (files beyond it are not sent; the text
 //! or image of the copy still is).
+//!
+//! Each way can be turned off, as a host's permissions for a device may
+//! allow one and not the other (Apollo's `clipboard_read` and
+//! `clipboard_set`): with sending off, this end's clipboard is not even
+//! looked at; with receiving off, a copy from the other end is refused at
+//! its first chunk, so the other end stops sending it.
 
 mod board;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -48,6 +54,36 @@ pub struct Options {
     pub offer_current: bool,
     /// The other end, for the log.
     pub peer: String,
+    /// Which ways copies go, as the sharing starts.
+    pub directions: Directions,
+}
+
+/// Which ways copies go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Directions {
+    /// This end's copies go to the other end.
+    pub send: bool,
+    /// The other end's copies land on this end's clipboard.
+    pub receive: bool,
+}
+
+impl Directions {
+    pub const BOTH: Directions = Directions {
+        send: true,
+        receive: true,
+    };
+
+    /// As one byte (`pong clipboard-agent` passes it on).
+    pub fn to_bits(self) -> u8 {
+        self.send as u8 | (self.receive as u8) << 1
+    }
+
+    pub fn from_bits(bits: u8) -> Directions {
+        Directions {
+            send: bits & 1 != 0,
+            receive: bits & 2 != 0,
+        }
+    }
 }
 
 /// What a stream's clipboard sharing moves at most per second: half the
@@ -60,6 +96,8 @@ pub fn rate_for(bitrate_kbps: u32) -> u64 {
 pub struct ClipSync {
     inbox: Sender<Vec<u8>>,
     stop: Arc<AtomicBool>,
+    /// `Directions::to_bits`, read by the worker each turn.
+    directions: Arc<AtomicU8>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -68,19 +106,27 @@ impl ClipSync {
     pub fn start(opts: Options, send: impl Fn(&[u8]) + Send + 'static) -> ClipSync {
         let (inbox, rx) = crossbeam_channel::bounded(8192);
         let stop = Arc::new(AtomicBool::new(false));
+        let directions = Arc::new(AtomicU8::new(opts.directions.to_bits()));
         let thread = {
-            let stop = stop.clone();
+            let (stop, directions) = (stop.clone(), directions.clone());
             std::thread::Builder::new()
                 .name("clipboard".into())
-                .spawn(move || Worker::new(opts, Box::new(send)).run(rx, &stop))
+                .spawn(move || Worker::new(opts, Box::new(send)).run(rx, &stop, &directions))
                 .map_err(|e| tracing::warn!(error = %e, "cannot start clipboard sharing"))
                 .ok()
         };
         ClipSync {
             inbox,
             stop,
+            directions,
             thread,
         }
+    }
+
+    /// Change which ways copies go, from now on (a copy on its way the
+    /// other way stops).
+    pub fn set_directions(&self, d: Directions) {
+        self.directions.store(d.to_bits(), Ordering::Relaxed);
     }
 
     /// A clipboard packet from the other end (a control body for which
@@ -120,6 +166,7 @@ struct Worker {
     /// A digest of the last copy sent or received: the same copy again is
     /// not sent (both ends on one clipboard would bounce it forever).
     last: Option<u64>,
+    directions: Directions,
 }
 
 impl Worker {
@@ -128,7 +175,6 @@ impl Worker {
         let next_id = rand_core::RngCore::next_u32(&mut rand_core::OsRng);
         Worker {
             board: Board::open(),
-            opts,
             send,
             outgoing: None,
             incoming: None,
@@ -138,15 +184,19 @@ impl Worker {
             started: None,
             misses: 0,
             last: None,
+            directions: opts.directions,
+            opts,
         }
     }
 
-    fn run(mut self, rx: Receiver<Vec<u8>>, stop: &AtomicBool) {
-        tracing::info!(peer = self.opts.peer, "sharing the clipboard");
-        self.seen = self.board.stamp();
-        if self.opts.offer_current && !self.board.concealed() {
-            if let Some(items) = self.board.read(false) {
-                self.offer(items);
+    fn run(mut self, rx: Receiver<Vec<u8>>, stop: &AtomicBool, directions: &AtomicU8) {
+        tracing::info!(peer = self.opts.peer, directions = ?self.directions, "sharing the clipboard");
+        if self.directions.send {
+            self.seen = self.board.stamp();
+            if self.opts.offer_current && !self.board.concealed() {
+                if let Some(items) = self.board.read(false) {
+                    self.offer(items);
+                }
             }
         }
         let mut last_look = Instant::now();
@@ -167,18 +217,43 @@ impl Worker {
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
             }
+            self.follow(Directions::from_bits(directions.load(Ordering::Relaxed)));
             let now = Instant::now();
             self.receive_tick(now);
             self.send_tick(now);
             if last_look.elapsed() >= LOOK_EVERY {
                 last_look = now;
-                self.look();
+                if self.directions.send {
+                    self.look();
+                }
             }
         }
         if let Some(o) = self.outgoing.take() {
             (self.send)(&clip::cancel_packet(o.id));
         }
         tracing::info!(peer = self.opts.peer, "clipboard sharing over");
+    }
+
+    /// Copies go the ways `d` says from now on.
+    fn follow(&mut self, d: Directions) {
+        if d == self.directions {
+            return;
+        }
+        tracing::info!(peer = self.opts.peer, directions = ?d, "clipboard sharing changed");
+        if !d.send {
+            if let Some(o) = self.outgoing.take() {
+                (self.send)(&clip::cancel_packet(o.id));
+            }
+        } else if !self.directions.send {
+            // What was copied while sending was off stays here.
+            self.seen = self.board.stamp();
+        }
+        if !d.receive {
+            if let Some(i) = self.incoming.take() {
+                (self.send)(&clip::cancel_packet(i.id));
+            }
+        }
+        self.directions = d;
     }
 
     /// Something new on this end's clipboard: send it.
@@ -256,6 +331,11 @@ impl Worker {
                 if let Some(&(_, chunks)) = self.done.iter().find(|(d, _)| *d == id) {
                     // Done here, but the sender missed the last ack.
                     (self.send)(&clip::full_ack_packet(id, chunks));
+                    return;
+                }
+                if !self.directions.receive {
+                    // Not taken: the sender stops at this, not at a stall.
+                    (self.send)(&clip::cancel_packet(id));
                     return;
                 }
                 if self.incoming.as_ref().is_none_or(|i| i.id != id) {
@@ -516,6 +596,42 @@ mod tests {
         );
         assert!(dir.join("Project/src/empty").is_dir());
         assert!(!out.path().join("old").exists(), "older copies go");
+    }
+
+    #[test]
+    fn a_copy_this_end_may_not_receive_is_refused_at_its_first_chunk() {
+        use pingpong_proto::HEADER_LEN;
+        let dir = tempfile::tempdir().unwrap();
+        let sent = Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+        let out = sent.clone();
+        let mut w = Worker::new(
+            Options {
+                files_dir: dir.path().join("in"),
+                rate: 1 << 20,
+                offer_current: false,
+                peer: "test".into(),
+                directions: Directions {
+                    send: true,
+                    receive: false,
+                },
+            },
+            Box::new(move |p: &[u8]| out.lock().unwrap().push(p.to_vec())),
+        );
+        let bytes = clip::encode_items(&[Item::Text("secret".into())]);
+        let mut copy = Outgoing::new(9, bytes, 1 << 20, Instant::now());
+        for p in copy.poll(Instant::now()) {
+            w.on_packet(&p[HEADER_LEN..]);
+        }
+        assert!(w.incoming.is_none(), "nothing is taken in");
+        let sent = sent.lock().unwrap();
+        assert!(!sent.is_empty());
+        assert!(sent
+            .iter()
+            .all(|p| clip::decode(&p[HEADER_LEN..]) == Some(Msg::Cancel { id: 9 })));
+        // As one byte, both ways.
+        for d in [Directions::BOTH, w.directions] {
+            assert_eq!(Directions::from_bits(d.to_bits()), d);
+        }
     }
 
     #[test]

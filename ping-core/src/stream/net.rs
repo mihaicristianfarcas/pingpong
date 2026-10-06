@@ -1027,6 +1027,7 @@ fn start_clipboard(ctx: &Ctx, ack: &SessionAck) -> pingpong_clipboard::ClipSync 
         rate: pingpong_clipboard::rate_for(ack.bitrate_kbps),
         offer_current: true,
         peer: ctx.host_name.clone(),
+        directions: pingpong_clipboard::Directions::BOTH,
     };
     pingpong_clipboard::ClipSync::start(opts, move |p| {
         let _ = endpoint.send(&peer, p);
