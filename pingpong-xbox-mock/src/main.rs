@@ -2,6 +2,10 @@
 //! streaming without a console (see the crate's documentation).
 //!
 //!   xbox-mock [--listen ADDR:PORT] [--awake] [--cloud gamepass|free|none]
+//!             [--sign-in-polls N]
+//!
+//! `--sign-in-polls N` answers the first N polls of a sign-in "not yet"
+//! (the sign-in sheet stays up that long: one poll a second).
 //!
 //! It prints the `PING_XBOX_MOCK=…` line to give Ping; then sign in, list
 //! the consoles and stream as with a real account:
@@ -36,6 +40,10 @@ fn main() {
                 None => return usage(),
             },
             "--awake" => config.console_asleep = false,
+            "--sign-in-polls" => match args.next().and_then(|v| v.parse().ok()) {
+                Some(n) => config.pending_polls = n,
+                None => return usage(),
+            },
             "--cloud" => {
                 config.cloud = match args.next().as_deref() {
                     Some("gamepass") => Cloud::GamePass,
@@ -73,6 +81,9 @@ fn main() {
 }
 
 fn usage() {
-    eprintln!("usage: xbox-mock [--listen ADDR:PORT] [--awake] [--cloud gamepass|free|none]");
+    eprintln!(
+        "usage: xbox-mock [--listen ADDR:PORT] [--awake] [--cloud gamepass|free|none] \
+         [--sign-in-polls N]"
+    );
     std::process::exit(2);
 }

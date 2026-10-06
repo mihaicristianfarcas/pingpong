@@ -32,6 +32,12 @@ use crate::picture::{self, InputView};
 use crate::Record;
 
 const FRAME: Duration = Duration::from_nanos(1_000_000_000 / 60);
+/// Sends are paced, as a console's are: a keyframe here is the whole
+/// picture uncompressed (353 KB), which sent in one burst overflows the
+/// receive buffer Linux gives a socket (about 200 KB). 200 Mbit/s spreads
+/// it over 14 ms; ordinary frames (a few kilobytes) go at once.
+const PACE_BYTES_PER_MS: usize = 200_000_000 / 8 / 1000;
+const PACE_BURST: usize = 64 * 1024;
 const AUDIO_PACKET: Duration = Duration::from_millis(20);
 const AUDIO_SAMPLES: usize = 960;
 
@@ -149,6 +155,10 @@ struct Console {
     outbox: Vec<(&'static str, Vec<u8>)>,
     video_loss: u8,
     rng: u64,
+    /// Datagrams waiting for the pacer, and what it may send now.
+    paced: std::collections::VecDeque<(SocketAddr, Vec<u8>)>,
+    budget: usize,
+    budget_at: Instant,
     /// The A button's last state, to rumble on its press.
     a_held: bool,
     done: bool,
@@ -182,6 +192,9 @@ impl Console {
             outbox: Vec::new(),
             video_loss: 0,
             rng: 0x9E37_79B9_7F4A_7C15,
+            paced: std::collections::VecDeque::new(),
+            budget: PACE_BURST,
+            budget_at: now,
             a_held: false,
             done: false,
         }
@@ -221,11 +234,13 @@ impl Console {
                     return;
                 }
             }
+            self.pace();
+            let pacing = if self.paced.is_empty() { 5 } else { 1 };
             let wake = [
                 timeout,
                 self.next_video,
                 self.next_audio,
-                now + Duration::from_millis(5),
+                now + Duration::from_millis(pacing),
             ]
             .into_iter()
             .min()
@@ -264,11 +279,31 @@ impl Console {
                     if self.video_loss > 0 && t.contents.len() > 900 && self.lose() {
                         continue;
                     }
-                    let _ = self.udp.send_to(&t.contents, t.destination);
+                    self.paced.push_back((t.destination, t.contents.to_vec()));
+                    self.pace();
                 }
                 Ok(Output::Event(e)) => self.event(e),
                 Err(_) => return None,
             }
+        }
+    }
+
+    /// Send what the pacer allows now.
+    fn pace(&mut self) {
+        let now = Instant::now();
+        let earned =
+            now.duration_since(self.budget_at).as_micros() as usize * PACE_BYTES_PER_MS / 1000;
+        if earned > 0 {
+            self.budget = (self.budget + earned).min(PACE_BURST);
+            self.budget_at = now;
+        }
+        while let Some((to, d)) = self.paced.front() {
+            if d.len() > self.budget {
+                break;
+            }
+            self.budget -= d.len();
+            let _ = self.udp.send_to(d, *to);
+            self.paced.pop_front();
         }
     }
 
