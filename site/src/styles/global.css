@@ -60,8 +60,8 @@
 }
 
 /* No scroll-behavior: smooth here: a browser restoring the scroll position
-   on reload would glide there from the top. In-page links glide by script
-   (layouts/Base.astro). */
+   on reload would glide there from the top, and in-page links jump straight
+   to their section (layouts/Base.astro). */
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;

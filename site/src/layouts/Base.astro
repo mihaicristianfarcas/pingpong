@@ -1,6 +1,6 @@
 ---
-//! Shared page metadata and in-page navigation. Links focus the first
-//! clickable control at their destination, respecting reduced motion.
+//! Shared page metadata and in-page navigation. Links jump straight to
+//! their section and focus the first clickable control there.
 //! Scroll restoration waits for component layout and fonts, then tells the
 //! header to start visible at that position.
 import { Font } from 'astro:assets';
@@ -109,13 +109,12 @@ const cardUrl = Astro.site ? new URL(card, Astro.site).href : card;
       })();
     </script>
     <script>
-      // In-page links glide to their section without writing it into the
+      // In-page links jump to their section without writing it into the
       // address: a reload then returns to where the reader was, rather than
       // to the last section a link pointed at. An address that arrives with
       // a section loses it once the browser has scrolled there, for the
       // same reason. Focus moves to the first visible action at the
       // destination, so keyboard navigation continues through controls.
-      const still = window.matchMedia('(prefers-reduced-motion: reduce)');
       const actions = 'a[href], button:not(:disabled), summary, input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), video[controls]';
       document.addEventListener('click', (e) => {
         const link = (e.target as Element).closest('a[href^="#"]');
@@ -124,9 +123,8 @@ const cardUrl = Astro.site ? new URL(card, Astro.site).href : card;
         const to = document.getElementById(id);
         if (!to) return;
         e.preventDefault();
-        const behavior = still.matches ? 'auto' : 'smooth';
-        if (id === 'top') window.scrollTo({ top: 0, behavior });
-        else to.scrollIntoView({ behavior });
+        if (id === 'top') window.scrollTo({ top: 0, behavior: 'instant' });
+        else to.scrollIntoView({ behavior: 'instant' });
         const focus = [...to.querySelectorAll<HTMLElement>(actions)].find((control) =>
           control.getAttribute('aria-disabled') !== 'true'
           && !control.closest('[hidden], [inert], [aria-hidden="true"]')
