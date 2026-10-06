@@ -3,6 +3,10 @@
 //! decoded -- or concealed with Opus PLC when lost -- into a lock-free ring,
 //! and the platform's output callback drains the ring.
 //!
+//! Packets are as long as the sender makes them: 5 ms from Pong, 10 or 20 ms
+//! from a WebRTC sender (an Xbox). A lost packet is concealed for as long as
+//! the last one decoded.
+//!
 //! Latency adapts to the network, as WebRTC's jitter buffer does: after an
 //! underrun the output waits for the target amount of audio before playing
 //! again, and each underrun raises the target (a Wi-Fi scan stalls delivery for
@@ -18,6 +22,9 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use pingpong_proto::audio::{AudioPacket, Playout, Reorder, FRAME_SAMPLES, SAMPLE_RATE};
+
+/// The longest Opus packet, 120 ms: what one packet can decode to.
+const MAX_PACKET_SAMPLES: usize = SAMPLE_RATE as usize * 120 / 1000;
 
 use crate::opus::Decoder;
 
@@ -231,7 +238,10 @@ fn decode_loop(
     let capacity = producer.buffer().capacity();
     let epoch = Instant::now();
     let mut reorder = Reorder::new(GAP_WAIT_US, GAP_MAX_AHEAD);
-    let mut pcm = vec![0f32; FRAME_SAMPLES * ch];
+    let mut pcm = vec![0f32; MAX_PACKET_SAMPLES * ch];
+    // Samples per channel of the last packet decoded: what a lost one is
+    // concealed for.
+    let mut packet_samples = FRAME_SAMPLES;
     let mut window_start = Instant::now();
     let mut window_min = usize::MAX;
     let mut trim = 0u32;
@@ -277,9 +287,23 @@ fn decode_loop(
                 Playout::Packet(d) => Some(d.as_slice()),
                 Playout::Lost => None,
             };
-            if decoder.decode(packet, &mut pcm).is_err() {
-                pcm.fill(0.0);
-            }
+            let out = match packet {
+                Some(_) => &mut pcm[..],
+                None => &mut pcm[..packet_samples * ch],
+            };
+            let n = match decoder.decode(packet, out) {
+                Ok(n) => {
+                    if packet.is_some() && n > 0 {
+                        packet_samples = n;
+                    }
+                    n
+                }
+                Err(_) => {
+                    pcm[..packet_samples * ch].fill(0.0);
+                    packet_samples
+                }
+            };
+            let pcm = &pcm[..n * ch];
             let peak = pcm.iter().fold(0f32, |p, v| p.max(v.abs()));
             counters
                 .peak
@@ -304,7 +328,7 @@ fn decode_loop(
                 counters.trimmed.fetch_add(1, Ordering::Relaxed);
                 continue;
             }
-            write(&mut producer, &pcm);
+            write(&mut producer, pcm);
         }
         counters.late.store(reorder.late, Ordering::Relaxed);
 
@@ -345,13 +369,15 @@ fn decode_loop(
                     samples_for_ms(target.saturating_sub(MARGIN_BELOW_TARGET_MS) as usize, ch);
                 if lowest > max {
                     // Drop the excess, a few packets at a time.
-                    trim = ((lowest - max) / pcm.len()).clamp(1, 4) as u32;
+                    trim = ((lowest - max) / (packet_samples * ch)).clamp(1, 4) as u32;
                     history.clear();
                 } else if window_min < samples_for_ms(MIN_MARGIN_MS, ch)
                     && reorder.queued() == 0
-                    && decoder.decode(None, &mut pcm).is_ok()
+                    && decoder
+                        .decode(None, &mut pcm[..packet_samples * ch])
+                        .is_ok()
                 {
-                    write(&mut producer, &pcm);
+                    write(&mut producer, &pcm[..packet_samples * ch]);
                     counters.inserted.fetch_add(1, Ordering::Relaxed);
                 }
             }
@@ -419,5 +445,62 @@ mod tests {
             pcm.iter().any(|v| v.abs() > 0.01),
             "played audio after priming"
         );
+    }
+
+    #[test]
+    fn twenty_millisecond_packets_play_and_a_lost_one_is_concealed_as_long() {
+        let feeder: Arc<Mutex<Option<Feeder>>> = Arc::default();
+        let slot = feeder.clone();
+        let player = Player::start(2, move |f| {
+            *slot.lock().unwrap() = Some(f);
+            Ok(Box::new(Null))
+        })
+        .unwrap();
+        // 20 ms frames, as a WebRTC sender (an Xbox) makes them.
+        const SAMPLES: usize = 960;
+        let mut enc = Encoder::new(2, 96_000).unwrap();
+        let tone: Vec<f32> = (0..SAMPLES * 2)
+            .map(|i| ((i / 2) as f32 * 0.06).sin() * 0.4)
+            .collect();
+        let mut buf = [0u8; 1500];
+        for seq in 0..6u32 {
+            let n = enc.encode(&tone, &mut buf).unwrap();
+            if seq == 3 {
+                continue;
+            }
+            player.push(AudioPacket {
+                seq,
+                capture_ts_us: seq * 20_000,
+                recovered: false,
+                data: buf[..n].to_vec(),
+            });
+        }
+        // Long enough for the gap's wait to expire.
+        std::thread::sleep(Duration::from_millis(150));
+        let s = player.stats();
+        assert_eq!((s.decoded, s.concealed), (5, 1), "{s:?}");
+        // Six packets of 20 ms, the lost one included: 120 ms buffered
+        // (bar what priming consumed, which is nothing yet).
+        let mut guard = feeder.lock().unwrap();
+        let f = guard.as_mut().unwrap();
+        assert!(
+            f.consumer.slots() >= 6 * SAMPLES * 2 - 2 * SAMPLES,
+            "{}",
+            f.consumer.slots()
+        );
+    }
+
+    #[test]
+    fn the_encoder_takes_opus_frame_lengths_only() {
+        let mut enc = Encoder::new(2, 96_000).unwrap();
+        let mut out = [0u8; 1500];
+        for samples in [120, 240, 480, 960] {
+            assert!(
+                enc.encode(&vec![0.0; samples * 2], &mut out).is_ok(),
+                "{samples}"
+            );
+        }
+        assert!(enc.encode(&[0.0; 300 * 2], &mut out).is_err());
+        assert!(enc.encode(&[0.0; 241], &mut out).is_err());
     }
 }
