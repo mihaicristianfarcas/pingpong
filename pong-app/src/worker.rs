@@ -9,16 +9,20 @@
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
+use pingpong_proto::permission::Permissions;
 use serde_json::{json, Value};
 
 use crate::api::{Api, Client, Failure, HostState, LogEntry, Status};
 
 #[derive(Debug, Clone)]
 pub enum Cmd {
-    SubmitPin(u32, String),
+    /// A pairing request's PIN, and what the device may do (None: what the
+    /// host gives by default).
+    SubmitPin(u32, String, Option<Permissions>),
     Decline(u32),
     Unpair(String),
-    Access(String, String),
+    /// What the device with this key may do.
+    Permissions(String, Permissions),
     AgentOp(&'static str),
     EndSession,
     PutConfig(Value),
@@ -241,7 +245,7 @@ fn refresh(
 fn execute(api: &mut Api, snap: &mut Snapshot, cmd: Cmd) -> Done {
     // What is asked, never a PIN or a password.
     match &cmd {
-        Cmd::SubmitPin(id, _) => tracing::info!(request = id, "entering a PIN"),
+        Cmd::SubmitPin(id, ..) => tracing::info!(request = id, "entering a PIN"),
         Cmd::SignIn { user, setup, .. } => tracing::info!(user, setup, "signing in"),
         Cmd::PutConfig(_) => tracing::info!("saving settings"),
         other => tracing::info!(?other, "asking the host"),
@@ -260,8 +264,12 @@ fn execute(api: &mut Api, snap: &mut Snapshot, cmd: Cmd) -> Done {
 fn execute_inner(api: &mut Api, snap: &mut Snapshot, cmd: Cmd) -> Done {
     let fail = |e: Failure| Done::Failed(e.to_string());
     match cmd {
-        Cmd::SubmitPin(id, pin) => {
-            match api.post(&format!("/api/pairing/{id}"), &json!({"pin": pin})) {
+        Cmd::SubmitPin(id, pin, permissions) => {
+            let body = match permissions {
+                Some(p) => json!({"pin": pin, "permissions": p}),
+                None => json!({"pin": pin}),
+            };
+            match api.post(&format!("/api/pairing/{id}"), &body) {
                 Ok(v) => Done::Paired(
                     v.get("client")
                         .and_then(Value::as_str)
@@ -279,10 +287,10 @@ fn execute_inner(api: &mut Api, snap: &mut Snapshot, cmd: Cmd) -> Done {
             .post("/api/clients/remove", &json!({"key": key}))
             .map(|_| Done::Saved { restart: false })
             .unwrap_or_else(fail),
-        Cmd::Access(key, access) => api
+        Cmd::Permissions(key, permissions) => api
             .post(
-                "/api/clients/access",
-                &json!({"key": key, "access": access}),
+                "/api/clients/permissions",
+                &json!({"key": key, "permissions": permissions}),
             )
             .map(|_| Done::Saved { restart: false })
             .unwrap_or_else(fail),

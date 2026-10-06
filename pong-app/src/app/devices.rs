@@ -1,14 +1,18 @@
-//! Devices: pairing requests first, then the paired devices and agents.
+//! Devices: pairing requests first (each with what the device will be
+//! allowed), then the paired devices and agents, each with what it may do
+//! and the sheet that changes it (`permissions`).
 
 use gpui::{div, prelude::*, px, AnyElement, Context, ElementId, FontWeight};
+use pingpong_proto::permission::Permissions;
 use pingpong_ui::{
-    button, chip, field, icon, icon_button, notice, rows, section, select, IconName, Ink, Metrics,
-    Theme, Type,
+    button, chip, field, icon, icon_button, notice, rows, section, IconName, Ink, Metrics, Theme,
+    Type,
 };
 
 use crate::api::{Client, Pending};
 use crate::worker::Cmd;
 
+use super::permissions::summary;
 use super::{date, duration, page, Confirm, PongApp};
 
 impl PongApp {
@@ -26,7 +30,11 @@ impl PongApp {
             .gap(px(22.0))
             .child(pingpong_ui::page_header(
                 "Devices",
-                Some("Who may connect. Unpairing a device revokes its key at once.".into()),
+                Some(
+                    "Who may connect, and what each device may do. Unpairing a device \
+                        revokes its key at once."
+                        .into(),
+                ),
                 None,
                 t,
             ));
@@ -87,6 +95,7 @@ impl PongApp {
             .is_some_and(|f| !f.read(cx).text().trim().is_empty());
         let error = self.pin_errors.get(&id).cloned();
         let submit = pin.clone();
+        let may = self.pairing_choice(id, p.agent, p.permissions, t, cx);
         div()
             .px(px(12.0))
             .py(px(12.0))
@@ -120,8 +129,7 @@ impl PongApp {
                     .child(button(ElementId::Name(format!("pin-{id}").into()), "Pair", t).solid().disabled(!has_pin).on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(f) = &submit {
                             let pin = f.read(cx).text().trim().to_string();
-                            this.pin_errors.remove(&id);
-                            this.send(Cmd::SubmitPin(id, pin));
+                            this.submit_pin(id, pin);
                             cx.notify();
                         }
                     })))
@@ -130,11 +138,26 @@ impl PongApp {
                         cx.notify();
                     }))),
             )
+            .child(
+                div()
+                    .pl(px(28.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.0))
+                    .child(div().text_size(px(Type::META + 0.5)).text_color(t.secondary).child("What it may do here"))
+                    .child(may),
+            )
             .when(p.agent, |d| {
                 d.child(div().pl(px(28.0)).text_size(px(Type::META + 0.5)).line_height(px(16.0)).text_color(t.tertiary).child(
-                    "An AI agent asks to use this computer. Paired, it sees the screen and \
-                        uses the keyboard and mouse, but never while a person streams, \
-                        never on a secure screen, and you can pause, watch or stop it.",
+                    "An AI agent asks to use this computer. Whatever it may do, it never acts \
+                        while a person streams or on a secure screen, and you can watch, \
+                        pause or stop it.",
+                ))
+            })
+            .when(!p.agent && p.permissions == Permissions::SEE_ONLY, |d| {
+                d.child(div().pl(px(28.0)).text_size(px(Type::META + 0.5)).line_height(px(16.0)).text_color(t.tertiary).child(
+                    "The first device paired here may do everything; later ones see only, \
+                        unless you choose more. Choose Everything for a device of your own.",
                 ))
             })
             .children(error.map(|e| div().pl(px(28.0)).child(notice(IconName::Warning, Ink::DANGER, e, t))))
@@ -148,31 +171,15 @@ impl PongApp {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let detail = format!("Paired {} · {}", date(c.paired_at), c.id);
-        let access: AnyElement = if c.agent {
-            let values = ["control", "view", "off"];
-            let key = c.key.clone();
-            let this = cx.weak_entity();
-            select(
-                ElementId::Name(format!("access-{}", c.id).into()),
-                ["See and control", "See only", "Off"],
-                values.iter().position(|v| *v == c.access),
-                t,
-            )
-            .width(150.0)
-            .on_select(move |i, _, cx| {
-                let _ = this.update(cx, |app, cx| {
-                    app.send(Cmd::Access(key.clone(), values[i].to_string()));
-                    cx.notify();
-                });
-            })
-            .into_any_element()
-        } else {
-            div()
-                .text_size(px(12.0))
-                .text_color(t.tertiary)
-                .child("Full access")
-                .into_any_element()
-        };
+        let key = c.key.clone();
+        let access = button(
+            ElementId::Name(format!("permissions-{}", c.id).into()),
+            summary(c.agent, c.permissions),
+            t,
+        )
+        .icon(IconName::Shield)
+        .tooltip("What it may do here")
+        .on_click(cx.listener(move |this, _, _, cx| this.edit_permissions(key.clone(), cx)));
         let client = c.clone();
         div()
             .min_h(px(Metrics::SETTINGS_ROW))

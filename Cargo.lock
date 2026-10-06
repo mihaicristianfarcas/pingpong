@@ -6249,6 +6249,7 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_platform",
+ "pingpong-proto",
  "pingpong-ui",
  "pingpong-update",
  "serde",

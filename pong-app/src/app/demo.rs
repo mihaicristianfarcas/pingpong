@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use gpui::{Context, Window};
+use pingpong_proto::permission::{self, Permissions};
 use pingpong_update::Update;
 
 use crate::api::{Client, LogEntry, Pending, Session, Status};
@@ -19,9 +20,10 @@ use super::{now_ms, Page, PongApp};
 /// (a made-up session, request and devices, for screenshots), `signin`,
 /// `setup`, `offline`, `signin-as=USER:PASSWORD`, `update` and
 /// `update-main` (a made-up newer release, or newer commits on main),
-/// `updates` (the update sheet), `menus` (the menu bar and the tray icon's
-/// menu, to the log), `snapshot=PATH`, `close` (close the window, as its
-/// close button does: the app stays where it has a tray icon), `quit`.
+/// `updates` (the update sheet), `permissions=NAME` (the permissions sheet
+/// of the paired device called NAME), `menus` (the menu bar and the tray
+/// icon's menu, to the log), `snapshot=PATH`, `close` (close the window, as
+/// its close button does: the app stays where it has a tray icon), `quit`.
 #[derive(Default)]
 pub(super) struct Demo {
     at: Option<Instant>,
@@ -33,6 +35,8 @@ pub(super) struct Demo {
     update: Option<Update>,
     /// Open the update sheet.
     updates: bool,
+    /// Open this device's permissions sheet.
+    permissions: Option<String>,
     /// Log the menu bar and the tray icon's menu.
     menus: bool,
     /// Close the window when the rest is done.
@@ -105,6 +109,8 @@ impl Demo {
                     });
                 } else if part == "updates" {
                     demo.updates = true;
+                } else if let Some(name) = part.strip_prefix("permissions=") {
+                    demo.permissions = Some(name.to_string());
                 } else if part == "menus" {
                     demo.menus = true;
                 } else if part == "close" {
@@ -146,6 +152,16 @@ impl PongApp {
             window.activate_window();
             cx.activate(true);
             self.set_page(p, cx);
+            self.demo.at = Some(Instant::now() + Duration::from_millis(1500));
+            return;
+        }
+        if let Some(name) = self.demo.permissions.take() {
+            window.activate_window();
+            cx.activate(true);
+            match self.snap.clients.iter().find(|c| c.name == name) {
+                Some(c) => self.edit_permissions(c.key.clone(), cx),
+                None => tracing::warn!(name, "no paired device of that name"),
+            }
             self.demo.at = Some(Instant::now() + Duration::from_millis(1500));
             return;
         }
@@ -211,6 +227,8 @@ fn sample(s: &mut Snapshot) {
         agent: false,
         peer: "192.168.1.23:53112".into(),
         waiting_secs: 14,
+        // Devices are paired already: a later one sees only.
+        permissions: Permissions::SEE_ONLY,
     }];
     s.clients = vec![
         Client {
@@ -220,7 +238,7 @@ fn sample(s: &mut Snapshot) {
             paired_at: now - 86_400 * 2,
             online: true,
             agent: false,
-            access: "control".into(),
+            permissions: Permissions::PERSON_ALL,
         },
         Client {
             name: "macbook agent".into(),
@@ -229,7 +247,7 @@ fn sample(s: &mut Snapshot) {
             paired_at: now - 86_400,
             online: false,
             agent: true,
-            access: "control".into(),
+            permissions: Permissions::AGENT_WATCHED,
         },
         Client {
             name: "living-room".into(),
@@ -238,7 +256,7 @@ fn sample(s: &mut Snapshot) {
             paired_at: now - 86_400 * 40,
             online: false,
             agent: false,
-            access: "control".into(),
+            permissions: Permissions::PERSON_CONTROL.with(permission::CLIPBOARD_READ, true),
         },
     ];
     // The made-up host's settings (the host's own defaults), so the
