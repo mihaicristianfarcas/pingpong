@@ -43,10 +43,11 @@ import { onGitHub } from '../lib/repo';
       <details>
         <summary><h3>Do I need a VPN or port forwarding to stream over the internet?</h3></summary>
         <p>
-          Pair Ping and Pong once on your local network, then enable internet access on the host. pingpong
-          finds paired hosts through sealed records on the BitTorrent DHT and connects directly by punching
-          through NATs. It has no relay fallback: symmetric NAT on both sides can prevent a connection. In
-          that case, forward UDP port 47800 to the host. See
+          Usually neither. Pair Ping and Pong once on your local network, or through a VPN such as Tailscale
+          when you are away from the host: Ping then links Pong’s web UI to type the PIN in. Streaming over the
+          internet is on by default. pingpong finds paired hosts through sealed records on the BitTorrent DHT and
+          connects directly by punching through NATs. It has no relay fallback: symmetric NAT on both sides can
+          prevent a connection. In that case, forward UDP port 47800 to the host. See
           <a href={onGitHub('docs/networking.md')}>internet setup and network limits</a>.
         </p>
       </details>
