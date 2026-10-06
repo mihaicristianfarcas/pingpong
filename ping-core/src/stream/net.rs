@@ -530,7 +530,9 @@ impl NetLoop {
             let why = self
                 .refusal_reason
                 .and_then(|code| host_warning(code, &self.ctx.host_name))
-                .unwrap_or_else(|| refusal(ack.status));
+                .unwrap_or_else(|| {
+                    refusal(ack.status, self.ctx.settings.watch, &self.ctx.host_name)
+                });
             self.end(why, true);
             return Next::Stop;
         }

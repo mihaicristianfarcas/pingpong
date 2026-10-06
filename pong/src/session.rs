@@ -471,6 +471,7 @@ impl SessionManager {
                 host: platform::HOST_KIND,
                 features: 0,
                 video: 0,
+                permissions: 0,
             },
         );
     }
@@ -646,6 +647,8 @@ impl SessionManager {
             host: platform::HOST_KIND,
             features,
             video: picture,
+            // Nothing held back yet: the same as a host that says nothing.
+            permissions: 0,
         };
         self.ack(&peer, ack);
         video.open();

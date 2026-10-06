@@ -185,6 +185,7 @@ mod tests {
             host: 0,
             features,
             video: 0,
+            permissions: 0,
         }
     }
 

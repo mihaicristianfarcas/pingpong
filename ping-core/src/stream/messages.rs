@@ -3,6 +3,9 @@
 
 use pingpong_proto::control::{agent_state, AckStatus, AgentState, EndReason};
 
+/// Where on the host what a device may do is set.
+const WHERE_TO_ALLOW: &str = "in Pong on the host, under Devices";
+
 /// What a host's warning means, for the person streaming.
 pub(super) fn host_warning(code: u8, host: &str) -> Option<String> {
     use pingpong_proto::control::host_warning;
@@ -38,6 +41,9 @@ pub(super) fn watch_notice(state: AgentState, host: &str) -> String {
     if state.flags & agent_state::VIEW_ONLY != 0 {
         held.push("allowed to look only");
     }
+    if state.flags & agent_state::UNWATCHED != 0 {
+        held.push("waiting for someone to watch");
+    }
     let what = if held.is_empty() {
         "working".to_string()
     } else {
@@ -46,17 +52,32 @@ pub(super) fn watch_notice(state: AgentState, host: &str) -> String {
     format!("Watching the agent on {host} ({what}). Ctrl+Alt+Shift+T takes over.")
 }
 
-/// What a refused session means, for the person who asked for it.
-pub(super) fn refusal(status: AckStatus) -> String {
+/// What a refused session means, for the person who asked for it (`watch`:
+/// they asked to watch an agent).
+pub(super) fn refusal(status: AckStatus, watch: bool, host: &str) -> String {
     match status {
+        AckStatus::NotAllowed if watch => format!(
+            "{host} does not let this device watch AI agents. That can be allowed \
+                {WHERE_TO_ALLOW}."
+        ),
+        AckStatus::NotAllowed => {
+            format!("{host} does not let this device stream. That can be allowed {WHERE_TO_ALLOW}.")
+        }
+        AckStatus::AppNotAllowed => format!(
+            "{host} does not let this device start apps. Stream the desktop instead, or \
+                allow it {WHERE_TO_ALLOW}."
+        ),
+        AckStatus::Other => format!(
+            "{host} turned the session down for a reason this version of Ping does not \
+                know. Update Ping."
+        ),
         AckStatus::NothingToWatch => "No AI agent is working on the host, so there is \
             nothing to watch."
             .into(),
-        AckStatus::AgentNotAllowed => {
-            "The host turned the agent away: a person is using it, agents are off there, \
-                or this agent's access is off (Pong's web UI, Devices)."
-                .into()
-        }
+        AckStatus::AgentNotAllowed => format!(
+            "{host} turned the agent away: a person is using it, agents are off there, or \
+                this agent may not see its screen (its permissions, {WHERE_TO_ALLOW})."
+        ),
         AckStatus::Busy => "The host is streaming to another device.".into(),
         AckStatus::NoCodec => {
             "The host cannot encode video in a format this computer can play.".into()
@@ -85,6 +106,10 @@ pub(super) fn end_text(reason: EndReason, host: &str) -> String {
             format!("{host} is shutting down, restarting, or Pong was stopped on it.")
         }
         EndReason::Error => "The host stopped the stream after an error.".to_string(),
+        EndReason::NotAllowed => format!(
+            "{host} no longer lets this device stream: what it may do there changed \
+                {WHERE_TO_ALLOW}."
+        ),
         _ => "The host ended the session.".to_string(),
     }
 }
@@ -99,6 +124,9 @@ pub(super) fn watcher_end_text(reason: EndReason, host: &str) -> String {
             format!("{host} is shutting down, restarting, or Pong was stopped on it.")
         }
         EndReason::Error => "The host stopped the agent's session after an error.".to_string(),
+        EndReason::NotAllowed => format!(
+            "{host} no longer lets this device watch AI agents: that changed {WHERE_TO_ALLOW}."
+        ),
         _ => format!("The agent's session on {host} ended."),
     }
 }

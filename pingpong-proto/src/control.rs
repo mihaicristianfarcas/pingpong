@@ -175,11 +175,21 @@ pub enum AckStatus {
     /// An agent's request the host does not allow: agents are off for this
     /// identity, or a person is streaming (agents never take over people).
     AgentNotAllowed = 7,
+    /// This device may not do what it asked here: stream (it may not see the
+    /// screen, `permission::VIEW`) or watch an agent (`permission::WATCH`).
+    NotAllowed = 8,
+    /// This device may not start apps here (`permission::LAUNCH`); the
+    /// desktop it may stream.
+    AppNotAllowed = 9,
+    /// A refusal this version does not know: a newer host's. Never sent.
+    Other = 255,
 }
 
 impl AckStatus {
-    fn from_code(c: u8) -> Option<AckStatus> {
-        Some(match c {
+    /// Unknown codes are a refusal all the same: a client that dropped the
+    /// ack instead would ask again until it gave up, telling nobody why.
+    fn from_code(c: u8) -> AckStatus {
+        match c {
             0 => AckStatus::Ok,
             1 => AckStatus::ModeUnsupported,
             2 => AckStatus::VddUnavailable,
@@ -188,8 +198,10 @@ impl AckStatus {
             5 => AckStatus::Failed,
             6 => AckStatus::NothingToWatch,
             7 => AckStatus::AgentNotAllowed,
-            _ => return None,
-        })
+            8 => AckStatus::NotAllowed,
+            9 => AckStatus::AppNotAllowed,
+            _ => AckStatus::Other,
+        }
     }
 }
 
@@ -215,6 +227,10 @@ pub struct SessionAck {
     pub features: u8,
     /// `video::*`: what the stream is. Absent from older hosts (none).
     pub video: u8,
+    /// What this device may do here (`permission::*` bits), so it can say
+    /// what the host holds back. 0 from older hosts, which hold nothing
+    /// back (an `Ok` ack always allows `permission::VIEW`).
+    pub permissions: u16,
 }
 
 /// The host's operating system, in `SessionAck`.
@@ -241,6 +257,9 @@ pub enum EndReason {
     /// Someone at the host is using it (an agent's session, on a host whose
     /// own monitors it had turned off).
     HostInUse = 5,
+    /// The host no longer lets this device see the screen (or watch agents):
+    /// its permissions changed. Older clients read it as `Error`.
+    NotAllowed = 6,
 }
 
 impl EndReason {
@@ -251,6 +270,7 @@ impl EndReason {
             2 => EndReason::Replaced,
             3 => EndReason::Shutdown,
             5 => EndReason::HostInUse,
+            6 => EndReason::NotAllowed,
             _ => EndReason::Error,
         }
     }
@@ -406,6 +426,9 @@ pub enum Control {
     AgentNote(AgentNote),
     /// Host -> client: the HDR stream's metadata.
     HdrMetadata(HdrMetadata),
+    /// Host -> client: what this device may do here changed mid-session
+    /// (`permission::*` bits; at the start they come in the ack).
+    Permissions(u16),
 }
 
 /// What `Control::AgentControl` asks.
@@ -433,8 +456,11 @@ pub mod agent_state {
     pub const VIEW_ONLY: u8 = 8;
     /// A watcher has the keyboard and mouse.
     pub const TAKEN_OVER: u8 = 16;
+    /// Nobody watches, and the agent may act only while someone does (it
+    /// lacks `permission::UNWATCHED`).
+    pub const UNWATCHED: u8 = 32;
     /// What holds the agent's input.
-    pub const HELD: u8 = PAUSED | LOCAL_INPUT | SECURE_DESKTOP | VIEW_ONLY | TAKEN_OVER;
+    pub const HELD: u8 = PAUSED | LOCAL_INPUT | SECURE_DESKTOP | VIEW_ONLY | TAKEN_OVER | UNWATCHED;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -523,6 +549,7 @@ const OP_AGENT_CONTROL: u8 = 17;
 const OP_AGENT_STATE: u8 = 18;
 const OP_AGENT_NOTE: u8 = 19;
 const OP_HDR_METADATA: u8 = 20;
+const OP_PERMISSIONS: u8 = 21;
 
 struct W<'a> {
     b: &'a mut [u8],
@@ -609,6 +636,7 @@ impl Control {
                 w.u8(a.host);
                 w.u8(a.features);
                 w.u8(a.video);
+                w.u16(a.permissions);
             }
             Control::SessionEnd(r) => {
                 w.u8(OP_SESSION_END);
@@ -709,6 +737,10 @@ impl Control {
                 w.u8(n.len);
                 w.bytes(&n.bytes[..n.len as usize]);
             }
+            Control::Permissions(p) => {
+                w.u8(OP_PERMISSIONS);
+                w.u16(p);
+            }
         }
     }
 
@@ -765,7 +797,7 @@ impl Control {
                 exact_refresh_mhz: r.u32().unwrap_or(0),
             }),
             OP_SESSION_ACK => Control::SessionAck(SessionAck {
-                status: AckStatus::from_code(r.u8()?)?,
+                status: AckStatus::from_code(r.u8()?),
                 codec: r.u8()?,
                 width: r.u16()?,
                 height: r.u16()?,
@@ -776,6 +808,7 @@ impl Control {
                 host: r.u8().unwrap_or(host::WINDOWS),
                 features: r.u8().unwrap_or(0),
                 video: r.u8().unwrap_or(0),
+                permissions: r.u16().unwrap_or(0),
             }),
             OP_SESSION_END => Control::SessionEnd(EndReason::from_code(r.u8()?)),
             OP_CURSOR_STATE => {
@@ -862,6 +895,7 @@ impl Control {
                 let text = std::str::from_utf8(r.b.get(r.n..r.n + len)?).ok()?;
                 Control::AgentNote(AgentNote::new(text))
             }
+            OP_PERMISSIONS => Control::Permissions(r.u16()?),
             _ => return None,
         })
     }
@@ -910,7 +944,12 @@ mod tests {
             host: host::MACOS,
             features: features::CLIPBOARD,
             video: video::HDR,
+            permissions: crate::permission::Permissions::PERSON_CONTROL.bits(),
         }));
+        round_trip(Control::Permissions(
+            crate::permission::Permissions::SEE_ONLY.bits(),
+        ));
+        round_trip(Control::SessionEnd(EndReason::NotAllowed));
         round_trip(Control::HdrMetadata(HdrMetadata {
             max_cll: 1000,
             max_fall: 400,
@@ -1073,22 +1112,34 @@ mod tests {
             host: host::MACOS,
             features: features::CLIPBOARD,
             video: video::HDR,
+            permissions: crate::permission::Permissions::SEE_ONLY.bits(),
         })
         .encode(0, &mut out);
-        match Control::decode(&out[HEADER_LEN..n - 3]) {
+        match Control::decode(&out[HEADER_LEN..n - 5]) {
             Some(Control::SessionAck(a)) => assert_eq!((a.host, a.features), (host::WINDOWS, 0)),
             other => panic!("{other:?}"),
         }
         // And the features after it: an older host offers none.
-        match Control::decode(&out[HEADER_LEN..n - 2]) {
+        match Control::decode(&out[HEADER_LEN..n - 4]) {
             Some(Control::SessionAck(a)) => assert_eq!((a.host, a.features), (host::MACOS, 0)),
             other => panic!("{other:?}"),
         }
         // And the video after them: an older host streams SDR 4:2:0.
-        match Control::decode(&out[HEADER_LEN..n - 1]) {
+        match Control::decode(&out[HEADER_LEN..n - 3]) {
             Some(Control::SessionAck(a)) => {
                 assert_eq!((a.features, a.video), (features::CLIPBOARD, 0))
             }
+            other => panic!("{other:?}"),
+        }
+        // And the permissions after it: an older host says nothing (0).
+        match Control::decode(&out[HEADER_LEN..n - 2]) {
+            Some(Control::SessionAck(a)) => assert_eq!((a.video, a.permissions), (video::HDR, 0)),
+            other => panic!("{other:?}"),
+        }
+        // A refusal this version does not know is still a refusal.
+        out[HEADER_LEN + 1] = 200;
+        match Control::decode(&out[HEADER_LEN..n]) {
+            Some(Control::SessionAck(a)) => assert_eq!(a.status, AckStatus::Other),
             other => panic!("{other:?}"),
         }
         assert_eq!(Control::decode(&[]), None);
