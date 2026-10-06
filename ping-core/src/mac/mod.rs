@@ -19,12 +19,11 @@ use objc2_quartz_core::CAMetalLayer;
 use parking_lot::Mutex;
 use pingpong_decode::videotoolbox::{PictureFormat, VtDecoder};
 use pingpong_decode::VideoDecoder;
-use pingpong_transport::Identity;
 
 use crate::pointer::PointerState;
 pub use crate::session::{EndCallback, SessionOptions};
 use crate::stats::StatsCollector;
-use crate::stream::{Codec, Event, FrameTiming, HostTarget, Stream, VideoOut};
+use crate::stream::{Codec, Event, FrameTiming, Source, Stream, VideoOut};
 use render::RenderShared;
 use window::{Handler, Window};
 
@@ -116,8 +115,7 @@ pub struct Session {
 impl Session {
     /// Main thread.
     pub fn open(
-        identity: Arc<Identity>,
-        host: HostTarget,
+        source: Source,
         opts: SessionOptions,
         on_end: EndCallback,
     ) -> Result<Session, String> {
@@ -131,13 +129,13 @@ impl Session {
         let stats = Arc::new(StatsCollector::default());
         let render = RenderShared::new(stats.clone(), s.vsync, s.frame_pacing);
         render.set_overlay(opts.show_stats);
-        render.set_status(Some(format!("Connecting to {}…", host.name)));
+        render.set_status(Some(format!("Connecting to {}…", source.name())));
         let window = Window::open(
             mtm,
             render.clone(),
             opts.fullscreen,
             (s.width as u32, s.height as u32),
-            &format!("Ping — {}", host.name),
+            &format!("Ping — {}", source.name()),
         );
         let scale = window.window.backingScaleFactor();
 
@@ -217,7 +215,7 @@ impl Session {
             decoder: None,
             render: render.clone(),
         });
-        let stream = Stream::start(identity, host, s, video, events, stats)?;
+        let stream = Stream::open(source, s, video, events, stats)?;
 
         let quit = on_end.clone();
         let mut handler = Handler::new(
@@ -277,7 +275,7 @@ impl Session {
 
     /// For adding paths to the host while connecting (discovery).
     pub fn candidates(&self) -> Option<crate::stream::Candidates> {
-        self.stream.as_ref().map(|s| s.candidates())
+        self.stream.as_ref().and_then(|s| s.candidates())
     }
 
     /// The input channel, for scripted input (tests) and the app's own

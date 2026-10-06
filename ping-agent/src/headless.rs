@@ -175,8 +175,7 @@ impl HeadlessSession {
         let video = Box::new(HeadlessVideo::new(frames.clone(), stats.clone()));
         let stream = Stream::start(identity, target, settings, video, events, stats.clone())?;
         // Look for the host on the local network meanwhile, as Ping does.
-        if !opts.wan_only {
-            let candidates = stream.candidates();
+        if let (Some(candidates), false) = (stream.candidates(), opts.wan_only) {
             let dir = dir.clone();
             std::thread::spawn(move || {
                 let found = ping_core::pair::discover(&dir, Duration::from_millis(1500))

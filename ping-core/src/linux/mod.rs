@@ -38,7 +38,7 @@ use crate::keyboard::{Hotkey, KeyAction, Keyboard};
 use crate::pointer::PointerState;
 use crate::session::{EndCallback, StreamRequest};
 use crate::stats::StatsCollector;
-use crate::stream::{Codec, ControlSender, Event, FrameTiming, HostTarget, Stream, VideoOut};
+use crate::stream::{Codec, ControlSender, Event, FrameTiming, Source, Stream, VideoOut};
 use render::{Gpu, Layout, RenderShared};
 
 // ---------------------------------------------------------------------------
@@ -330,8 +330,7 @@ struct Running {
 
 struct StreamApp {
     request: StreamRequest,
-    host: Option<HostTarget>,
-    identity: Arc<pingpong_transport::Identity>,
+    source: Option<Source>,
     dir: std::path::PathBuf,
     proxy: EventLoopProxy<UserEvent>,
     hooks: Option<StartedHook>,
@@ -361,9 +360,9 @@ fn cursor_icon(shape: CursorShape) -> CursorIcon {
 impl StreamApp {
     fn open(&mut self, el: &ActiveEventLoop) -> Result<Running, String> {
         let r = &self.request;
-        let host = self.host.take().ok_or("no host")?;
+        let source = self.source.take().ok_or("nothing to stream")?;
         let mut attributes = Window::default_attributes()
-            .with_title(format!("Ping — {}", host.name))
+            .with_title(format!("Ping — {}", source.name()))
             .with_inner_size(PhysicalSize::new(r.width as u32, r.height as u32));
         if r.fullscreen {
             attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
@@ -407,7 +406,7 @@ impl StreamApp {
             r.vsync,
         );
         render.set_overlay(r.show_stats);
-        render.set_status(Some(format!("Connecting to {}…", host.name)));
+        render.set_status(Some(format!("Connecting to {}…", source.name())));
         render.set_layout(Layout {
             width: size.width,
             height: size.height,
@@ -465,14 +464,18 @@ impl StreamApp {
                 }
             })
         };
-        let host_id = host.public.short_id();
+        let host_id = source.host_id();
         let video = Box::new(LinuxVideo::start(render.clone())?);
-        let stream = Stream::start(self.identity.clone(), host, settings, video, events, stats)?;
+        let stream = Stream::open(source, settings, video, events, stats)?;
 
-        // Look for the host on the local network meanwhile, and race that
-        // path too.
-        if !r.wan_only && r.via.is_empty() {
-            let (candidates, dir) = (stream.candidates(), self.dir.clone());
+        // Look for a Pong host on the local network meanwhile, and race
+        // that path too.
+        if let (Some(candidates), Some(host_id), true) = (
+            stream.candidates(),
+            host_id,
+            !r.wan_only && r.via.is_empty(),
+        ) {
+            let dir = self.dir.clone();
             std::thread::spawn(move || {
                 let found =
                     crate::pair::discover(&dir, Duration::from_millis(1500)).unwrap_or_default();
@@ -832,8 +835,7 @@ pub fn run(
     }
     let mut app = StreamApp {
         request: request.clone(),
-        host: Some(host),
-        identity,
+        source: Some(Source::Pong { identity, host }),
         dir,
         proxy,
         hooks: hooks.started,

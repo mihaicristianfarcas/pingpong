@@ -130,6 +130,31 @@ impl Default for StreamSettings {
     }
 }
 
+/// What a stream comes from.
+pub enum Source {
+    /// A paired Pong host, through the tunnel.
+    Pong {
+        identity: Arc<Identity>,
+        host: HostTarget,
+    },
+}
+
+impl Source {
+    /// What to call it ("Connecting to …", the window's title).
+    pub fn name(&self) -> &str {
+        match self {
+            Source::Pong { host, .. } => &host.name,
+        }
+    }
+
+    /// The Pong host's short id, for finding it on the local network.
+    pub fn host_id(&self) -> Option<String> {
+        match self {
+            Source::Pong { host, .. } => Some(host.public.short_id()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HostTarget {
     pub name: String,
@@ -225,7 +250,15 @@ pub enum Event {
 
 pub type EventSink = Arc<dyn Fn(Event) + Send + Sync>;
 
-pub struct Stream {
+/// A running stream, from whichever [`Source`].
+pub struct Stream(Inner);
+
+enum Inner {
+    Pong(PongStream),
+}
+
+/// A stream from a Pong host.
+struct PongStream {
     ctx: Arc<Ctx>,
     net: Option<JoinHandle<()>>,
     input: Option<InputThread>,
@@ -264,25 +297,37 @@ struct Ctx {
 
 /// Sends control messages to the host from another thread (controllers).
 #[derive(Clone)]
-pub struct ControlSender(Arc<Ctx>);
+pub struct ControlSender(Controls);
+
+#[derive(Clone)]
+enum Controls {
+    Pong(Arc<Ctx>),
+}
 
 impl ControlSender {
     /// Silence the host's audio (or not), without stopping the stream.
     pub fn set_audio_muted(&self, muted: bool) {
-        self.0.audio_muted.store(muted, Ordering::Relaxed);
+        match &self.0 {
+            Controls::Pong(ctx) => ctx.audio_muted.store(muted, Ordering::Relaxed),
+        }
     }
 
     pub fn send(&self, msg: Control) {
-        send_control(&self.0, msg);
+        match &self.0 {
+            Controls::Pong(ctx) => send_control(ctx, msg),
+        }
     }
 
     /// Who drives the agent's session, as the host last said.
     pub fn agent_state(&self) -> Option<AgentState> {
-        *self.0.agent_state.lock()
+        match &self.0 {
+            Controls::Pong(ctx) => *ctx.agent_state.lock(),
+        }
     }
 
     /// Watching an agent: take the keyboard and mouse, or give them back.
     pub fn toggle_take_over(&self) {
+        let Controls::Pong(ctx) = &self.0;
         let taken = self
             .agent_state()
             .is_some_and(|s| s.flags & agent_state::TAKEN_OVER != 0);
@@ -294,7 +339,7 @@ impl ControlSender {
         tracing::info!(take_over = !taken, "agent control");
         // Twice: control messages are not retransmitted, and repeats are harmless.
         for _ in 0..2 {
-            send_control(&self.0, Control::AgentControl(op));
+            send_control(ctx, Control::AgentControl(op));
         }
     }
 }
@@ -324,6 +369,22 @@ impl Candidates {
 }
 
 impl Stream {
+    /// Start streaming from `source`.
+    pub fn open(
+        source: Source,
+        settings: StreamSettings,
+        video: Box<dyn VideoOut>,
+        events: EventSink,
+        stats: Arc<StatsCollector>,
+    ) -> Result<Stream, String> {
+        match source {
+            Source::Pong { identity, host } => {
+                Stream::start(identity, host, settings, video, events, stats)
+            }
+        }
+    }
+
+    /// Start streaming from a Pong host.
     pub fn start(
         identity: Arc<Identity>,
         host: HostTarget,
@@ -412,46 +473,68 @@ impl Stream {
                 .spawn(move || net::run(ctx, video))
                 .map_err(|e| e.to_string())?
         };
-        Ok(Stream {
+        Ok(Stream(Inner::Pong(PongStream {
             ctx,
             net: Some(net),
             input: Some(input),
             input_tx,
-        })
+        })))
     }
 
     pub fn input(&self) -> &InputSender {
-        &self.input_tx
+        match &self.0 {
+            Inner::Pong(p) => &p.input_tx,
+        }
     }
 
     pub fn controls(&self) -> ControlSender {
-        ControlSender(self.ctx.clone())
+        match &self.0 {
+            Inner::Pong(p) => ControlSender(Controls::Pong(p.ctx.clone())),
+        }
     }
 
-    /// For adding paths to the host while the handshake is under way.
-    pub fn candidates(&self) -> Candidates {
-        Candidates(self.ctx.clone())
+    /// For adding paths to a Pong host while the handshake is under way.
+    pub fn candidates(&self) -> Option<Candidates> {
+        match &self.0 {
+            Inner::Pong(p) => Some(Candidates(p.ctx.clone())),
+        }
     }
 
     pub fn stats(&self) -> Stats {
-        self.ctx.stats.snapshot()
+        self.stats_collector().snapshot()
     }
 
     pub fn stats_collector(&self) -> &Arc<StatsCollector> {
-        &self.ctx.stats
+        match &self.0 {
+            Inner::Pong(p) => &p.ctx.stats,
+        }
     }
 
+    /// The Pong host's answer to the session, once it has given one.
     pub fn ack(&self) -> Option<SessionAck> {
-        *self.ctx.ack.lock()
+        match &self.0 {
+            Inner::Pong(p) => *p.ctx.ack.lock(),
+        }
     }
 
     pub fn is_running(&self) -> bool {
-        self.net.as_ref().is_some_and(|n| !n.is_finished())
+        match &self.0 {
+            Inner::Pong(p) => p.net.as_ref().is_some_and(|n| !n.is_finished()),
+        }
     }
 
+    /// End the stream and stop every thread.
+    pub fn stop(&mut self) {
+        match &mut self.0 {
+            Inner::Pong(p) => p.stop(),
+        }
+    }
+}
+
+impl PongStream {
     /// End the session: tell the host (so it restores its displays now rather
     /// than after the silence timeout) and stop every thread.
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         self.ctx.stopped.store(true, Ordering::Relaxed);
         if !self.ctx.stop.swap(true, Ordering::Relaxed) {
             for _ in 0..3 {

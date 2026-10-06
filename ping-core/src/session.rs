@@ -342,7 +342,11 @@ pub fn start(
     }
     let identity = Arc::new(crate::store::identity(&dir)?);
     let host_id = host.public.short_id();
-    let session = Session::open(identity, host, request.options(), on_end)?;
+    let session = Session::open(
+        crate::stream::Source::Pong { identity, host },
+        request.options(),
+        on_end,
+    )?;
     // Look for the host on the local network meanwhile, as Moonlight's host
     // list does, and race that path too.
     if let Some(candidates) = session

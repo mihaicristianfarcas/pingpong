@@ -11,13 +11,12 @@ use std::thread::JoinHandle;
 
 use parking_lot::Mutex;
 use pingpong_decode::d3d11va::D3d11Decoder;
-use pingpong_transport::Identity;
 
 use crate::pointer::PointerState;
 use crate::session::NativeMode;
 pub use crate::session::{EndCallback, SessionOptions};
 use crate::stats::StatsCollector;
-use crate::stream::{Codec, Event, FrameTiming, HostTarget, Stream, VideoOut};
+use crate::stream::{Codec, Event, FrameTiming, Source, Stream, VideoOut};
 use render::{Gpu, RenderShared};
 use window::{Handler, Window};
 
@@ -158,8 +157,7 @@ pub struct Session {
 
 impl Session {
     pub fn open(
-        identity: Arc<Identity>,
-        host: HostTarget,
+        source: Source,
         opts: SessionOptions,
         on_end: EndCallback,
     ) -> Result<Session, String> {
@@ -177,7 +175,7 @@ impl Session {
         let gpu = Gpu::new()?;
         let render = RenderShared::new(gpu.clone(), stats.clone(), s.vsync, s.frame_pacing);
         render.set_overlay(opts.show_stats);
-        render.set_status(Some(format!("Connecting to {}…", host.name)));
+        render.set_status(Some(format!("Connecting to {}…", source.name())));
 
         let pointer = Arc::new(Mutex::new(PointerState::new(
             s.width as u32,
@@ -254,7 +252,8 @@ impl Session {
         };
 
         let video = Box::new(WinVideo::start(gpu.clone(), render.clone())?);
-        let stream = Stream::start(identity, host.clone(), s, video, events, stats)?;
+        let name = source.name().to_owned();
+        let stream = Stream::open(source, s, video, events, stats)?;
 
         let quit = on_end.clone();
         let mut handler = Handler::new(
@@ -275,7 +274,7 @@ impl Session {
             handler,
             opts.fullscreen,
             (s.width as u32, s.height as u32),
-            &format!("Ping — {}", host.name),
+            &format!("Ping — {name}"),
         ) {
             Ok(w) => w,
             Err(e) => {
@@ -328,7 +327,7 @@ impl Session {
 
     /// For adding paths to the host while connecting (discovery).
     pub fn candidates(&self) -> Option<crate::stream::Candidates> {
-        self.stream.as_ref().map(|s| s.candidates())
+        self.stream.as_ref().and_then(|s| s.candidates())
     }
 
     /// The input channel, for scripted input (tests).
