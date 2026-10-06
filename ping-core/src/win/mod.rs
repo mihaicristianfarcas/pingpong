@@ -236,7 +236,7 @@ impl Session {
                     render.set_status(Some(text));
                 }
                 Event::Notice(text) => render.set_notice(text),
-                Event::Agent(_) => {}
+                Event::Agent(_) | Event::Permissions(_) => {}
                 Event::Warning(text) => {
                     if connection_warnings {
                         render.set_warning(text);

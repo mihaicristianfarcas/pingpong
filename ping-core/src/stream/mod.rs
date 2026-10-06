@@ -100,6 +100,10 @@ pub struct StreamSettings {
     /// `control::video::*` to ask for: what the user wants and this
     /// computer can show (HDR, 4:4:4).
     pub video: u8,
+    /// An AI agent's stream (ping-agent): what is said to a person
+    /// streaming about the input the host ignores is left out; the agent
+    /// hears it in words for its model (`Event::Permissions`).
+    pub agent: bool,
 }
 
 impl Default for StreamSettings {
@@ -121,6 +125,7 @@ impl Default for StreamSettings {
             clipboard: false,
             mouse: crate::input::MouseOptions::default(),
             video: 0,
+            agent: false,
         }
     }
 }
@@ -203,6 +208,9 @@ pub enum Event {
     /// An agent's session: who drives, and why the agent may not (sent to
     /// the agent and to its watchers, on every change).
     Agent(AgentState),
+    /// What this device may do on the host (`permission::*` bits), when the
+    /// host says: as the session starts, and when it changes.
+    Permissions(u16),
     /// The host wants controller `index`'s motors at these strengths.
     Rumble {
         index: u8,

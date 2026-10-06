@@ -24,7 +24,7 @@ use pingpong_proto::video::{split_prefix, FrameGate, FrameType, Request, Verdict
 use pingpong_proto::{clock, HEADER_LEN};
 use pingpong_transport::Received;
 
-use super::messages::{end_text, host_warning, refusal, watch_notice, watcher_end_text};
+use super::messages::{end_text, held_back, host_warning, refusal, watch_notice, watcher_end_text};
 use super::quality::{LossCounter, NetQuality};
 use super::{send_control, Codec, Ctx, Event, FrameTiming, StreamSettings, VideoOut};
 
@@ -68,7 +68,8 @@ const LAN_PROBES: u32 = 5;
 /// How long a watcher waits for the agent's session to start (within
 /// `GIVE_UP_AFTER`).
 const WATCH_WAIT: Duration = Duration::from_secs(25);
-/// How long a watcher sees who drives, after it changes.
+/// How long a watcher sees who drives, after it changes; and how long the
+/// person streaming sees what the host's permissions hold back.
 const WATCH_NOTICE_FOR: Duration = Duration::from_secs(6);
 
 /// The network thread's body: runs until the stream stops or ends.
@@ -234,6 +235,9 @@ struct NetLoop {
     refusal_reason: Option<u8>,
     /// Sharing the clipboard, when the host agreed to.
     clip: Option<pingpong_clipboard::ClipSync>,
+    /// What this device may do on the host, as it last said
+    /// (`permission::*`; 0: it has not, or predates permissions).
+    permissions: u16,
     test_loss: Option<TestLoss>,
 }
 
@@ -282,6 +286,7 @@ impl NetLoop {
             waiting_for_agent: false,
             refusal_reason: None,
             clip: None,
+            permissions: 0,
             test_loss,
             ctx,
         }
@@ -500,6 +505,7 @@ impl NetLoop {
                     self.emit(Event::Warning(Some(text)));
                 }
             }
+            Control::Permissions(bits) => self.on_permissions(bits),
             Control::RendezvousOffer { key, secret } => self.on_rendezvous_offer(key, secret),
             Control::Pong { sent_us, .. } => self.on_pong(sent_us, h.capture_ts_us),
             Control::Ping { id, sent_us } => send_control(&self.ctx, Control::Pong { id, sent_us }),
@@ -582,8 +588,37 @@ impl NetLoop {
             }
             self.emit(Event::Started(ack));
             self.phase = Phase::Streaming;
+            self.permissions = 0;
+            self.on_permissions(ack.permissions);
         }
         Next::Timers
+    }
+
+    /// What the host says this device may do here: the clipboard follows,
+    /// and the person streaming hears what it holds back.
+    fn on_permissions(&mut self, bits: u16) {
+        if bits == 0 || bits == self.permissions {
+            return;
+        }
+        self.permissions = bits;
+        tracing::info!(
+            permissions = ?pingpong_proto::permission::Permissions::from_bits(bits).names(),
+            "what this device may do on the host"
+        );
+        if let Some(clip) = &self.clip {
+            clip.set_directions(clip_directions(bits));
+        }
+        self.emit(Event::Permissions(bits));
+        // A watcher hears who drives instead (`watch_notice`), an agent in
+        // its own words (ping-agent).
+        if self.ctx.settings.watch || self.ctx.settings.agent {
+            return;
+        }
+        if let Some(text) = held_back(bits, &self.ctx.host_name) {
+            tracing::info!("{text}");
+            self.emit(Event::Notice(Some(text)));
+            self.notice_until = Some(Instant::now() + WATCH_NOTICE_FOR);
+        }
     }
 
     /// The host offers its rendezvous keys (so it can be found from the
@@ -1021,6 +1056,21 @@ fn start_audio(channels: u8) -> Option<Player> {
     }
 }
 
+/// Which ways the clipboard goes, as the host's permissions for this device
+/// say: our copies to the host if it may write there, the host's to us if
+/// it may read them. A host that says nothing (0) shares both ways.
+fn clip_directions(permissions: u16) -> pingpong_clipboard::Directions {
+    use pingpong_proto::permission::{Permissions, CLIPBOARD_READ, CLIPBOARD_WRITE};
+    if permissions == 0 {
+        return pingpong_clipboard::Directions::BOTH;
+    }
+    let p = Permissions::from_bits(permissions);
+    pingpong_clipboard::Directions {
+        send: p.allows(CLIPBOARD_WRITE),
+        receive: p.allows(CLIPBOARD_READ),
+    }
+}
+
 /// Share the clipboard with the host for this session.
 fn start_clipboard(ctx: &Ctx, ack: &SessionAck) -> pingpong_clipboard::ClipSync {
     let (endpoint, peer) = (ctx.endpoint.clone(), ctx.peer.clone());
@@ -1029,7 +1079,7 @@ fn start_clipboard(ctx: &Ctx, ack: &SessionAck) -> pingpong_clipboard::ClipSync 
         rate: pingpong_clipboard::rate_for(ack.bitrate_kbps),
         offer_current: true,
         peer: ctx.host_name.clone(),
-        directions: pingpong_clipboard::Directions::BOTH,
+        directions: clip_directions(ack.permissions),
     };
     pingpong_clipboard::ClipSync::start(opts, move |p| {
         let _ = endpoint.send(&peer, p);

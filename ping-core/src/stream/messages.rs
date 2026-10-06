@@ -1,7 +1,9 @@
 //! What the person streaming is told: why a session ended or was refused,
-//! what a host's warning means, and who drives an agent's session.
+//! what a host's warning means, what the host's permissions for this device
+//! hold back, and who drives an agent's session.
 
 use pingpong_proto::control::{agent_state, AckStatus, AgentState, EndReason};
+use pingpong_proto::permission::{self, Permissions};
 
 /// Where on the host what a device may do is set.
 const WHERE_TO_ALLOW: &str = "in Pong on the host, under Devices";
@@ -50,6 +52,37 @@ pub(super) fn watch_notice(state: AgentState, host: &str) -> String {
         held.join(", ")
     };
     format!("Watching the agent on {host} ({what}). Ctrl+Alt+Shift+T takes over.")
+}
+
+/// What the host's permissions for this device hold back of a person's
+/// stream: the input it ignores. None when it takes the keyboard and mouse
+/// (controllers alone are not worth a word to someone who may have none),
+/// or the host predates permissions (0).
+pub(super) fn held_back(bits: u16, host: &str) -> Option<String> {
+    let p = Permissions::from_bits(bits);
+    if bits == 0 || p.allows(permission::KEYBOARD | permission::MOUSE) {
+        return None;
+    }
+    let ignored: Vec<&str> = [
+        (permission::KEYBOARD, "keyboard"),
+        (permission::MOUSE, "mouse"),
+        (permission::CONTROLLER, "controllers"),
+    ]
+    .into_iter()
+    .filter(|(bit, _)| !p.allows(*bit))
+    .map(|(_, what)| what)
+    .collect();
+    let what = match ignored.as_slice() {
+        [] => return None,
+        [one] => one.to_string(),
+        [a, b] => format!("{a} and {b}"),
+        [a, b, c] => format!("{a}, {b} and {c}"),
+        _ => unreachable!("three kinds of input"),
+    };
+    Some(format!(
+        "{host} ignores your {what}: this device may not use them there. That is set \
+            {WHERE_TO_ALLOW}."
+    ))
 }
 
 /// What a refused session means, for the person who asked for it (`watch`:
@@ -128,5 +161,31 @@ pub(super) fn watcher_end_text(reason: EndReason, host: &str) -> String {
             "{host} no longer lets this device watch AI agents: that changed {WHERE_TO_ALLOW}."
         ),
         _ => format!("The agent's session on {host} ended."),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn what_the_host_ignores_is_named() {
+        let see_only = Permissions::SEE_ONLY.bits();
+        assert_eq!(
+            held_back(see_only, "gaming-pc").unwrap(),
+            "gaming-pc ignores your keyboard, mouse and controllers: this device may not use \
+                them there. That is set in Pong on the host, under Devices."
+        );
+        let no_mouse = Permissions::PERSON_ALL
+            .with(permission::MOUSE, false)
+            .bits();
+        assert!(held_back(no_mouse, "pc")
+            .unwrap()
+            .starts_with("pc ignores your mouse:"));
+        assert_eq!(held_back(Permissions::PERSON_CONTROL.bits(), "pc"), None);
+        let no_pads = Permissions::PERSON_ALL.with(permission::CONTROLLER, false);
+        assert_eq!(held_back(no_pads.bits(), "pc"), None);
+        // A host from before permissions says nothing, and holds nothing back.
+        assert_eq!(held_back(0, "pc"), None);
     }
 }
