@@ -89,7 +89,7 @@ pub trait VideoDecoder {
     fn poll(&mut self) -> Option<DecodedFrame>;
 }
 
-pub mod annexb;
+pub use pingpong_proto::annexb;
 pub mod av1;
 
 #[cfg(target_os = "macos")]
