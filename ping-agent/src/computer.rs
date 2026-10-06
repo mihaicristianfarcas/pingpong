@@ -1432,20 +1432,7 @@ fn thumbnail(shot: &Shot) -> Option<Shot> {
 /// A screenshot (as the computer takes them: RGB PNG) at most `max` pixels
 /// on its longer side.
 pub fn shrink_png(png: &[u8], max: u32) -> Option<Shot> {
-    let decoder = png::Decoder::new(std::io::Cursor::new(png));
-    let mut reader = decoder.read_info().ok()?;
-    let mut buf = vec![0; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut buf).ok()?;
-    if info.color_type != png::ColorType::Rgb {
-        return None;
-    }
-    buf.truncate(info.buffer_size());
-    let small = Rgb {
-        width: info.width,
-        height: info.height,
-        data: buf,
-    }
-    .fit(max);
+    let small = Rgb::from_png(png)?.fit(max);
     Some(Shot {
         png: small.png(),
         width: small.width,

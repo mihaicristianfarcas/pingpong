@@ -148,7 +148,8 @@ the token in Agent setup or with `ping-agent set-key cloudflare`, or set
 - **OpenAI's computer tool carries pictures only**: with an OpenAI key, the
   model gets the blank screen without the note.
 - **Each check sends the screen to Cloudflare**, at most 1280 pixels
-  across. Clef costs $0.24 per million input tokens; clef-flash, smaller
+  across, as a JPEG: Workers AI refuses larger pictures (a PNG of
+  Windows 11's own desktop is one) before clef sees them. Clef costs $0.24 per million input tokens; clef-flash, smaller
   and faster, $0.09. A check adds clef's time to the step: 209 ms median
   in Cloudflare's own run, plus the network.
 - **Not measured on screens yet.** Cloudflare's benchmarks have no

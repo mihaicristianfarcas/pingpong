@@ -19,6 +19,9 @@ crossbeam-channel = "0.5"
 ctrlc = { version = "3", features = ["termination"] }
 parking_lot = "0.12"
 png = "0.18"
+# JPEG for clef's pictures (judge.rs). Already in the tree (arboard, GPUI),
+# so this adds no crate.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 serde = { version = "1", features = ["derive"] }
 # preserve_order: settings files of other agents are rewritten with their keys
 # in the order they had (src/install.rs).
