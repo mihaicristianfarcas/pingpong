@@ -5950,6 +5950,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-video-toolbox",
  "pingpong-capture",
+ "pingpong-proto",
  "tracing",
  "tracing-subscriber",
  "windows 0.61.3",

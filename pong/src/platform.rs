@@ -1,7 +1,7 @@
 //! The Windows host's side of a session (see `session`): a SudoVDA virtual
 //! display at the client's mode, made the whole desktop; Desktop Duplication
-//! of it, the pointer drawn in; SendInput; WASAPI loopback; ViGEm pads; the
-//! app a session opens.
+//! of it, the pointer drawn in; NVENC, or Media Foundation's H.264 encoder where there is no
+//! NVENC; SendInput; WASAPI loopback; ViGEm pads; the app a session opens.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use pingpong_display::windows::WindowsDisplay;
 use pingpong_display::{DisplayControl, DisplayMode};
+use pingpong_encode::nvenc::CodecCaps;
 use pingpong_encode::{Codec, EncoderConfig};
 use pingpong_input::SendInputSink;
 use pingpong_proto::control::{self, AckStatus, Control, SessionStart};
@@ -18,7 +19,7 @@ use crate::audio::{AudioHandle, AudioParams};
 use crate::config::HostConfig;
 use crate::negotiate::Negotiated;
 use crate::session::Shared;
-use crate::video::VideoParams;
+use crate::video::{Backend, VideoParams};
 
 pub const HOST_KIND: u8 = control::host::WINDOWS;
 
@@ -52,8 +53,8 @@ pub struct Platform {
     linger: Option<(Instant, u32)>,
     /// The NVIDIA driver's settings for streaming, put back when Pong stops.
     _nvidia: Option<crate::nvprefs::Applied>,
-    /// What the GPU's encoder can do, per codec (probed once).
-    caps: std::cell::OnceCell<Vec<pingpong_encode::nvenc::CodecCaps>>,
+    /// The encoder, and what it can do per codec (probed once).
+    encoder: std::cell::OnceCell<(Backend, Vec<CodecCaps>)>,
     /// What Windows is asked for while a session streams.
     streaming: Option<crate::tuning::Streaming>,
 }
@@ -76,7 +77,7 @@ impl Platform {
             linger: None,
             _nvidia: crate::nvprefs::apply(data_dir, cfg.nvidia_max_power, cfg.nvidia_dxgi_present),
             streaming: None,
-            caps: std::cell::OnceCell::new(),
+            encoder: std::cell::OnceCell::new(),
         }
     }
 
@@ -84,10 +85,14 @@ impl Platform {
         self.caps().iter().map(|c| c.codec).collect()
     }
 
-    /// The GPU's encoder, probed on the first output's device.
-    fn caps(&self) -> &[pingpong_encode::nvenc::CodecCaps] {
-        use pingpong_encode::nvenc::CodecCaps;
-        self.caps.get_or_init(|| {
+    fn caps(&self) -> &[CodecCaps] {
+        &self.encoder().1
+    }
+
+    /// The GPU's encoder, probed on the first output's device; without
+    /// NVENC, Media Foundation's H.264 encoder (8-bit 4:2:0 only).
+    fn encoder(&self) -> &(Backend, Vec<CodecCaps>) {
+        self.encoder.get_or_init(|| {
             let h264 = || {
                 vec![CodecCaps {
                     codec: Codec::H264,
@@ -99,22 +104,32 @@ impl Platform {
                 .into_iter()
                 .next()
             else {
-                return h264();
+                return (Backend::Nvenc, h264());
             };
             match pingpong_capture::gpu::Gpu::for_output(&name) {
-                Ok(gpu) => pingpong_encode::nvenc::capabilities(&gpu.device).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "NVENC unavailable");
-                    Vec::new()
-                }),
+                Ok(gpu) => match pingpong_encode::nvenc::capabilities(&gpu.device) {
+                    Ok(caps) => (Backend::Nvenc, caps),
+                    Err(e) if pingpong_encode::mf::h264_available() => {
+                        tracing::info!(
+                            error = %e,
+                            "no NVENC; encoding with Media Foundation's H.264 encoder (software)"
+                        );
+                        (Backend::MediaFoundation, h264())
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "NVENC unavailable");
+                        (Backend::Nvenc, Vec::new())
+                    }
+                },
                 Err(e) => {
                     tracing::error!(error = %e, "no GPU output to probe");
-                    h264()
+                    (Backend::Nvenc, h264())
                 }
             }
         })
     }
 
-    /// What of `asked` (`control::video`) NVENC can stream with `codec`:
+    /// What of `asked` (`control::video`) the encoder can stream with `codec`:
     /// HDR where it encodes 10-bit (HEVC, AV1), 4:4:4 where it encodes that.
     /// Not both: NVENC takes 10-bit 4:4:4 from CUDA only, not from a D3D11
     /// texture (as Sunshine's `nvenc_d3d11_native.cpp` says), so HDR wins.
@@ -229,6 +244,7 @@ impl Platform {
     ) -> VideoParams {
         VideoParams {
             gdi_name: d.gdi_name.clone(),
+            backend: self.encoder().0,
             encoder: EncoderConfig {
                 two_pass: cfg.nvenc_two_pass,
                 slices: req.slices.max(1) as u32,

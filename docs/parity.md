@@ -94,7 +94,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | Host shutting down or restarting mid-stream | Ping says so at once | done |
 | Host software restarting mid-stream | Ping resumes by itself (~10 s) | done |
 | Streams with its monitor asleep, off or unplugged | Yes; sessions end in under 0.1 s with no monitor (6 of 6) | done |
-| AMD (AMF) and Intel (QuickSync) encoders on Windows, software encoding | Not built: NVENC only on Windows (FFmpeg's VA-API, NVENC or x264 on Linux) | no |
+| AMD (AMF) and Intel (QuickSync) encoders on Windows, software encoding | Software: Media Foundation's H.264 encoder where there is no NVENC (Sunshine uses libx264). AMF and QuickSync are not built (FFmpeg's VA-API, NVENC or x264 on Linux) | software only |
 | Network priority on Wi-Fi (QoS) | Not possible on Pong's dual-stack socket | no |
 | A macOS host: AVFoundation capture of a physical display, sound from a loopback device (BlackHole), gamepads through a licensed driver | ScreenCaptureKit of a virtual display at the client's size, HDR, 5.1/7.1 through a tap; no gamepads (Apple grants the virtual HID entitlement on request) | done: see [platforms/macos.md](platforms/macos.md) |
 | Linux: KMS, wlroots and KWin capture, uinput keyboard, mouse and pads, Vulkan encoding | X11 (MIT-SHM) and the desktop portal (PipeWire), XTest and the portal's input; no pads | no (beyond X11 and the portal) |
