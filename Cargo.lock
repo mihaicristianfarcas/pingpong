@@ -5914,7 +5914,6 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "ffmpeg-sys-next",
- "memchr",
  "objc2-core-foundation",
  "objc2-core-media",
  "objc2-core-video",
@@ -6006,6 +6005,7 @@ name = "pingpong-proto"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "memchr",
  "proptest",
  "reed-solomon-simd",
 ]
