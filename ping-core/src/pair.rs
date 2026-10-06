@@ -216,9 +216,11 @@ fn pair_as(
 /// How a paired host answered [`probe`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reach {
-    /// It answered as this host, here: its pairing port on the local
-    /// network, or its tunnel from anywhere.
-    Answered(SocketAddr),
+    /// It answered as this host on its pairing port, here: on its own
+    /// network, or through a VPN such as Tailscale. Pairing works here.
+    Pairing(SocketAddr),
+    /// It answered as this host over its tunnel only, here (from anywhere).
+    Tunnel(SocketAddr),
     /// It did not answer. `away`: this device is on another network than
     /// the host's. The host's NAT lets the probe in only once the host has
     /// seen Ping's presence and opened a path towards it (`wan`), so there
@@ -297,12 +299,13 @@ pub fn probe(dir: &Path) -> Vec<Reachability> {
         .iter()
         .enumerate()
         .map(|(i, h)| {
-            let reach = match (lan[i].flatten().or(tunnel_answer(i)), &tunnel) {
-                (Some(at), _) => Reach::Answered(at),
-                (None, Some((_, ours))) => Reach::Silent {
+            let reach = match (lan[i].flatten(), tunnel_answer(i), &tunnel) {
+                (Some(at), _, _) => Reach::Pairing(at),
+                (None, Some(at), _) => Reach::Tunnel(at),
+                (None, None, Some((_, ours))) => Reach::Silent {
                     away: is_away(ours, &h.wan_addresses),
                 },
-                (None, None) => Reach::Unknown,
+                (None, None, None) => Reach::Unknown,
             };
             Reachability {
                 name: h.name.clone(),
@@ -315,21 +318,28 @@ pub fn probe(dir: &Path) -> Vec<Reachability> {
 
 /// The host's pairing port, at each of its addresses but the public ones
 /// its rendezvous record gave (the pairing port is local; only the tunnel
-/// is reachable there, and a connection would only time out).
+/// is reachable there, and a connection would only time out). Asked all at
+/// once, the first to answer as this host wins: away from home, through a
+/// VPN, the saved home address only times out (3 s) while the VPN's answers
+/// in milliseconds.
 fn ask_pairing_port(h: &KnownHost) -> Option<SocketAddr> {
     let id = h.public().map(|p| p.short_id()).unwrap_or_default();
     let (local, remote) = h.candidates();
-    local
+    let (tx, rx) = crossbeam_channel::unbounded();
+    for tunnel in local
         .into_iter()
         .chain(remote)
         .filter(|a| !h.wan_addresses.contains(&a.to_string()))
-        .find_map(|tunnel| {
+    {
+        let (tx, id) = (tx.clone(), id.clone());
+        std::thread::spawn(move || {
             let addr = SocketAddr::new(tunnel.ip(), tunnel.port().wrapping_add(1));
-            match pair::host_info(addr) {
-                Ok((_, host_id, _, _)) if host_id == id => Some(addr),
-                _ => None,
-            }
-        })
+            let answered = matches!(pair::host_info(addr), Ok((_, host_id, _, _)) if host_id == id);
+            let _ = tx.send(answered.then_some(addr));
+        });
+    }
+    drop(tx);
+    rx.iter().flatten().next()
 }
 
 /// A handshake with each of `hosts` along every path a stream would race,
@@ -523,7 +533,7 @@ mod tests {
         assert_eq!(reach.len(), 1);
         assert_eq!(
             reach[0].reach,
-            Reach::Answered(format!("127.0.0.1:{}", host.port).parse().unwrap())
+            Reach::Tunnel(format!("127.0.0.1:{}", host.port).parse().unwrap())
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -549,7 +559,40 @@ mod tests {
         let stream = crate::store::TunnelLock::for_stream(&dir).unwrap();
         assert_eq!(probe(&dir)[0].reach, Reach::Unknown);
         drop(stream);
-        assert!(matches!(probe(&dir)[0].reach, Reach::Answered(_)));
+        assert!(matches!(probe(&dir)[0].reach, Reach::Tunnel(_)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_host_answering_on_its_pairing_port_is_found_there() {
+        let _serial = crate::store::tests::serial();
+        let (dir, _) = client_dir("probe-pairing");
+        let host = Identity::generate();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let pairing = listener.local_addr().unwrap();
+        let me = pingpong_pairing::pair::HostDescription {
+            name: "gaming-pc".into(),
+            id: host.public().short_id(),
+            version: "test".into(),
+            port: pairing.port() - 1,
+        };
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let _ = pingpong_pairing::pair::accept(stream, &me);
+            }
+        });
+        let (x, m) = host.public().to_b64();
+        // Its saved address answers on the pairing port; another one (as a
+        // home address seen from away) is refused.
+        let mut known = KnownHost::by_hand(
+            "gaming-pc",
+            &format!("127.0.0.1:{}", pairing.port() - 1),
+            &x,
+            &m,
+        );
+        known.local_address = Some("127.0.0.1:9".into());
+        Hosts::load(&dir).upsert(known).unwrap();
+        assert_eq!(probe(&dir)[0].reach, Reach::Pairing(pairing));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

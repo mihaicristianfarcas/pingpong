@@ -17,6 +17,9 @@ needs to be run, forwarded or paid for.
 All three are settings on the host (**Settings > Network**, or `port`,
 `pairing_port` and `web_port` in its `config.toml`). Pairing is deliberately
 local: a device is paired once, at home, and then connects from anywhere.
+A VPN that puts both on one network (Tailscale, say) counts as local:
+Ping pairs, and links Pong's web UI, at whichever of the host's addresses
+last answered on its pairing port, so away from home that is the VPN's.
 The client's own tunnel port is chosen once and kept (`port` in its data
 folder), so its NAT keeps giving it the same public port.
 
