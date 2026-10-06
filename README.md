@@ -21,6 +21,10 @@ Linux.
 - **From anywhere, without port forwarding**: hosts are found through
   sealed records on the BitTorrent DHT, and NATs are punched from both sides.
 - **The clipboard, both ways**: text, images, files and folders.
+- **Permissions per device**, as Apollo has them: whether it may see the
+  screen, use the keyboard, mouse or controllers, copy and paste each way,
+  start apps, take over or watch agents
+  ([docs/usage.md](docs/usage.md#what-each-device-may-do)).
 - **AI agents** can use your hosts as clients of their own — from Ping, or
   from any MCP client — held to rules the host enforces
   ([docs/ai-agents.md](docs/ai-agents.md)).

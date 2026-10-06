@@ -143,6 +143,9 @@ pub(super) fn session_card(chat: &Chat, watching: bool, t: Theme) -> impl IntoEl
                 format!("Someone at {}", chat.host)
             }
             Some(a) if a.flags & agent_state::VIEW_ONLY != 0 => "See only".into(),
+            Some(a) if a.flags & agent_state::UNWATCHED != 0 => {
+                "Waiting for someone to watch".into()
+            }
             Some(a) if watching => format!(
                 "The agent · you watch{}",
                 if a.watchers > 1 {

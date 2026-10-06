@@ -191,6 +191,30 @@ impl Action {
         }
     }
 
+    /// What the host must let the agent do for it (`permission::KEYBOARD`,
+    /// `MOUSE`, both: a click with modifier keys holds keys down too).
+    fn needs(&self) -> u16 {
+        use pingpong_proto::permission::{KEYBOARD, MOUSE};
+        let keys = |m: &Option<String>| {
+            if m.as_deref().is_some_and(|m| !m.trim().is_empty()) {
+                KEYBOARD
+            } else {
+                0
+            }
+        };
+        match self {
+            Action::Click { modifiers, .. }
+            | Action::Drag { modifiers, .. }
+            | Action::Scroll { modifiers, .. } => MOUSE | keys(modifiers),
+            Action::MouseMove { .. } | Action::MouseDown { .. } | Action::MouseUp { .. } => MOUSE,
+            Action::Type { .. } | Action::Key { .. } | Action::HoldKey { .. } => KEYBOARD,
+            Action::Screenshot
+            | Action::Zoom { .. }
+            | Action::Wait { .. }
+            | Action::CursorPosition => 0,
+        }
+    }
+
     /// Whether it touches the host's keyboard or mouse.
     fn is_input(&self) -> bool {
         !matches!(
@@ -731,6 +755,14 @@ impl Computer {
                     ));
                 }
             }
+            if let Some(s) = &self.session {
+                if let Some(why) = s
+                    .permissions()
+                    .and_then(|p| not_permitted(action.needs(), p, &s.host_name))
+                {
+                    return Err(why);
+                }
+            }
             if let Some(state) = self
                 .session
                 .as_ref()
@@ -1164,7 +1196,8 @@ impl Computer {
         let st = s.stats();
         let drive = match s.agent_state() {
             Some(a) if a.agent_may_act() => format!(
-                "the agent has the keyboard and mouse ({} watching)",
+                "the agent has {} ({} watching)",
+                what_it_may_use(s.permissions()),
                 a.watchers
             ),
             Some(a) => held_reason(a, &s.host_name),
@@ -1236,6 +1269,41 @@ fn alive(pid: u32) -> bool {
     }
 }
 
+/// What the agent drives on a host that allows `p` (None: the host has not
+/// said, so as before permissions, both).
+fn what_it_may_use(p: Option<pingpong_proto::permission::Permissions>) -> &'static str {
+    use pingpong_proto::permission::{KEYBOARD, MOUSE};
+    match p {
+        Some(p) if !p.allows(MOUSE) => "the keyboard (the host does not let it use the mouse)",
+        Some(p) if !p.allows(KEYBOARD) => "the mouse (the host does not let it use the keyboard)",
+        _ => "the keyboard and mouse",
+    }
+}
+
+/// Why an action that `needs` these permissions cannot be done on a host
+/// that allows `p`, in words the model can act on; None if it can. An
+/// agent that may use neither hears it from its state (`VIEW_ONLY`).
+fn not_permitted(
+    needs: u16,
+    p: pingpong_proto::permission::Permissions,
+    host: &str,
+) -> Option<String> {
+    use pingpong_proto::permission::{KEYBOARD, MOUSE};
+    if p.allows(needs) || !p.allows_any(KEYBOARD | MOUSE) {
+        return None;
+    }
+    let (missing, other, instead) = if p.allows(KEYBOARD) {
+        ("mouse", "keyboard", "keys and shortcuts (`key`, `type`)")
+    } else {
+        ("keyboard", "mouse", "the mouse")
+    };
+    Some(format!(
+        "{host} does not let this agent use the {missing}, only the {other}: its \
+            permissions there say so. Do it with {instead}, or describe what is left \
+            for a person to do."
+    ))
+}
+
 /// What held the agent, for the model once it may act again.
 fn hold_cause(state: AgentState) -> &'static str {
     let f = state.flags;
@@ -1247,6 +1315,8 @@ fn hold_cause(state: AgentState) -> &'static str {
         "A person paused the agent"
     } else if f & agent_state::LOCAL_INPUT != 0 {
         "Someone used the host's own keyboard or mouse"
+    } else if f & agent_state::UNWATCHED != 0 {
+        "The agent, which may act only while someone watches, waited for someone to watch"
     } else {
         "The agent's input was held"
     }
@@ -1281,8 +1351,8 @@ pub fn held_reason(state: AgentState, host: &str) -> String {
     }
     if f & agent_state::VIEW_ONLY != 0 {
         return format!(
-            "This agent may only look at {host}: its access there is view-only. \
-                Describe what to do instead of doing it."
+            "This agent may only look at {host}: its permissions there allow neither \
+                the keyboard nor the mouse. Describe what to do instead of doing it."
         );
     }
     if f & agent_state::PAUSED != 0 {
@@ -1295,6 +1365,13 @@ pub fn held_reason(state: AgentState, host: &str) -> String {
         return format!(
             "Someone is using {host}'s own keyboard or mouse. Carry on: your \
                 next action waits until they stop for a few seconds, then shows you the screen."
+        );
+    }
+    if f & agent_state::UNWATCHED != 0 {
+        return format!(
+            "{host} lets this agent act only while a person watches, and nobody does. \
+                Carry on: your next action waits until someone watches (Log In on the \
+                session in Ping, or `ping watch`), then shows you the screen."
         );
     }
     format!("The agent's input on {host} is held.")
@@ -1398,6 +1475,47 @@ mod tests {
             "box",
         );
         assert!(r.contains("took over"));
+    }
+
+    #[test]
+    fn an_action_the_host_does_not_permit_says_what_to_use_instead() {
+        use pingpong_proto::permission::{Permissions, KEYBOARD, MOUSE, VIEW};
+        let click = Action::Click {
+            at: Some((1, 2)),
+            button: Mouse::Left,
+            count: 1,
+            modifiers: None,
+        };
+        let ctrl_click = Action::Click {
+            at: Some((1, 2)),
+            button: Mouse::Left,
+            count: 1,
+            modifiers: Some("ctrl".into()),
+        };
+        let typing = Action::Type { text: "hi".into() };
+        let keys = Permissions::from_bits(VIEW | KEYBOARD);
+        let mouse = Permissions::from_bits(VIEW | MOUSE);
+        let why = not_permitted(click.needs(), keys, "box").unwrap();
+        assert!(why.contains("use the mouse, only the keyboard"), "{why}");
+        assert_eq!(not_permitted(typing.needs(), keys, "box"), None);
+        assert!(not_permitted(ctrl_click.needs(), mouse, "box")
+            .unwrap()
+            .contains("use the keyboard, only the mouse"));
+        assert_eq!(not_permitted(click.needs(), mouse, "box"), None);
+        assert_eq!(not_permitted(Action::Screenshot.needs(), keys, "box"), None);
+        // Neither: the host's state says so (VIEW_ONLY), with its own words.
+        assert_eq!(
+            not_permitted(click.needs(), Permissions::SEE_ONLY, "box"),
+            None
+        );
+        let r = held_reason(
+            AgentState {
+                flags: agent_state::UNWATCHED,
+                watchers: 0,
+            },
+            "box",
+        );
+        assert!(r.contains("only while a person watches"), "{r}");
     }
 
     #[test]
