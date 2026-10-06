@@ -226,6 +226,14 @@ A client is then known by its tunnel key; there is nothing else to steal
 from the network. See [SECURITY.md](../SECURITY.md) for the model, and
 [design/v3-design.md](design/v3-design.md) §4 for why the pairing is hybrid.
 
+What a client may do once paired is the host's to say, per client, as
+Apollo does: its permissions (`pingpong_proto::permission`, kept in
+`clients.toml`) say whether it may see the screen, which input it may send,
+which way the clipboard goes, and whether it may start apps, take over or
+watch agents. The host checks them where each thing arrives (a session
+request, an input packet, a clipboard chunk) and tells the client its set
+in the session's ack and when it changes ([usage.md](usage.md#what-each-device-may-do)).
+
 ## Away from home
 
 A host with internet access on publishes a sealed record of its public

@@ -39,8 +39,11 @@ pub struct SessionStatus {
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct AgentStatus {
-    /// The agent's access here (`control`, `view`).
+    /// The agent's access here (`control`, `view`), for Pong windows from
+    /// before permissions.
     pub access: String,
+    /// What the agent may do here.
+    pub permissions: pingpong_proto::permission::Permissions,
     /// `control::agent_state::*`.
     pub flags: u8,
     pub watchers: Vec<String>,
@@ -201,21 +204,25 @@ impl Host {
             .send(crate::session::SessionCmd::AgentControl { peer: 0, op });
     }
 
-    /// Set what a paired agent may do. A session of its that is running
-    /// follows at once (view-only holds its input; off ends it).
-    pub fn set_agent_access(
+    /// Set what a paired client may do. A session of its that is running,
+    /// or its watching, follows at once. What it may now do (only what its
+    /// kind can be allowed), or None if there is no such client.
+    pub fn set_permissions(
         &self,
         x25519_b64: &str,
-        access: crate::clients::Access,
-    ) -> std::io::Result<bool> {
-        let found = self.clients.lock().set_access(x25519_b64, access)?;
-        if found {
-            let _ = self.sessions.send(crate::session::SessionCmd::Access {
+        permissions: pingpong_proto::permission::Permissions,
+    ) -> std::io::Result<Option<pingpong_proto::permission::Permissions>> {
+        let now = self
+            .clients
+            .lock()
+            .set_permissions(x25519_b64, permissions)?;
+        if let Some(permissions) = now {
+            let _ = self.sessions.send(crate::session::SessionCmd::Permissions {
                 key: x25519_b64.to_string(),
-                access,
+                permissions,
             });
         }
-        Ok(found)
+        Ok(now)
     }
 
     /// What agents did lately, oldest first.
@@ -247,19 +254,29 @@ impl Host {
         let _ = self.sessions.send(crate::session::SessionCmd::Shutdown);
     }
 
-    /// Admit a newly paired client to the tunnel.
+    /// Admit a newly paired client to the tunnel, with these permissions
+    /// (None: what a client of its kind gets by default).
     pub fn add_client(
         &self,
         name: &str,
         public: &pingpong_transport::PublicIdentity,
         rendezvous: Option<[u8; 32]>,
         agent: bool,
-    ) -> std::io::Result<()> {
-        self.clients.lock().add(name, public, rendezvous, agent)?;
+        permissions: Option<pingpong_proto::permission::Permissions>,
+    ) -> std::io::Result<pingpong_proto::permission::Permissions> {
+        let client = self
+            .clients
+            .lock()
+            .add(name, public, rendezvous, agent, permissions)?;
         self.endpoint
             .add_peer(public.clone(), None)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
-        Ok(())
+        // Paired again while connected: what it may do now applies.
+        let _ = self.sessions.send(crate::session::SessionCmd::Permissions {
+            key: client.x25519.clone(),
+            permissions: client.permissions,
+        });
+        Ok(client.permissions)
     }
 
     /// Forget a client: it can no longer complete a handshake.
@@ -419,7 +436,13 @@ impl Host {
             }
             #[cfg(windows)]
             Control::Gamepad(state) => {
-                if self.shared.is_active(peer.id()) {
+                // A client that may not use controllers: its pads hear
+                // nothing, and centre themselves (`gamepad::STALE_AFTER`).
+                let may = pingpong_proto::permission::Permissions::from_bits(
+                    self.shared.client_permissions.load(Ordering::Acquire),
+                )
+                .allows(pingpong_proto::permission::CONTROLLER);
+                if may && self.shared.is_active(peer.id()) {
                     if let Some((owner, pads)) = self.shared.pads.lock().as_ref() {
                         if *owner == peer.id() {
                             pads.apply(state);

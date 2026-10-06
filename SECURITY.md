@@ -64,9 +64,15 @@ Unix socket in its own data folder, so a second start can ask the running
 copy to show its window; it takes that one word and nothing else. On
 Windows the same is a named event in the signed-in session.
 
+**What a device may do** is the host's to say, per device: whether it may
+see the screen, which input it may send, which way the clipboard goes,
+whether it may start apps, take over or watch agents. The host enforces it
+on what arrives, so a modified client gains nothing by ignoring it; a
+second device paired may only see until the host's owner allows more.
+
 **AI agents** are clients of their own, held to rules the host enforces:
-never over a person, never on a secure screen, only with the access the
-host granted. [docs/ai-agents.md](docs/ai-agents.md#threat-model) has their
+never over a person, never on a secure screen, only with the permissions
+the host granted. [docs/ai-agents.md](docs/ai-agents.md#threat-model) has their
 threat model.
 
 ## Out of scope

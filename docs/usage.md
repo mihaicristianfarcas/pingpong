@@ -146,7 +146,7 @@ window is an ordinary app: closing it quits it.
 | Page | Setting | Default | `config.toml` |
 |---|---|---|---|
 | General | Name (as clients see it) | the computer's name | `name` |
-| | Let a client take over a session | on | `allow_takeover` |
+| | Let a client take over a session (a device also needs **Take over** in its permissions) | on | `allow_takeover` |
 | | Keep this PC's monitors on while streaming | off: the virtual display is the whole desktop | `keep_host_displays` |
 | | Share the clipboard with clients | on | `clipboard` |
 | Video | NVENC preset | P1 (fastest), as Sunshine | `nvenc_preset` |
@@ -185,6 +185,58 @@ the web UI's certificate and account, and `logs/`:
 
 `PONG_DATA_DIR` points Pong elsewhere.
 
+## What each device may do
+
+Each paired device has permissions on the host, as Apollo gives each of its
+clients: whether it may see the screen, which input the host takes from it,
+which way the clipboard goes, and more. Set them in Pong's window under
+**Devices** (the button beside each device) or in the web UI under
+**Clients**. A change applies at once, to a stream that is running too.
+
+| Permission | Lets the device | Name (`pong permissions`) |
+|---|---|---|
+| See the screen | Stream the screen and sound. Off: the device stays paired, but is turned away | `view` |
+| Start apps | Open an app with the stream, such as Steam Big Picture | `launch` |
+| Take over | Stream while another device does, ending that stream (when **Let a client take over a session** is on) | `take_over` |
+| Keyboard | Type, and press keys and shortcuts | `keyboard` |
+| Mouse | Move the pointer, click and scroll | `mouse` |
+| Controllers | Play with game controllers (on a Windows host) | `controller` |
+| Copy from this computer | What is copied on the host can be pasted on the device | `clipboard_read` |
+| Paste to this computer | What is copied on the device can be pasted on the host | `clipboard_write` |
+| Watch AI agents | Watch an agent's session, pause or stop it, and take over from it with the keyboard or mouse | `watch` |
+
+An AI agent can have **See the screen**, **Keyboard** and **Mouse**, and one
+of its own: **Act while nobody watches** (`unwatched`). Without it, the
+agent waits until a person watches its session
+([ai-agents.md](ai-agents.md#the-rules-the-host-holds-agents-to)).
+
+**When a device pairs**, the PIN step offers a choice: **Everything**, **See
+and control** (keyboard, mouse and controllers, nothing else) or **See
+only**; for an agent, **See and control**, **Only while watched** or **See
+only**. It starts from what the device gets otherwise: the first device
+paired with the host may do everything, and later ones see only, as Apollo
+gives its first client every permission and later ones only watching.
+Choose **Everything** for a device of your own. An agent may see and act,
+as agents could before permissions. Devices paired before permissions keep
+what they could do.
+
+What the device hears:
+
+- Ping says what the host holds back as a stream starts, and when it
+  changes: "gaming-pc ignores your keyboard, mouse and controllers: this
+  device may not use them there."
+- A device that may not stream, start the app it asked for, or watch an
+  agent is refused with the reason. A stream whose **See the screen** is
+  taken away ends, and says why.
+- Input the device may not send is dropped by the host as it arrives; a
+  key it holds down when the keyboard is taken away is let go.
+- The clipboard goes only the ways the device may: its copies are not even
+  read on the side that may not send them. Sharing that was off when a
+  stream started comes on with the next stream.
+
+From a terminal: `pong permissions X25519 view,keyboard,mouse`
+([cli.md](cli.md#pong--the-host)).
+
 ## Updates
 
 Ping and Pong's window say when there is something newer than the copy
@@ -207,7 +259,10 @@ folder.
 Copy on one side, paste on the other: text, images, and files and folders,
 both ways, for as long as your stream runs. Ping asks for it (**Share the
 clipboard**, on by default; `ping stream --no-clipboard` for one stream),
-and the host agrees unless its **Share the clipboard with clients** is off.
+and the host agrees unless its **Share the clipboard with clients** is off,
+the ways the device's permissions allow (**Copy from this computer**,
+**Paste to this computer**; see
+[What each device may do](#what-each-device-may-do)).
 
 - Each end watches its own clipboard and sends each new copy: files if there
   are some, else text, else an image. Files arrive in a temporary folder
@@ -256,6 +311,11 @@ same.
 - **"The host did not answer."** Is Pong running (its window says; on
   Windows, `PongService` in Services)? Is this device still paired (the host's
   **Devices**)?
+- **The host ignores your keyboard or mouse**, and Ping says so: this
+  device may not use them there. In Pong on the host, **Devices**, give it
+  **Keyboard** and **Mouse** (or choose **Everything**).
+- **"… does not let this device stream."** Its **See the screen**
+  permission is off: turn it on in Pong on the host, under **Devices**.
 - **"… did not answer this device's AI agent."** The agent is paired on its
   own, apart from Ping: if Ping still streams from the host, Pong no longer
   has the agent. Pair it again with **Allow…** on Ping's **Agents** page.

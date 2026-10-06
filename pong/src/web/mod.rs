@@ -3,8 +3,9 @@
 //! created on the first visit.
 //!
 //! Pages: dashboard (the live session; an AI agent's, with what it does and
-//! buttons to pause or stop it), pairing (type the PIN a client shows),
-//! clients (unpair; what each agent may do), settings (config.toml), logs.
+//! buttons to pause or stop it), pairing (type the PIN a client shows, and
+//! choose what it may do), clients (unpair; what each one may do), settings
+//! (config.toml), logs.
 //!
 //! The same API serves Pong's own window (pong-app), which sends a bearer
 //! token instead of a cookie: the local token this host writes where only
@@ -31,9 +32,11 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::clients::Access;
 use crate::config::HostConfig;
 use crate::host::Host;
 use crate::pairing::PinResult;
+use pingpong_proto::permission::Permissions;
 
 const INDEX: &str = include_str!("index.html");
 const SESSION_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -414,14 +417,20 @@ async fn status(State(web): State<Shared>, headers: HeaderMap) -> Response {
     require_auth!(web, headers);
     let h = &web.host;
     let c = h.config.read().clone();
+    // Out of the statement below: it locks the client list too, and a lock
+    // taken twice in one statement is a deadlock.
+    let (clients, pending) = {
+        let list = h.clients.lock();
+        (list.list().len(), h.pairing.list(&list))
+    };
     Json(json!({
         "name": c.name,
         "id": h.endpoint.identity().public().short_id(),
         "version": env!("CARGO_PKG_VERSION"),
         "port": h.endpoint.local_port(),
         "session": *h.status.lock(),
-        "clients": h.clients.lock().list().len(),
-        "pending": h.pairing.list(),
+        "clients": clients,
+        "pending": pending,
         "tunnels": h.endpoint.peers().iter().filter(|p| p.is_established()).count(),
         "internet": c.internet_access,
         "public": h.stun.public().iter().map(|a| a.to_string()).collect::<Vec<_>>(),
@@ -432,12 +441,16 @@ async fn status(State(web): State<Shared>, headers: HeaderMap) -> Response {
 
 async fn pending(State(web): State<Shared>, headers: HeaderMap) -> Response {
     require_auth!(web, headers);
-    Json(web.host.pairing.list()).into_response()
+    let list = web.host.pairing.list(&web.host.clients.lock());
+    Json(list).into_response()
 }
 
 #[derive(Deserialize)]
 struct Pin {
     pin: String,
+    /// What the client may do; absent: what it gets by default.
+    #[serde(default)]
+    permissions: Option<Permissions>,
 }
 
 async fn submit_pin(
@@ -448,8 +461,10 @@ async fn submit_pin(
 ) -> Response {
     require_auth!(web, headers);
     let host = web.host.clone();
-    let result =
-        tokio::task::spawn_blocking(move || host.pairing.submit(&host, id, &req.pin)).await;
+    let result = tokio::task::spawn_blocking(move || {
+        host.pairing.submit(&host, id, &req.pin, req.permissions)
+    })
+    .await;
     match &result {
         Ok(PinResult::Paired(name)) => {
             tracing::info!(request = id, client = name, "web UI: PIN accepted, paired")
@@ -523,7 +538,10 @@ async fn clients(State(web): State<Shared>, headers: HeaderMap) -> Response {
                 .is_some_and(|p| p.is_established());
             json!({
                 "name": c.name, "id": id, "key": c.x25519, "paired_at": c.paired_at, "online": online,
-                "agent": c.agent, "access": c.access.name(),
+                "agent": c.agent, "permissions": c.permissions,
+                "possible": Permissions::possible(c.agent),
+                // For Pong windows from before permissions.
+                "access": c.access().name(),
             })
         })
         .collect();
@@ -562,36 +580,65 @@ async fn unpair(
 }
 
 #[derive(Deserialize)]
+struct SetPermissions {
+    key: String,
+    permissions: Permissions,
+}
+
+async fn set_permissions(
+    State(web): State<Shared>,
+    headers: HeaderMap,
+    Json(req): Json<SetPermissions>,
+) -> Response {
+    require_auth!(web, headers);
+    change_permissions(&web, &req.key, |_| req.permissions)
+}
+
+#[derive(Deserialize)]
 struct SetAccess {
     key: String,
     access: String,
 }
 
+/// What Pong windows from before permissions set: an agent's access in
+/// three steps (a person's device: everything, see only, nothing).
 async fn set_access(
     State(web): State<Shared>,
     headers: HeaderMap,
     Json(req): Json<SetAccess>,
 ) -> Response {
     require_auth!(web, headers);
-    let Some(access) = crate::clients::Access::parse(&req.access) else {
+    let Some(access) = Access::parse(&req.access) else {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "access is control, view or off"})),
         )
             .into_response();
     };
-    let name = web
+    change_permissions(&web, &req.key, |agent| match (access, agent) {
+        (Access::Control, false) => Permissions::PERSON_ALL,
+        _ => access.permissions(),
+    })
+}
+
+/// Give the client with `key` the permissions `to` makes for its kind
+/// (true: an agent).
+fn change_permissions(web: &Web, key: &str, to: impl FnOnce(bool) -> Permissions) -> Response {
+    let found = web
         .host
         .clients
         .lock()
         .list()
         .iter()
-        .find(|c| c.x25519 == req.key)
-        .map(|c| c.name.clone())
-        .unwrap_or_default();
-    tracing::info!(client = name, access = req.access, "web UI: agent access");
-    match web.host.set_agent_access(&req.key, access) {
-        Ok(found) => Json(json!({"ok": found})).into_response(),
+        .find(|c| c.x25519 == key)
+        .map(|c| (c.name.clone(), c.agent));
+    let Some((name, agent)) = found else {
+        return Json(json!({"ok": false})).into_response();
+    };
+    let permissions = to(agent);
+    tracing::info!(client = name, permissions = ?permissions.fit(agent).names(), "web UI: permissions");
+    match web.host.set_permissions(key, permissions) {
+        Ok(now) => Json(json!({"ok": now.is_some(), "permissions": now})).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
@@ -757,6 +804,7 @@ pub fn serve(host: Arc<Host>) {
         .route("/api/pairing/{id}", post(submit_pin).delete(decline))
         .route("/api/clients", get(clients))
         .route("/api/clients/remove", post(unpair))
+        .route("/api/clients/permissions", post(set_permissions))
         .route("/api/clients/access", post(set_access))
         .route("/api/agent/log", get(agent_log))
         .route("/api/agent/{op}", post(agent_op))
