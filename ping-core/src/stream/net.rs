@@ -673,12 +673,7 @@ impl NetLoop {
                 last_sent: now - START_RETRY,
             };
         } else if since.elapsed() > self.ctx.handshake_limit {
-            self.end(
-                "The host did not answer. Is Pong running, and is this client paired with \
-                    it?"
-                .into(),
-                true,
-            );
+            self.end(super::NO_ANSWER.into(), true);
             return ControlFlow::Break(());
         } else if last_initiate.elapsed() > RACE_EVERY {
             self.phase = Phase::Handshake {

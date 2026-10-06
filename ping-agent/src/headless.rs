@@ -67,6 +67,17 @@ pub struct HeadlessSession {
     pub host_os: u8,
 }
 
+/// The tunnel's handshake got no answer, as this device's agent: Pong is
+/// off, or no longer has the agent paired (removed in Pong, or the host's
+/// pairings lost), which Ping's own pairing with it says nothing about.
+fn no_answer(host: &str) -> String {
+    format!(
+        "{host} did not answer this device's AI agent. Either Pong is not running there, or it \
+            no longer has the agent paired: pair it again with Allow… on Ping's Agents page (or \
+            `ping pair-agent {host}`), and type the PIN in Pong."
+    )
+}
+
 /// The paired hosts this device's agent can use.
 pub fn agent_hosts(data_dir: &Path) -> Vec<KnownHost> {
     Hosts::load(&store::agent_dir(data_dir)).list().to_vec()
@@ -181,7 +192,11 @@ impl HeadlessSession {
                 }
             }
             if let Some((reason, _)) = &s.ended {
-                return Err(reason.clone());
+                return Err(if reason == ping_core::stream::NO_ANSWER {
+                    no_answer(&known.name)
+                } else {
+                    reason.clone()
+                });
             }
             if s.ack.is_none() {
                 return Err(format!(
@@ -265,5 +280,18 @@ impl HeadlessSession {
 
     pub fn close(mut self) {
         self.stream.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_agent_the_host_does_not_answer_is_told_to_pair_again() {
+        let said = no_answer("gaming-pc");
+        assert!(said.starts_with("gaming-pc did not answer this device's AI agent."));
+        assert!(said.contains("`ping pair-agent gaming-pc`"));
+        assert_ne!(said, ping_core::stream::NO_ANSWER);
     }
 }
