@@ -256,6 +256,9 @@ same.
 - **"The host did not answer."** Is Pong running (its window says; on
   Windows, `PongService` in Services)? Is this device still paired (the host's
   **Devices**)?
+- **"… did not answer this device's AI agent."** The agent is paired on its
+  own, apart from Ping: if Ping still streams from the host, Pong no longer
+  has the agent. Pair it again with **Allow…** on Ping's **Agents** page.
 - **"The host could not create its virtual display"** (Windows): SudoVDA is
   not installed, or Apollo's service is holding it — stop ApolloService.
 - **A Mac host ignores the keyboard and mouse**, or streams nothing: give

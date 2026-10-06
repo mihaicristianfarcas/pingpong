@@ -33,6 +33,13 @@ use pingpong_transport::{Endpoint, Identity, Peer, PublicIdentity};
 use crate::input::{InputSender, InputThread};
 use crate::stats::{Stats, StatsCollector};
 
+/// Why a stream ended when no handshake came back: the host is off, or does
+/// not know this identity (Pong ignores keys it has not paired, silently).
+/// Callers that know which identity it was say it better (an agent's,
+/// `ping_agent::headless`).
+pub const NO_ANSWER: &str =
+    "The host did not answer. Is Pong running, and is this client paired with it?";
+
 /// Moonlight's default bitrate for a mode: interpolated over its resolution
 /// table, linear in frame rate up to 60 and by the square root beyond.
 pub fn default_bitrate_kbps(width: u32, height: u32, fps: u32) -> u32 {
