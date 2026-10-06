@@ -187,21 +187,28 @@ pub fn connect(
     let _ = lookup.join();
 }
 
-/// Our public addresses for `port`, by STUN from a socket bound to it.
-/// None while a stream holds the port (the stream does its own STUN).
-fn public_for_port(port: u16) -> Option<Vec<SocketAddr>> {
-    let socket = UdpSocket::bind(("0.0.0.0", port)).ok()?;
-    socket
-        .set_read_timeout(Some(Duration::from_millis(400)))
-        .ok()?;
+/// Our public addresses for this identity's tunnel port, by STUN from a
+/// socket bound to it. None while a stream holds the port, or one starts
+/// meanwhile (the stream does its own STUN).
+fn public_for_port(dir: &Path) -> Option<Vec<SocketAddr>> {
+    // DNS first: a stream starting meanwhile waits for the lock, not for this.
     let stun = Stun::new();
     stun.resolve_servers();
+    let _lock = crate::store::TunnelLock::for_borrowing(dir)?;
+    let port = crate::store::tunnel_port(dir);
+    let socket = UdpSocket::bind(("0.0.0.0", port)).ok()?;
+    socket
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .ok()?;
     stun.probe(|d, to| {
         let _ = socket.send_to(d, to);
     });
     let mut buf = [0u8; 512];
     let deadline = Instant::now() + Duration::from_millis(1200);
     while Instant::now() < deadline && stun.answers() < 2 {
+        if crate::store::stream_waiting() {
+            return None;
+        }
         if let Ok((n, from)) = socket.recv_from(&mut buf) {
             stun.on_datagram(from, &buf[..n]);
         }
@@ -224,7 +231,6 @@ pub fn presence(dir: PathBuf) {
             if !wait_ready(&rv, &never, Duration::from_secs(30)) {
                 return;
             }
-            let port = crate::store::tunnel_port(&dir);
             let mut published: std::collections::HashMap<[u8; 32], (Vec<SocketAddr>, Instant)> =
                 Default::default();
             loop {
@@ -234,7 +240,7 @@ pub fn presence(dir: PathBuf) {
                     .filter_map(|h| Wan::for_host(&dir, h))
                     .collect();
                 if !hosts.is_empty() {
-                    let ours = public_for_port(port);
+                    let ours = public_for_port(&dir);
                     for wan in &hosts {
                         wan.refresh_host(&rv);
                         let Some(endpoints) = ours.clone().filter(|e| !e.is_empty()) else {

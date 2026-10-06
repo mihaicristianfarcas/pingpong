@@ -243,6 +243,8 @@ struct Ctx {
     audio_muted: AtomicBool,
     /// An agent's session: the host's last word on who drives.
     agent_state: Mutex<Option<AgentState>>,
+    /// Held for as long as the tunnel is ([`crate::store::TunnelLock`]).
+    _tunnel_lock: Option<crate::store::TunnelLock>,
 }
 
 /// Sends control messages to the host from another thread (controllers).
@@ -316,6 +318,12 @@ impl Stream {
         stats: Arc<StatsCollector>,
     ) -> Result<Stream, String> {
         pingpong_proto::fec::warm_up();
+        // Taken before the port: the host list's probe borrows it between
+        // streams, and must not handshake as this identity while one runs.
+        let tunnel_lock = host
+            .data_dir
+            .as_deref()
+            .and_then(crate::store::TunnelLock::for_stream);
         // The client's own stable port, so its NAT mapping (and a host's warm
         // path towards it) carries over between streams; any port if busy.
         let port = host
@@ -361,6 +369,7 @@ impl Stream {
             host_name: host.name.clone(),
             audio_muted: AtomicBool::new(false),
             agent_state: Mutex::new(None),
+            _tunnel_lock: tunnel_lock,
         });
         if let Some(wan) = host.wan.clone() {
             let (endpoint, peer, stun, stop) = (

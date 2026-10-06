@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender};
-use ping_core::pair::{self, Discovered, Reachability};
+use ping_core::pair::{self, Discovered, Reach, Reachability};
 use ping_core::store::{self, Hosts};
 use pingpong_pairing::pair::Cancel;
 
@@ -24,6 +24,16 @@ const DISCOVER_FOR: Duration = Duration::from_millis(1200);
 const FORGET_AFTER: Duration = Duration::from_secs(30);
 /// How long a woken host's card says "Waking…" at most.
 const WAKE_FOR: Duration = Duration::from_secs(60);
+/// Away from the host's network, a host that does not answer is called
+/// asleep only after it has been silent this long. The probe gets through
+/// the host's NAT once the host has opened a path towards this device,
+/// which it does on seeing Ping's presence (docs/networking.md, "The warm
+/// path"): Ping joins the DHT (3-5 s) and publishes (~4.7 s), the host
+/// reads one client's record per round (~2.5 s each) and warms every 20 s.
+/// With a few clients paired, the path opens within a minute of Ping
+/// starting or this device changing networks. Until then the card keeps
+/// what it said ("Checking…" at first).
+const AWAY_GRACE: Duration = Duration::from_secs(90);
 
 /// A host this computer has paired with.
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +102,19 @@ impl Item {
     }
 }
 
+/// Whether a host is up after a poll: `was` is what its card said, and
+/// `silent_away_for` how long it has been silent from another network.
+fn judge(reach: Reach, was: Option<bool>, silent_away_for: Duration) -> Option<bool> {
+    match reach {
+        Reach::Answered(_) => Some(true),
+        Reach::Silent { away: false } => Some(false),
+        Reach::Silent { away: true } if silent_away_for < AWAY_GRACE => was,
+        Reach::Silent { away: true } => Some(false),
+        // A stream holds the tunnel: nothing new to say.
+        Reach::Unknown => was,
+    }
+}
+
 fn join(ip: IpAddr, port: u16) -> String {
     join_str(&ip.to_string(), port)
 }
@@ -125,6 +148,9 @@ pub struct Model {
     seen: HashMap<String, (Discovered, Instant)>,
     /// Paired hosts' keys → whether they answered.
     reach: HashMap<String, bool>,
+    /// Paired hosts' keys → since when they have been silent from another
+    /// network (see `AWAY_GRACE`).
+    silent_away: HashMap<String, Instant>,
     dir: PathBuf,
     poll_now: Sender<()>,
     polled: Receiver<Poll>,
@@ -176,6 +202,7 @@ impl Model {
             waking: HashMap::new(),
             seen: HashMap::new(),
             reach: HashMap::new(),
+            silent_away: HashMap::new(),
             dir,
             poll_now,
             polled,
@@ -198,9 +225,25 @@ impl Model {
             }
             self.seen
                 .retain(|_, (_, at)| now.duration_since(*at) < FORGET_AFTER);
-            self.reach.clear();
+            let before = std::mem::take(&mut self.reach);
+            self.silent_away
+                .retain(|key, _| p.reach.iter().any(|r| r.x25519 == *key));
             for r in p.reach {
-                *self.reach.entry(r.x25519).or_default() |= r.via.is_some();
+                let silent_away_for = match r.reach {
+                    Reach::Silent { away: true } => {
+                        let since = self.silent_away.entry(r.x25519.clone()).or_insert(now);
+                        now.duration_since(*since)
+                    }
+                    Reach::Unknown => Duration::ZERO,
+                    _ => {
+                        self.silent_away.remove(&r.x25519);
+                        Duration::ZERO
+                    }
+                };
+                let was = before.get(&r.x25519).copied();
+                if let Some(online) = judge(r.reach, was, silent_away_for) {
+                    self.reach.insert(r.x25519, online);
+                }
             }
             // Found on the network: it is up even if the probe raced it.
             let paired = Hosts::load(&self.dir);
@@ -480,5 +523,37 @@ mod tests {
         let v6 = paired("[fe80::1]:47800", Some("[fe80::2]:47800"));
         assert_eq!(v6.pairing_address().as_deref(), Some("[fe80::2]:47801"));
         assert!(item.offline_but_wakeable());
+    }
+
+    #[test]
+    fn a_host_that_answers_anywhere_is_up() {
+        let tunnel = Reach::Answered("203.0.113.7:47800".parse().unwrap());
+        assert_eq!(judge(tunnel, Some(false), Duration::ZERO), Some(true));
+        assert_eq!(judge(tunnel, None, Duration::ZERO), Some(true));
+    }
+
+    #[test]
+    fn on_the_hosts_network_a_silent_host_is_asleep_at_once() {
+        let silent = Reach::Silent { away: false };
+        assert_eq!(judge(silent, Some(true), Duration::ZERO), Some(false));
+        assert_eq!(judge(silent, None, Duration::ZERO), Some(false));
+    }
+
+    #[test]
+    fn away_a_silent_host_keeps_its_state_until_its_path_had_time_to_open() {
+        let silent = Reach::Silent { away: true };
+        assert_eq!(judge(silent, None, Duration::ZERO), None);
+        assert_eq!(
+            judge(silent, Some(true), Duration::from_secs(60)),
+            Some(true)
+        );
+        assert_eq!(judge(silent, Some(true), AWAY_GRACE), Some(false));
+        assert_eq!(judge(silent, None, AWAY_GRACE), Some(false));
+    }
+
+    #[test]
+    fn a_host_not_asked_keeps_its_state() {
+        assert_eq!(judge(Reach::Unknown, Some(true), AWAY_GRACE), Some(true));
+        assert_eq!(judge(Reach::Unknown, None, Duration::ZERO), None);
     }
 }
