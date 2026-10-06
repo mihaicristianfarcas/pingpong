@@ -97,17 +97,27 @@ struct File {
 pub struct Clients {
     path: PathBuf,
     list: Vec<Client>,
+    /// Why the file there could not be read, when it could not. It is left
+    /// as it is, and nothing is saved over it.
+    unreadable: Option<String>,
 }
 
 impl Clients {
     pub fn load(dir: &Path) -> Clients {
         let path = dir.join("clients.toml");
-        let list = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|t| toml::from_str::<File>(&t).ok())
-            .map(|f| f.clients)
-            .unwrap_or_default();
-        Clients { path, list }
+        let (list, unreadable) = match read(&path) {
+            Ok(list) => (list, None),
+            Err(e) => {
+                tracing::error!(path = %path.display(), error = e, "the paired clients could not be \
+                    read: Pong goes on with none, and leaves the file as it is");
+                (Vec::new(), Some(e))
+            }
+        };
+        Clients {
+            path,
+            list,
+            unreadable,
+        }
     }
 
     pub fn list(&self) -> &[Client] {
@@ -115,6 +125,15 @@ impl Clients {
     }
 
     fn save(&self) -> std::io::Result<()> {
+        // Looks removable, is not: saving now would replace every pairing in
+        // the file with the few made since it could not be read.
+        if let Some(e) = &self.unreadable {
+            return Err(std::io::Error::other(format!(
+                "Pong could not read {} ({e}) and will not save over it. Fix the file or \
+                    move it away, then restart Pong.",
+                self.path.display()
+            )));
+        }
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -212,6 +231,19 @@ impl Clients {
     }
 }
 
+/// The clients in `path`: none if there is no file yet. Anything else that
+/// is not a list of clients (a damaged file, one a newer Pong wrote) is an
+/// error, so that it is not taken for an empty list and saved over.
+fn read(path: &Path) -> Result<Vec<Client>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => toml::from_str::<File>(&text)
+            .map(|f| f.clients)
+            .map_err(|e| e.to_string().lines().next().unwrap_or_default().to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +287,29 @@ mod tests {
         .unwrap();
         let c = Clients::load(dir.path());
         assert!(!c.list()[0].agent);
+    }
+
+    #[test]
+    fn a_clients_file_that_cannot_be_read_is_left_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clients.toml");
+        let damaged = "[[client]]\nname = \"mac\"\nx25519 = ";
+        std::fs::write(&path, damaged).unwrap();
+        let mut c = Clients::load(dir.path());
+        assert!(c.list().is_empty());
+        let refused = c
+            .add("new", Identity::generate().public(), None, false)
+            .unwrap_err();
+        assert!(
+            refused.to_string().contains("will not save over it"),
+            "{refused}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), damaged);
+        // No file yet is no clients yet, and saving works.
+        std::fs::remove_file(&path).unwrap();
+        let mut c = Clients::load(dir.path());
+        c.add("new", Identity::generate().public(), None, false)
+            .unwrap();
+        assert_eq!(Clients::load(dir.path()).list().len(), 1);
     }
 }
