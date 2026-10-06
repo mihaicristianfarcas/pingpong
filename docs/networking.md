@@ -62,6 +62,26 @@ Ping is open it keeps each host's internet address cached, and publishes a
 towards each present client, keeping its own NAT open towards it. A client's
 handshake then walks straight in, and the intent path remains the fallback.
 
+### Is the host up?
+
+Ping's host list asks each paired host every few seconds, as Moonlight polls
+its PCs. A host on the local network answers on its pairing port. One that
+does not answer there is asked over the tunnel: a WireGuard handshake from
+the client's own tunnel port, along every address a stream would try. A
+host that completes it is up, wherever it is; a session does not start.
+
+Away from the host's network (the client's public address, by STUN, is not
+the one the host publishes), the handshake gets in only once the warm path
+is open: within about a minute of Ping starting or the client changing
+networks. Until then a silent host keeps the state its card showed
+("Checking…" at first), and it is called asleep after 90 s of silence. On
+the host's network a silent host is asleep at once.
+
+The probe never runs while a stream as the same identity does, from this
+app or another process (`ping stream`): its handshake would replace that
+stream's keys on the host. Streams hold `tunnel.lock` in the data folder,
+shared; the probe takes it alone or waits for the next poll.
+
 ### Port mapping
 
 With internet access on, Pong also asks the router to forward the tunnel's
@@ -110,3 +130,4 @@ router to forward the port** turns it off.
 | Keys exchanged in pairing | `pingpong-pairing/src/pair.rs` (`Extras`) |
 | Host: publish, watch intents, punch, map the port | `pong/src/presence.rs` |
 | Client: resolve, publish intent, race, presence | `ping-core/src/wan.rs`, `ping-core/src/stream/net.rs` |
+| Client: is the host up (pairing port, then tunnel) | `ping-core/src/pair.rs` (`probe`), `ping-app/src/model.rs` |

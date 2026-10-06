@@ -4,6 +4,7 @@
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use pingpong_transport::{Identity, PublicIdentity};
 use serde::{Deserialize, Serialize};
@@ -48,6 +49,66 @@ pub fn tunnel_port(dir: &Path) -> u16 {
     let _ = std::fs::create_dir_all(dir);
     let _ = std::fs::write(&path, p.to_string());
     p
+}
+
+/// Streams starting now that wait for [`TunnelLock`]: whoever borrowed the
+/// tunnel port lets go of it when this is not zero.
+static STREAMS_WAITING: AtomicUsize = AtomicUsize::new(0);
+
+/// Who is using this identity's tunnel. Streams hold the lock shared, so
+/// two can run at once (to different hosts). The host list's probe and the
+/// presence check borrow the tunnel port between streams and hold the lock
+/// alone, or skip.
+///
+/// Looks removable, is not: a handshake from a probe reaches a host this
+/// identity is streaming from as the same peer. The host moves that peer's
+/// tunnel to the probe's address (any datagram that authenticates does,
+/// `Endpoint::receive`) and installs new keys, and the stream goes dark. A
+/// stream from another process (`ping stream` beside the app) counts too,
+/// so this is a lock on a file, not on memory.
+pub struct TunnelLock {
+    /// Held for its lock, which goes with it.
+    _held: std::fs::File,
+}
+
+impl TunnelLock {
+    /// For a stream. Waits while the port is borrowed: a borrower in this
+    /// process lets go within one receive timeout (it watches
+    /// [`stream_waiting`]); one in another process, within its own time
+    /// (1.5 s for the probe). None if the lock file cannot be opened.
+    pub fn for_stream(dir: &Path) -> Option<TunnelLock> {
+        let file = Self::open(dir)?;
+        STREAMS_WAITING.fetch_add(1, Ordering::SeqCst);
+        let locked = file.lock_shared();
+        STREAMS_WAITING.fetch_sub(1, Ordering::SeqCst);
+        locked.ok().map(|()| TunnelLock { _held: file })
+    }
+
+    /// To borrow the tunnel port between streams. None while a stream runs
+    /// as this identity, or waits to start.
+    pub fn for_borrowing(dir: &Path) -> Option<TunnelLock> {
+        if stream_waiting() {
+            return None;
+        }
+        let file = Self::open(dir)?;
+        file.try_lock().ok().map(|()| TunnelLock { _held: file })
+    }
+
+    fn open(dir: &Path) -> Option<std::fs::File> {
+        let _ = std::fs::create_dir_all(dir);
+        std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(dir.join("tunnel.lock"))
+            .ok()
+    }
+}
+
+/// A stream in this process is waiting to start: a borrower of the tunnel
+/// port gives it back now.
+pub fn stream_waiting() -> bool {
+    STREAMS_WAITING.load(Ordering::SeqCst) != 0
 }
 
 /// Where this device's AI agent keeps its own identity and the hosts it is
@@ -339,5 +400,59 @@ impl Hosts {
         })
         .map_err(std::io::Error::other)?;
         pingpong_transport::identity::write_private(&self.path, text.as_bytes())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    /// Tests that take a [`TunnelLock`] share `STREAMS_WAITING` (here and in
+    /// `pair`): one at a time.
+    pub(crate) fn serial() -> std::sync::MutexGuard<'static, ()> {
+        static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ping-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn the_tunnel_port_is_not_borrowed_while_a_stream_runs() {
+        let _serial = serial();
+        let dir = scratch("lock-stream");
+        let stream = TunnelLock::for_stream(&dir).expect("a stream takes the lock");
+        let second = TunnelLock::for_stream(&dir).expect("streams share it");
+        assert!(TunnelLock::for_borrowing(&dir).is_none());
+        drop(stream);
+        assert!(TunnelLock::for_borrowing(&dir).is_none());
+        drop(second);
+        assert!(TunnelLock::for_borrowing(&dir).is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_stream_waits_for_a_borrower_to_let_go() {
+        let _serial = serial();
+        let dir = scratch("lock-borrow");
+        let borrowed = TunnelLock::for_borrowing(&dir).expect("nothing holds it");
+        assert!(TunnelLock::for_borrowing(&dir).is_none());
+        let started = std::time::Instant::now();
+        let waiter = {
+            let dir = dir.clone();
+            std::thread::spawn(move || TunnelLock::for_stream(&dir).is_some())
+        };
+        while !stream_waiting() {
+            std::thread::yield_now();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        drop(borrowed);
+        assert!(waiter.join().unwrap());
+        assert!(started.elapsed() >= std::time::Duration::from_millis(50));
+        assert!(!stream_waiting());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

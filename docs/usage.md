@@ -242,6 +242,11 @@ a few seconds; while Ping is open it keeps the path warm. If both networks
 use symmetric NAT, forward UDP 47800 to the host on its router. How it
 works: [networking.md](networking.md).
 
+The host's card says **Online** away from home too. For up to a minute and
+a half after Ping starts or your computer changes networks, it can say
+**Checking…** while the host opens its path to you; a click streams all the
+same.
+
 ## When something does not work
 
 - **Ping finds no hosts (macOS).** Allow Ping on the local network: System
