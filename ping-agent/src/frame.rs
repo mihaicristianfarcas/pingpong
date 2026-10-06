@@ -225,6 +225,38 @@ pub struct Rgb {
 }
 
 impl Rgb {
+    /// An 8-bit RGB PNG (as `png` writes them, and as the computer's
+    /// screenshots are), or None for anything else.
+    pub fn from_png(png: &[u8]) -> Option<Rgb> {
+        let decoder = png::Decoder::new(Cursor::new(png));
+        let mut reader = decoder.read_info().ok()?;
+        let mut buf = vec![0; reader.output_buffer_size()?];
+        let info = reader.next_frame(&mut buf).ok()?;
+        if info.color_type != png::ColorType::Rgb || info.bit_depth != png::BitDepth::Eight {
+            return None;
+        }
+        buf.truncate(info.buffer_size());
+        Some(Rgb {
+            width: info.width,
+            height: info.height,
+            data: buf,
+        })
+    }
+
+    /// As a JPEG of `quality` (1-100).
+    pub fn jpeg(&self, quality: u8) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality)
+            .encode(
+                &self.data,
+                self.width,
+                self.height,
+                image::ExtendedColorType::Rgb8,
+            )
+            .expect("JPEG of an RGB picture into memory");
+        out
+    }
+
     pub fn png(&self) -> Vec<u8> {
         let mut out = Vec::new();
         {

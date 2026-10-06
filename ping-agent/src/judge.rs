@@ -27,7 +27,8 @@
 //! the model only if the person allows it.
 //!
 //! Every check sends the screen to Cloudflare (docs/ai-agents.md says so),
-//! at most `MAX_SIDE` pixels on its longer side.
+//! at most `MAX_SIDE` pixels on its longer side, as a JPEG (see
+//! `MAX_IMAGE`).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -105,8 +106,23 @@ pub const HOLD_AT: f64 = 0.5;
 /// is the agent's display by default, and a larger one costs clef more
 /// tokens for text it reads well enough at this size.
 const MAX_SIDE: u32 = 1280;
-/// Clef takes images of at most 4 MiB.
-const MAX_IMAGE: usize = 4 << 20;
+/// The most bytes a picture may take. Workers AI estimates a request before
+/// clef reads it, at about one token per three bytes of the picture, and
+/// refuses one over clef's 65,536 (413): a 1280x800 PNG of Windows 11's
+/// own desktop (657 KiB; its wallpaper is all gradients) was refused at
+/// 224,510, and 1024x640 as a PNG (480 KiB) at 164,026. The same screen as
+/// a JPEG of quality 85 is 105 KiB and costs 1,234 tokens once read (804 at
+/// 960x600). So pictures go as JPEG, smaller or plainer until they fit.
+const MAX_IMAGE: usize = 160 << 10;
+/// The sizes and qualities a picture is tried at, in order, until it fits
+/// `MAX_IMAGE`: text stays readable down to the last.
+const FITS: [(u32, u8); 5] = [
+    (MAX_SIDE, 85),
+    (MAX_SIDE, 70),
+    (MAX_SIDE, 55),
+    (960, 55),
+    (640, 55),
+];
 /// A check that takes longer is given up (clef answers in 239 ms at p95 in
 /// Cloudflare's run; the rest is the network).
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -482,7 +498,7 @@ pub fn personal_verdict(answers: &Map<String, Value>) -> Result<Vec<Personal>, S
 }
 
 /// `screen` as clef gets it: at most `MAX_SIDE` across, with the ring at
-/// `ring` (a point of `screen`), as a PNG data URL.
+/// `ring` (a point of `screen`), as a JPEG data URL.
 pub fn picture(screen: &Rgb, ring: Option<(u32, u32)>) -> String {
     let mut fitted = screen.fit(MAX_SIDE);
     if let Some((x, y)) = ring {
@@ -494,13 +510,25 @@ pub fn picture(screen: &Rgb, ring: Option<(u32, u32)>) -> String {
         fitted.ring(at, RING_RADIUS, RING_WIDTH, RING);
         fitted.ring(at, 0, DOT_RADIUS, RING);
     }
-    data_url(&fitted.png())
+    data_url(&fitted)
 }
 
-fn data_url(png: &[u8]) -> String {
+/// `screen` (at most `MAX_SIDE` across) as a JPEG data URL of at most
+/// `MAX_IMAGE` bytes, if any of `FITS` gets it there; else the smallest,
+/// which clef may refuse (the check then could not be made).
+fn data_url(screen: &Rgb) -> String {
+    let mut smallest = Vec::new();
+    for (side, quality) in FITS {
+        let jpeg = screen.fit(side).jpeg(quality);
+        let fits = jpeg.len() <= MAX_IMAGE;
+        smallest = jpeg;
+        if fits {
+            break;
+        }
+    }
     format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(png)
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(smallest)
     )
 }
 
@@ -604,20 +632,11 @@ impl Judge {
     }
 
     pub fn personal_request(&self, shot: &Shot) -> Result<Value, String> {
-        let png = if shot.width.max(shot.height) > MAX_SIDE {
-            crate::computer::shrink_png(&shot.png, MAX_SIDE)
-                .ok_or("the screen could not be made smaller for clef")?
-                .png
-        } else {
-            shot.png.clone()
-        };
-        if png.len() > MAX_IMAGE {
-            return Err(format!(
-                "the screen is {} KiB as PNG, more than clef takes",
-                png.len() / 1024
-            ));
-        }
-        Ok(personal_request(self.model, data_url(&png)))
+        let screen = Rgb::from_png(&shot.png).ok_or("the screen could not be read for clef")?;
+        Ok(personal_request(
+            self.model,
+            data_url(&screen.fit(MAX_SIDE)),
+        ))
     }
 
     /// Send `body` to clef; its reply, or what went wrong.
@@ -762,7 +781,39 @@ mod tests {
         assert!(body["images"][0]
             .as_str()
             .unwrap()
-            .starts_with("data:image/png;base64,"));
+            .starts_with("data:image/jpeg;base64,"));
+    }
+
+    /// The picture behind a data URL, decoded.
+    fn decoded(url: &str) -> image::RgbImage {
+        let jpeg = base64::engine::general_purpose::STANDARD
+            .decode(url.trim_start_matches("data:image/jpeg;base64,"))
+            .unwrap();
+        image::load_from_memory(&jpeg).unwrap().to_rgb8()
+    }
+
+    #[test]
+    fn a_screen_full_of_detail_still_fits_what_workers_ai_takes() {
+        // Noise: what no encoder can make small, unlike any real screen.
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let data = (0..2560 * 1600 * 3)
+            .map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                seed as u8
+            })
+            .collect();
+        let noisy = Rgb {
+            width: 2560,
+            height: 1600,
+            data,
+        };
+        let url = picture(&noisy, None);
+        let bytes = (url.len() - "data:image/jpeg;base64,".len()) / 4 * 3;
+        assert!(bytes <= MAX_IMAGE, "{bytes} bytes");
+        let plain = picture(&screen(), None);
+        assert_eq!(decoded(&plain).dimensions(), (1280, 800));
     }
 
     #[test]
@@ -772,21 +823,19 @@ mod tests {
             picture(&screen(), Some((2000, 1000))),
             Some("click"),
         );
-        let url = body["images"][0].as_str().unwrap();
-        let png = base64::engine::general_purpose::STANDARD
-            .decode(url.trim_start_matches("data:image/png;base64,"))
-            .unwrap();
-        let shot = crate::computer::shrink_png(&png, 4000).unwrap();
-        assert_eq!((shot.width, shot.height), (1280, 800));
-        // The ring is where the click lands on the smaller screen: (1000, 500).
-        let decoder = png::Decoder::new(std::io::Cursor::new(png));
-        let mut reader = decoder.read_info().unwrap();
-        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
-        reader.next_frame(&mut buf).unwrap();
-        let px = |x: usize, y: usize| &buf[(y * 1280 + x) * 3..(y * 1280 + x) * 3 + 3];
-        assert_eq!(px(1000, 500), RING);
-        assert_eq!(px(1000 + RING_RADIUS as usize / 2, 500), [255, 255, 255]);
-        assert_eq!(px(1000 + RING_RADIUS as usize + 1, 500), RING);
+        let picture = decoded(body["images"][0].as_str().unwrap());
+        assert_eq!(picture.dimensions(), (1280, 800));
+        // The ring is where the click lands on the smaller screen: (1000,
+        // 500). JPEG moves colours a little, so near enough is the colour.
+        let near = |x: u32, y: u32, want: [u8; 3]| {
+            let got = picture.get_pixel(x, y).0;
+            got.iter()
+                .zip(want)
+                .all(|(g, w)| (*g as i16 - w as i16).abs() <= 48)
+        };
+        assert!(near(1000, 500, RING));
+        assert!(near(1000 + RING_RADIUS / 2, 500, [255, 255, 255]));
+        assert!(near(1000 + RING_RADIUS + 1, 500, RING));
         let options = body["questions"]["effect"]["criteria"].as_object().unwrap();
         assert_eq!(options.len(), EFFECTS.len());
         assert!(body["state"].as_str().unwrap().contains("magenta ring"));
