@@ -176,7 +176,8 @@ impl PingApp {
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let address = submit.read(cx).text().trim().to_string();
                                     this.add_host = None;
-                                    this.pair_with(address.clone(), address, None, false, cx);
+                                    let web = crate::model::web_url_for(&address);
+                                    this.pair_with(address.clone(), address, web, false, cx);
                                 })),
                         ),
                 );

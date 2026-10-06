@@ -186,7 +186,8 @@ impl PingApp {
                     tracing::info!(target: "menu_bar", "{line}");
                 }
             } else if let Some(address) = action.strip_prefix("pair=") {
-                self.pair_with(address.to_string(), address.to_string(), None, false, cx);
+                let web = crate::model::web_url_for(address);
+                self.pair_with(address.to_string(), address.to_string(), web, false, cx);
             } else if action == "add" {
                 self.show_add_host(window, cx);
             } else if action == "alone" {
