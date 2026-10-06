@@ -1,6 +1,7 @@
 //! Video encoding: on Windows a D3D11 colour converter feeding NVENC,
 //! configured the way Sunshine configures it (see "The video path" in
-//! docs/architecture.md); VideoToolbox on macOS; FFmpeg on Linux.
+//! docs/architecture.md), or Media Foundation's H.264 encoder where there is
+//! no NVENC; VideoToolbox on macOS; FFmpeg on Linux.
 
 #[derive(Debug)]
 pub enum EncodeError {
@@ -8,6 +9,8 @@ pub enum EncodeError {
     Nvenc(String),
     /// A D3D11 call failed (shader compile, texture, view).
     D3d(String),
+    /// Media Foundation's encoder could not be made or rejected a call.
+    MediaFoundation(String),
     /// The GPU cannot do what was asked (codec, size, feature).
     Unsupported(String),
 }
@@ -17,6 +20,7 @@ impl std::fmt::Display for EncodeError {
         match self {
             EncodeError::Nvenc(m) => write!(f, "NVENC: {m}"),
             EncodeError::D3d(m) => write!(f, "D3D11: {m}"),
+            EncodeError::MediaFoundation(m) => write!(f, "Media Foundation: {m}"),
             EncodeError::Unsupported(m) => write!(f, "unsupported: {m}"),
         }
     }
@@ -100,6 +104,9 @@ pub struct EncodedFrame {
 pub mod convert;
 #[cfg(target_os = "linux")]
 pub mod ffmpeg;
+pub mod h264;
+#[cfg(windows)]
+pub mod mf;
 #[cfg(windows)]
 pub mod nvenc;
 #[cfg(windows)]

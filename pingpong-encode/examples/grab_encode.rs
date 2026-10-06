@@ -1,8 +1,11 @@
 //! Capture a display with Desktop Duplication, convert, encode, write Annex-B.
 //!
-//!   grab_encode <\\.\DISPLAYn|primary> <codec h264|hevc|av1> <seconds> <fps> <mbps> <out-file>
+//!   grab_encode <\\.\DISPLAYn|primary> <codec h264|hevc|av1|mf> <seconds> <fps> <mbps> <out-file>
 //!
-//! Must run in the interactive session (not over SSH): see tools/host-run.ps1.
+//! `mf` is H.264 with Media Foundation's software encoder (`mf.rs`) instead
+//! of NVENC. Must run in the interactive session (not over SSH): see
+//! tools/host-run.ps1.
+//!
 //! Frame 30 is encoded as a forced IDR and frames 60..=62 are invalidated, so
 //! the output exercises IDR, RFI and recovery-frame marking.
 
@@ -10,7 +13,7 @@
 fn main() {
     use pingpong_capture::{dda::DdaCapture, gpu::Gpu, Grab};
     use pingpong_encode::{
-        convert::Converter, nvenc::NvencEncoder, Codec, EncoderConfig, FrameKind,
+        convert::Converter, mf::MfEncoder, nvenc::NvencEncoder, Codec, EncoderConfig, FrameKind,
     };
     use std::io::Write;
     use std::time::{Duration, Instant};
@@ -18,6 +21,7 @@ fn main() {
     tracing_subscriber::fmt().with_env_filter("info").init();
     let args: Vec<String> = std::env::args().collect();
     let target = args.get(1).cloned().unwrap_or_else(|| "primary".into());
+    let media_foundation = args.get(2).map(String::as_str) == Some("mf");
     let codec = match args.get(2).map(String::as_str) {
         Some("hevc") => Codec::Hevc,
         Some("av1") => Codec::Av1,
@@ -72,7 +76,15 @@ fn main() {
         hdr: false,
         yuv444: false,
     };
-    let mut enc = NvencEncoder::new(&device, conv.output(), settings).expect("encoder");
+    enum Enc {
+        Nvenc(NvencEncoder),
+        Mf(MfEncoder),
+    }
+    let mut enc = if media_foundation {
+        Enc::Mf(MfEncoder::new(&device, &context, conv.output(), settings).expect("encoder"))
+    } else {
+        Enc::Nvenc(NvencEncoder::new(&device, conv.output(), settings).expect("encoder"))
+    };
 
     let mut file = std::fs::File::create(&out).expect("create output");
     let interval = Duration::from_nanos(1_000_000_000 / fps as u64);
@@ -91,9 +103,18 @@ fn main() {
         let t = Instant::now();
         conv.convert(cap.texture().unwrap()).expect("convert");
         if index == 60 {
-            println!("invalidate 58..=59 -> {}", enc.invalidate(58, 59));
+            if let Enc::Nvenc(e) = &mut enc {
+                println!("invalidate 58..=59 -> {}", e.invalidate(58, 59));
+            }
         }
-        let frame = enc.encode(index, index == 30).expect("encode");
+        let encoded = match &mut enc {
+            Enc::Nvenc(e) => Some(e.encode(index, index == 30).expect("encode")),
+            Enc::Mf(e) => e.encode(index, index == 30).expect("encode"),
+        };
+        let Some(frame) = encoded else {
+            println!("frame {index}: nothing out");
+            continue;
+        };
         times.push(t.elapsed().as_micros() as u32);
         kinds[match frame.kind {
             FrameKind::Idr => 0,

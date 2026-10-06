@@ -10,7 +10,7 @@ Moonlight, with Apollo's virtual display. Ping also runs on Windows 10 and 11.
 | | Why |
 |---|---|
 | Windows 10 or 11, 64-bit | |
-| An NVIDIA GPU with NVENC, and its driver | Encoding. NVENC is loaded from the driver (`nvEncodeAPI64.dll`) at runtime: no CUDA toolkit or Video Codec SDK is needed to build or run |
+| An NVIDIA GPU with NVENC, and its driver | Encoding. NVENC is loaded from the driver (`nvEncodeAPI64.dll`) at runtime: no CUDA toolkit or Video Codec SDK is needed to build or run. Without it, Pong encodes H.264 in software with Media Foundation's encoder (part of Windows; not on the N editions without the Media Feature Pack): no HEVC, AV1, HDR or 4:4:4, and a loss costs a keyframe |
 | [SudoVDA](https://github.com/SudoMaker/SudoVDA) (SudoMaker Virtual Display Adapter) | A virtual display at each client's mode. Apollo installs it; it can also be installed on its own. Pong and Apollo cannot stream at the same time (they share the driver) |
 | [ViGEmBus](https://github.com/nefarius/ViGEmBus) (optional) | Controllers: each of the client's pads becomes a virtual Xbox 360 pad |
 | Steam's **Steam Streaming Speakers** (optional) | Sound only on the client: during a session the host's default output moves to this virtual device, so the host's speakers stay quiet (Sunshine's approach, its `virtual_sink`). Without it, the sound plays on the host too |
