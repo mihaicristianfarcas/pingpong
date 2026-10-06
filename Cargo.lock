@@ -6326,6 +6326,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pingpong-xbox-mock"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "objc2-core-video",
+ "parking_lot",
+ "pingpong-audio",
+ "pingpong-decode",
+ "pingpong-proto",
+ "pingpong-xbox",
+ "serde_json",
+ "str0m",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "piper"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
