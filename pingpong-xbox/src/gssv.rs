@@ -16,6 +16,7 @@
 //! named by the Game Pass catalogue.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -149,6 +150,15 @@ impl Service {
         self.kind
     }
 
+    /// The same service, giving up on a request after a few seconds (for
+    /// ending a session and keeping it alive).
+    pub fn quick(&self) -> Service {
+        Service {
+            http: self.http.quick(),
+            ..self.clone()
+        }
+    }
+
     fn request(
         &self,
         method: &str,
@@ -239,15 +249,20 @@ impl Service {
         Ok(())
     }
 
-    /// Send the offer; the console's answer.
-    pub fn exchange_sdp(&self, id: &str, offer: &str) -> Result<String, GssvError> {
+    /// Send the offer; the console's answer. `stop` gives up waiting.
+    pub fn exchange_sdp(
+        &self,
+        id: &str,
+        offer: &str,
+        stop: &AtomicBool,
+    ) -> Result<String, GssvError> {
         let body = json!({
             "messageType": "offer",
             "sdp": offer,
             "configuration": crate::messages::channel_versions(),
         });
         self.request("POST", &self.session(id, "/sdp"), Body::Json(&body))?;
-        let exchange = self.wait_exchange(&self.session(id, "/sdp"))?;
+        let exchange = self.wait_exchange(&self.session(id, "/sdp"), stop)?;
         let v: Value = serde_json::from_str(&exchange)
             .map_err(|_| GssvError("The console's answer could not be read.".into()))?;
         match v.get("sdp").and_then(Value::as_str) {
@@ -261,21 +276,22 @@ impl Service {
         }
     }
 
-    /// Send our candidates; the console's.
+    /// Send our candidates; the console's. `stop` gives up waiting.
     pub fn exchange_ice(
         &self,
         id: &str,
         ours: &[IceCandidate],
+        stop: &AtomicBool,
     ) -> Result<Vec<IceCandidate>, GssvError> {
         let body = json!({ "messageType": "iceCandidate", "candidate": ours });
         self.request("POST", &self.session(id, "/ice"), Body::Json(&body))?;
-        let exchange = self.wait_exchange(&self.session(id, "/ice"))?;
+        let exchange = self.wait_exchange(&self.session(id, "/ice"), stop)?;
         parse_exchange(&exchange).map_err(GssvError)
     }
 
     /// GET `path` until the console has answered (204 means not yet): its
     /// `exchangeResponse`.
-    fn wait_exchange(&self, path: &str) -> Result<String, GssvError> {
+    fn wait_exchange(&self, path: &str, stop: &AtomicBool) -> Result<String, GssvError> {
         let bearer = format!("Bearer {}", self.token);
         let deadline = Instant::now() + EXCHANGE_TIMEOUT;
         loop {
@@ -287,7 +303,11 @@ impl Service {
                 Body::None,
             )?;
             match a.status {
-                204 if Instant::now() < deadline => std::thread::sleep(NOT_YET_RETRY),
+                204 if Instant::now() < deadline => {
+                    if !pause(stop, NOT_YET_RETRY) {
+                        return Err(GssvError("Stopped.".into()));
+                    }
+                }
                 204 => return Err(GssvError("The console did not answer in time.".into())),
                 200..=299 => {
                     #[derive(Deserialize)]
@@ -330,6 +350,18 @@ impl Service {
             .map(|t| t.title_id)
             .collect())
     }
+}
+
+/// Wait `d`, or less if `stop` is set; whether it was not.
+pub fn pause(stop: &AtomicBool, d: Duration) -> bool {
+    let until = Instant::now() + d;
+    while let Some(left) = until.checked_duration_since(Instant::now()) {
+        if stop.load(Ordering::Relaxed) {
+            return false;
+        }
+        std::thread::sleep(left.min(Duration::from_millis(100)));
+    }
+    !stop.load(Ordering::Relaxed)
 }
 
 /// The `X-MS-Device-Info` the web client sends, with this client's size:

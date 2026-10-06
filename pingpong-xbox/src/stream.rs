@@ -129,8 +129,9 @@ pub fn run(
         &mut auth, &service, &session, target, options, socket, sink, stop,
     );
     // End the session, whatever happened, so the console is free now and
-    // not when the service gives up on it.
-    if let Err(e) = service.stop(&session) {
+    // not when the service gives up on it; quickly, as whoever ended the
+    // stream may be waiting for this thread.
+    if let Err(e) = service.quick().stop(&session) {
         tracing::debug!(error = %e, "ending the session");
     }
     end
@@ -188,19 +189,24 @@ fn run_session(
             keyboard_as_controller: options.keyboard_as_controller,
         },
     )?;
-    let answer = service
-        .exchange_sdp(session, &offer)
-        .map_err(|e| e.to_string())?;
+    let stopped = || stop.load(Ordering::Relaxed);
+    let answer = match service.exchange_sdp(session, &offer, stop) {
+        Ok(a) => a,
+        Err(_) if stopped() => return Ok(End::Stopped),
+        Err(e) => return Err(e.to_string()),
+    };
     connection.accept_answer(&answer)?;
-    let remote = service
-        .exchange_ice(session, &connection.local_candidates())
-        .map_err(|e| e.to_string())?;
+    let remote = match service.exchange_ice(session, &connection.local_candidates(), stop) {
+        Ok(r) => r,
+        Err(_) if stopped() => return Ok(End::Stopped),
+        Err(e) => return Err(e.to_string()),
+    };
     let usable = connection.add_remote_candidates(&with_teredo(&remote));
     if usable == 0 {
         return Err("The console offered no address this computer can use.".into());
     }
 
-    let _keepalive = Keepalive::start(service.clone(), session.to_owned());
+    let _keepalive = Keepalive::start(service.quick(), session.to_owned());
     Ok(connection.run(sink, stop))
 }
 
@@ -271,7 +277,9 @@ fn wait_provisioned(
                 return Err(failure_message(&code, &message));
             }
         }
-        std::thread::sleep(crate::gssv::STATE_POLL_EVERY);
+        if !crate::gssv::pause(stop, crate::gssv::STATE_POLL_EVERY) {
+            return Ok(false);
+        }
     }
 }
 

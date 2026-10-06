@@ -14,6 +14,13 @@ use serde_json::Value;
 /// The environment variable that sends every request to a mock console.
 pub const MOCK_ENV: &str = "PING_XBOX_MOCK";
 
+/// How long a request may take in all: the services answer in well under a
+/// second; this is for a network that has stopped answering.
+const TIMEOUT: Duration = Duration::from_secs(20);
+/// The same for requests made while a stream ends or runs (ending the
+/// session, keeping it alive), which nothing should wait on for long.
+const QUICK_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// A request that did not get the answer it wanted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpError {
@@ -83,9 +90,18 @@ impl Http {
     }
 
     pub fn with_mock(mock: Option<String>) -> Http {
+        Http::build(mock, TIMEOUT)
+    }
+
+    /// The same client, giving up after a few seconds.
+    pub fn quick(&self) -> Http {
+        Http::build(self.mock.clone(), QUICK_TIMEOUT)
+    }
+
+    fn build(mock: Option<String>, timeout: Duration) -> Http {
         let agent: ureq::Agent = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(20)))
-            .timeout_connect(Some(Duration::from_secs(8)))
+            .timeout_global(Some(timeout))
+            .timeout_connect(Some(timeout.min(Duration::from_secs(8))))
             // Statuses are answers here: the services say "not yet" (204)
             // and "no" (4xx) with them.
             .http_status_as_error(false)

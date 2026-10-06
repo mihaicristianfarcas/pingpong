@@ -436,3 +436,37 @@ fn expired_tokens_are_renewed_from_the_refresh_token() {
     again.web_token().unwrap();
     assert_eq!(mock.record().refreshes, 1);
 }
+
+#[test]
+fn stopping_while_queued_ends_at_once_and_frees_the_session() {
+    // A queue that never moves.
+    let mock = MockConsole::start(Config {
+        queue_polls: 10_000,
+        ..Config::default()
+    })
+    .unwrap();
+    let http = Http::with_mock(Some(mock.url()));
+    let dir = tempfile::tempdir().unwrap();
+    sign_in(&http, dir.path());
+    let running = start(
+        &http,
+        dir.path(),
+        Target::Cloud {
+            title_id: CLOUD_TITLE.into(),
+            name: "Mock Game".into(),
+        },
+    );
+    assert!(running.wait(LONG, |s| s
+        .statuses
+        .iter()
+        .any(|t| t.starts_with("In the queue"))));
+    let asked = std::time::Instant::now();
+    assert_eq!(running.end(), Ok(End::Stopped));
+    // A state poll is a second apart: the stop does not wait for the next.
+    assert!(
+        asked.elapsed() < Duration::from_millis(500),
+        "{:?}",
+        asked.elapsed()
+    );
+    assert_eq!(mock.record().ended_sessions, 1);
+}
