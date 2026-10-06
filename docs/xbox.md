@@ -143,6 +143,10 @@ Without an Xbox or an account, against a mock of both (below):
 - In Ping's own window on macOS (VideoToolbox, Metal) and on Linux
   (FFmpeg, wgpu), at 60 frames a second, with the input drawn by the mock
   in the picture. Windows: type-checked.
+- Measured on an Apple silicon Mac against the mock on the same machine
+  (release builds, loopback, so no network is in it; the mock's 640×360
+  picture): 60 frames a second received, decoded and shown; 0.4 ms from a
+  frame's first packet to the decoder; 1.3 ms to decode.
 
 Not yet verified against Microsoft's services or a real console. What
 Greenlight does today is the reference, and the services change without
