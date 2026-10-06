@@ -3,7 +3,7 @@
 //! pairing attempts, wakes and streams started from it.
 
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -57,6 +57,8 @@ pub struct Item {
     pub found: Option<Discovered>,
     /// None: not known yet.
     pub online: Option<bool>,
+    /// Where it last answered on its pairing port (through a VPN too).
+    pub pairing_at: Option<SocketAddr>,
 }
 
 impl Item {
@@ -79,11 +81,20 @@ impl Item {
         self.can_wake() && self.online == Some(false)
     }
 
-    /// The host's address and one of its ports, from discovery or else from
-    /// the paired address (whose tunnel port the others follow).
+    /// The host's address and one of its ports: from discovery, else where
+    /// it last answered on its pairing port (the others follow that one),
+    /// else from the paired address (whose tunnel port the others follow).
+    /// Away from home through a VPN, the second is the VPN's address, where
+    /// the saved home address would not answer.
     fn address_at(&self, found_port: impl Fn(&Discovered) -> u16, offset: u16) -> Option<String> {
         if let Some(f) = &self.found {
             return Some(join(f.address, found_port(f)));
+        }
+        if let Some(at) = self.pairing_at {
+            return Some(join(
+                at.ip(),
+                at.port().wrapping_sub(1).wrapping_add(offset),
+            ));
         }
         let p = self.paired.as_ref()?;
         let (host, port) = split(p.local_address.as_deref().unwrap_or(&p.address))?;
@@ -109,7 +120,7 @@ impl Item {
 pub fn web_url_for(address: &str) -> Option<String> {
     let address = address.trim();
     let bare = address.trim_matches(|c| c == '[' || c == ']');
-    let (host, pairing_port) = if let Ok(a) = address.parse::<std::net::SocketAddr>() {
+    let (host, pairing_port) = if let Ok(a) = address.parse::<SocketAddr>() {
         (a.ip().to_string(), a.port())
     } else if let Ok(ip) = bare.parse::<IpAddr>() {
         (ip.to_string(), pair::DEFAULT_PAIRING_PORT)
@@ -131,7 +142,7 @@ pub fn web_url_for(address: &str) -> Option<String> {
 /// `silent_away_for` how long it has been silent from another network.
 fn judge(reach: Reach, was: Option<bool>, silent_away_for: Duration) -> Option<bool> {
     match reach {
-        Reach::Answered(_) => Some(true),
+        Reach::Pairing(_) | Reach::Tunnel(_) => Some(true),
         Reach::Silent { away: false } => Some(false),
         Reach::Silent { away: true } if silent_away_for < AWAY_GRACE => was,
         Reach::Silent { away: true } => Some(false),
@@ -176,6 +187,8 @@ pub struct Model {
     /// Paired hosts' keys → since when they have been silent from another
     /// network (see `AWAY_GRACE`).
     silent_away: HashMap<String, Instant>,
+    /// Paired hosts' keys → where they last answered on their pairing port.
+    pairing_at: HashMap<String, SocketAddr>,
     dir: PathBuf,
     poll_now: Sender<()>,
     polled: Receiver<Poll>,
@@ -228,6 +241,7 @@ impl Model {
             seen: HashMap::new(),
             reach: HashMap::new(),
             silent_away: HashMap::new(),
+            pairing_at: HashMap::new(),
             dir,
             poll_now,
             polled,
@@ -265,6 +279,15 @@ impl Model {
                         Duration::ZERO
                     }
                 };
+                match r.reach {
+                    Reach::Pairing(at) => {
+                        self.pairing_at.insert(r.x25519.clone(), at);
+                    }
+                    Reach::Unknown => {}
+                    _ => {
+                        self.pairing_at.remove(&r.x25519);
+                    }
+                }
                 let was = before.get(&r.x25519).copied();
                 if let Some(online) = judge(r.reach, was, silent_away_for) {
                     self.reach.insert(r.x25519, online);
@@ -310,6 +333,7 @@ impl Model {
                 Item {
                     found: self.seen.get(&id).map(|(f, _)| f.clone()),
                     online: self.reach.get(&h.x25519).copied(),
+                    pairing_at: self.pairing_at.get(&h.x25519).copied(),
                     name: h.name.clone(),
                     paired: Some(Paired {
                         name: h.name.clone(),
@@ -331,6 +355,7 @@ impl Model {
                     paired: None,
                     found: Some(f.clone()),
                     online: Some(true),
+                    pairing_at: None,
                 });
             }
         }
@@ -531,6 +556,7 @@ mod tests {
             }),
             found: None,
             online: Some(false),
+            pairing_at: None,
         }
     }
 
@@ -548,6 +574,19 @@ mod tests {
         let v6 = paired("[fe80::1]:47800", Some("[fe80::2]:47800"));
         assert_eq!(v6.pairing_address().as_deref(), Some("[fe80::2]:47801"));
         assert!(item.offline_but_wakeable());
+    }
+
+    #[test]
+    fn pairing_goes_where_the_host_last_answered_on_its_pairing_port() {
+        // Seen at home once, now answering through a VPN.
+        let mut item = paired("100.64.0.7:47800", Some("192.168.1.20:47800"));
+        assert_eq!(
+            item.pairing_address().as_deref(),
+            Some("192.168.1.20:47801")
+        );
+        item.pairing_at = Some("100.64.0.7:47801".parse().unwrap());
+        assert_eq!(item.pairing_address().as_deref(), Some("100.64.0.7:47801"));
+        assert_eq!(item.web_url().as_deref(), Some("https://100.64.0.7:47802"));
     }
 
     #[test]
@@ -583,7 +622,7 @@ mod tests {
 
     #[test]
     fn a_host_that_answers_anywhere_is_up() {
-        let tunnel = Reach::Answered("203.0.113.7:47800".parse().unwrap());
+        let tunnel = Reach::Tunnel("203.0.113.7:47800".parse().unwrap());
         assert_eq!(judge(tunnel, Some(false), Duration::ZERO), Some(true));
         assert_eq!(judge(tunnel, None, Duration::ZERO), Some(true));
     }
