@@ -10,8 +10,8 @@ Moonlight, with Apollo's virtual display. Ping also runs on Windows 10 and 11.
 | | Why |
 |---|---|
 | Windows 10 or 11, 64-bit | |
-| An NVIDIA GPU with NVENC, and its driver | Encoding. NVENC is loaded from the driver (`nvEncodeAPI64.dll`) at runtime: no CUDA toolkit or Video Codec SDK is needed to build or run. Without it, Pong encodes H.264 in software with Media Foundation's encoder (part of Windows; not on the N editions without the Media Feature Pack): no HEVC, AV1, HDR or 4:4:4, and a loss costs a keyframe |
-| [SudoVDA](https://github.com/SudoMaker/SudoVDA) (SudoMaker Virtual Display Adapter) | A virtual display at each client's mode. Apollo installs it; it can also be installed on its own. Pong and Apollo cannot stream at the same time (they share the driver) |
+| An NVIDIA GPU with NVENC, and its driver | Encoding. NVENC is loaded from the driver (`nvEncodeAPI64.dll`) at runtime: no CUDA toolkit or Video Codec SDK is needed to build or run. Without it, Pong encodes H.264 in software ([below](#without-nvenc-or-sudovda)) |
+| [SudoVDA](https://github.com/SudoMaker/SudoVDA) (SudoMaker Virtual Display Adapter) | A virtual display at each client's mode. Apollo installs it; it can also be installed on its own. Pong and Apollo cannot stream at the same time (they share the driver). Without it, Pong streams the host's main display ([below](#without-nvenc-or-sudovda)) |
 | [ViGEmBus](https://github.com/nefarius/ViGEmBus) (optional) | Controllers: each of the client's pads becomes a virtual Xbox 360 pad |
 | Steam's **Steam Streaming Speakers** (optional) | Sound only on the client: during a session the host's default output moves to this virtual device, so the host's speakers stay quiet (Sunshine's approach, its `virtual_sink`). Without it, the sound plays on the host too |
 
@@ -132,6 +132,35 @@ From the tunnel up to the session started, 3024x1890@120:
 An asleep or switched-off monitor is still on the cable, and Windows spends
 ~3.7 s on it whenever the display arrangement changes. Apollo, measured on
 the same host, pays the same.
+
+### Without NVENC or SudoVDA
+
+A PC with no NVIDIA GPU, a virtual machine, or a Windows on Arm PC (SudoVDA
+is built for x64 only) still hosts, with less:
+
+- **Encoding: H.264 in software**, with Media Foundation's encoder, which
+  comes with Windows (not on the N editions without the Media Feature
+  Pack). Set up as NVENC is: the fastest speed, no B-frames, CBR with a
+  single-frame buffer, low-latency mode, IDR only on request. No HEVC,
+  AV1, HDR or 4:4:4, and no reference invalidation: a loss costs a
+  keyframe, as on the Linux host's FFmpeg path. The log says
+  `no NVENC; encoding with Media Foundation's H.264 encoder (software)`.
+  Sunshine's software encoder is libx264; this one ships with Windows.
+- **The display: the host's main display as it is**, scaled to the
+  client's mode, as Sunshine streams a display and as the macOS host does
+  without a virtual display. Its monitor stays on, so someone at the host
+  sees the session, and an agent's session holds its input while someone
+  uses the host rather than ending.
+- **A GPU without D3D11 video support** (Microsoft's Basic Render Driver,
+  in a virtual machine) is opened without it: nothing Pong does needs it.
+
+Measured in a Windows 11 24H2 Arm virtual machine (UTM on an M4 Pro, 6
+cores, the Basic Render Driver; Pong, an x64 program, under Windows'
+emulation): a still desktop at 1024x768 and 30 fps took 8.8 ms from capture
+to encoded at the median (15.5 ms p95) and 30-35 ms from the host's capture
+to the Mac's screen, with no loss; `grab_encode` (in
+`pingpong-encode/examples`) converted and encoded the same desktop in 12 ms
+at the median, 69 ms p95. Motion at a full 30 fps was not measured.
 
 ### Limits and known issues
 

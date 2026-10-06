@@ -1,6 +1,7 @@
 //! The Windows host's side of a session (see `session`): a SudoVDA virtual
-//! display at the client's mode, made the whole desktop; Desktop Duplication
-//! of it, the pointer drawn in; NVENC, or Media Foundation's H.264 encoder where there is no
+//! display at the client's mode, made the whole desktop (without SudoVDA, the
+//! host's main display as it is); Desktop Duplication of it, the pointer
+//! drawn in; NVENC, or Media Foundation's H.264 encoder where there is no
 //! NVENC; SendInput; WASAPI loopback; ViGEm pads; the app a session opens.
 
 use std::path::{Path, PathBuf};
@@ -8,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use pingpong_display::windows::WindowsDisplay;
-use pingpong_display::{DisplayControl, DisplayMode};
+use pingpong_display::{DisplayControl, DisplayError, DisplayMode};
 use pingpong_encode::nvenc::CodecCaps;
 use pingpong_encode::{Codec, EncoderConfig};
 use pingpong_input::SendInputSink;
@@ -40,6 +41,8 @@ pub struct Display {
     sdr_white: u16,
     /// What the client hears of an HDR stream, read once the display is up.
     hdr: control::HdrMetadata,
+    /// A virtual display made for the session, rather than the host's own.
+    made: bool,
 }
 
 pub struct Platform {
@@ -177,8 +180,9 @@ impl Platform {
     }
 
     /// The display to stream: a virtual one at the client's mode (reused when
-    /// it is already up at that mode). Sessions only ever stream a virtual
-    /// display made for the client; the host's own monitors never.
+    /// it is already up at that mode). Where SudoVDA can be had, sessions only
+    /// ever stream a virtual display made for the client, never the host's
+    /// own monitors; without it, the host's main display.
     pub fn display(
         &mut self,
         n: &Negotiated,
@@ -226,13 +230,36 @@ impl Platform {
                     gdi_name: active.gdi_name,
                     sdr_white,
                     hdr: metadata,
+                    made: true,
                 })
             }
+            Err(DisplayError::VddUnavailable) => self.host_display(),
             Err(e) => {
                 tracing::error!(error = %e, "virtual display unavailable; refusing the session");
                 Err(AckStatus::VddUnavailable)
             }
         }
+    }
+
+    /// No virtual display driver (a virtual machine, a Windows on Arm PC:
+    /// SudoVDA is built for x64 only): stream the host's main display as it
+    /// is, scaled to the client's mode, as the macOS host does without a
+    /// virtual display and as Sunshine always does. Its monitor stays on, so
+    /// someone at the host sees the session (see `isolates_host_displays`).
+    fn host_display(&self) -> Result<Display, AckStatus> {
+        let name = pingpong_display::windows::primary_id()
+            .and_then(pingpong_display::windows::gdi_name_for_target)
+            .ok_or(AckStatus::VddUnavailable)?;
+        tracing::warn!(
+            display = %name,
+            "no virtual display driver (SudoVDA); streaming the host's main display"
+        );
+        Ok(Display {
+            gdi_name: name,
+            sdr_white: 203,
+            hdr: control::HdrMetadata::bt2020(1000, 203),
+            made: false,
+        })
     }
 
     pub fn video_params(
@@ -352,6 +379,8 @@ impl Platform {
     /// The session is over (`ran`: it had started). The virtual display
     /// lingers for a returning client -- unless the host is shutting down.
     pub fn ended(&mut self, display: Option<Display>, ran: bool, shutdown: bool, shared: &Shared) {
+        // The host's own display has nothing to keep or put back.
+        let made = display.as_ref().is_none_or(|d| d.made);
         drop(display);
         self.close_app();
         // Unplug the virtual pads (a renegotiation keeps them, so games do
@@ -360,7 +389,7 @@ impl Platform {
         if ran {
             stay_awake(false);
             self.streaming = None;
-            if !shutdown {
+            if !shutdown && made {
                 self.linger = Some((Instant::now(), last_input()));
                 tracing::info!(
                     secs = LINGER.as_secs(),
@@ -409,9 +438,12 @@ pub fn host_input_idle() -> Option<Duration> {
 
 /// The session's virtual display is the whole desktop and the host's own
 /// monitors are off (Sunshine's `ensure_only_display`, unless the client or
-/// the config keeps them): someone at the host sees nothing.
+/// the config keeps them): someone at the host sees nothing. Without SudoVDA
+/// the session streams the host's own display, which stays on.
 pub fn isolates_host_displays(req: &SessionStart, cfg: &HostConfig) -> bool {
-    !cfg.keep_host_displays && req.flags & pingpong_proto::control::flags::KEEP_HOST_DISPLAYS == 0
+    !cfg.keep_host_displays
+        && req.flags & pingpong_proto::control::flags::KEEP_HOST_DISPLAYS == 0
+        && pingpong_display::windows::virtual_display_present()
 }
 
 /// The input desktop is not the user's (sign-in, lock screen, UAC,
