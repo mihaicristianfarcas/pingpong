@@ -794,3 +794,32 @@ pub fn serve(host: Arc<Host>) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::INDEX;
+
+    /// The page's script must parse: one stray quote in a setting's text
+    /// stops all of it, and the web UI is a blank page. Needs Node.js (on
+    /// GitHub's runners); without it the test says so and passes.
+    #[test]
+    fn the_web_uis_script_parses() {
+        let start = INDEX.rfind("<script>").expect("the page has its script") + "<script>".len();
+        let end = INDEX[start..].find("</script>").expect("the script ends") + start;
+        let path = std::env::temp_dir().join(format!("pong-web-{}.js", std::process::id()));
+        std::fs::write(&path, &INDEX[start..end]).unwrap();
+        let checked = std::process::Command::new("node")
+            .arg("--check")
+            .arg(&path)
+            .output();
+        let _ = std::fs::remove_file(&path);
+        match checked {
+            Ok(out) => assert!(
+                out.status.success(),
+                "the web UI's script does not parse:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ),
+            Err(e) => eprintln!("node not found ({e}): the web UI's script was not checked"),
+        }
+    }
+}
