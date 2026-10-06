@@ -12,7 +12,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use gpui::{div, prelude::*, px, AnyElement, Context, Entity, FontWeight, SharedString, Window};
-use ping_core::xbox::account::{self, AuthError, CloudLibrary, Command, Console, DeviceCode};
+use ping_core::xbox::account::{
+    self, AuthError, CloudLibrary, Command, Console, DeviceCode, Friend,
+};
 use ping_core::xbox::Target;
 use pingpong_ui::{
     button, icon_button, rows, section, setting, spinner, IconName, Ink, Radius, TextField, Theme,
@@ -48,6 +50,7 @@ pub enum SignInState {
 struct Arrivals {
     consoles: Option<Result<Vec<Console>, AuthError>>,
     cloud: Option<Result<Option<CloudLibrary>, AuthError>>,
+    friends: Option<Result<Vec<Friend>, AuthError>>,
     sign_in: Option<SignInState>,
     signed_in: Option<String>,
     command: Option<Result<(), AuthError>>,
@@ -60,6 +63,7 @@ pub struct XboxState {
     sign_in_cancel: Arc<AtomicBool>,
     pub consoles: Fetch<Vec<Console>>,
     pub cloud: Fetch<Option<CloudLibrary>>,
+    pub friends: Fetch<Vec<Friend>>,
     /// The games' search field, once the page has been drawn.
     pub filter: Option<Entity<TextField>>,
     /// A command's error, shown once.
@@ -77,6 +81,7 @@ impl XboxState {
             sign_in_cancel: Arc::new(AtomicBool::new(false)),
             consoles: Fetch::Idle,
             cloud: Fetch::Idle,
+            friends: Fetch::Idle,
             filter: None,
             error: None,
             arrivals: Arc::default(),
@@ -116,6 +121,10 @@ impl XboxState {
             || account::cloud_library(true),
             |a, r| a.cloud = Some(r),
         );
+        // Asked for when the page is looked at, not on a timer: Xbox Live
+        // allows 30 requests in five minutes.
+        self.friends = Fetch::Loading;
+        self.spawn("xbox-friends", account::friends, |a, r| a.friends = Some(r));
     }
 
     /// The page was opened: fetch what has not been.
@@ -167,6 +176,7 @@ impl XboxState {
         self.gamertag = None;
         self.consoles = Fetch::Idle;
         self.cloud = Fetch::Idle;
+        self.friends = Fetch::Idle;
     }
 
     /// Wake a console, or turn it off; the list is fetched again after.
@@ -200,6 +210,13 @@ impl XboxState {
         if let Some(r) = got.cloud {
             self.cloud = match r {
                 Ok(library) => Fetch::Done(library),
+                Err(e) => Fetch::Failed(self.failed(e)),
+            };
+            changed = true;
+        }
+        if let Some(r) = got.friends {
+            self.friends = match r {
+                Ok(list) => Fetch::Done(list),
                 Err(e) => Fetch::Failed(self.failed(e)),
             };
             changed = true;
@@ -280,6 +297,7 @@ impl PingApp {
             Some(gamertag) => body
                 .child(section("Consoles", t).child(self.console_rows(t, cx)))
                 .child(section("Cloud gaming", t).child(self.cloud_rows(t, window, cx)))
+                .child(section("Friends", t).child(self.friend_rows(t)))
                 .child(section("Account", t).child(rows(
                     [setting(
                         format!("Signed in as {gamertag}"),
@@ -506,6 +524,65 @@ impl PingApp {
             ));
         }
         out.into_any_element()
+    }
+
+    fn friend_rows(&self, t: Theme) -> AnyElement {
+        let row = |label: SharedString, detail: Option<SharedString>, control: AnyElement| {
+            setting(label, detail, control, t).into_any_element()
+        };
+        let list = match &self.xbox.friends {
+            Fetch::Idle | Fetch::Loading => {
+                return rows(
+                    [row(
+                        "Looking for your friends…".into(),
+                        None,
+                        spinner("xbox-friends-spin", 13.0, t.tertiary).into_any_element(),
+                    )],
+                    t,
+                )
+                .into_any_element()
+            }
+            Fetch::Failed(e) => {
+                return rows(
+                    [row(
+                        "The friends list could not be read".into(),
+                        Some(e.clone().into()),
+                        div().into_any_element(),
+                    )],
+                    t,
+                )
+                .into_any_element()
+            }
+            Fetch::Done(list) => list,
+        };
+        let online: Vec<&Friend> = list.iter().filter(|f| f.online).collect();
+        let offline = list.len() - online.len();
+        let out: Vec<AnyElement> = online
+            .iter()
+            .map(|f| {
+                row(
+                    f.name.clone().into(),
+                    Some(f.activity.clone().into()),
+                    pingpong_ui::dot(t.ink(Ink::FRESH), 7.0).into_any_element(),
+                )
+            })
+            .collect();
+        if out.is_empty() {
+            let none = if offline == 0 {
+                "No friends on this account yet".to_string()
+            } else {
+                format!("None of your {offline} friends is online")
+            };
+            return rows([row(none.into(), None, div().into_any_element())], t).into_any_element();
+        }
+        let mut list = div().flex().flex_col().gap(px(6.0)).child(rows(out, t));
+        if offline > 0 {
+            list = list.child(pingpong_ui::footnote(
+                format!("{offline} more, offline."),
+                t,
+            ));
+        }
+        list.into_any_element()
     }
 
     /// The sign-in sheet, while signing in.

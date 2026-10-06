@@ -6,6 +6,7 @@
 //!   ping xbox consoles              the account's consoles
 //!   ping xbox wake NAME | off NAME  turn a console on, or off
 //!   ping xbox games                 the cloud games the account may play
+//!   ping xbox friends               the account's friends, and what they play
 //!   ping xbox stream CONSOLE [--keyboard] [stream flags]
 //!   ping xbox play GAME [--keyboard] [--region NAME] [stream flags]
 //!
@@ -37,6 +38,7 @@ pub fn run(args: &[String]) -> ExitCode {
             None => usage(),
         },
         Some("games") => games(),
+        Some("friends") => friends(),
         Some("stream") => match args.get(1) {
             Some(name) => stream_console(name, &args[2..]),
             None => usage(),
@@ -138,6 +140,19 @@ fn games() -> ExitCode {
             }
             for g in library.games {
                 println!("{}\t{}\t{}", g.name, g.publisher, g.title_id);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => auth_fail(e),
+    }
+}
+
+fn friends() -> ExitCode {
+    match account::friends() {
+        Ok(list) => {
+            for f in list {
+                let state = if f.online { "online" } else { "offline" };
+                println!("{}\t{state}\t{}", f.name, f.activity);
             }
             ExitCode::SUCCESS
         }

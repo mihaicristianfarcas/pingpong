@@ -38,7 +38,7 @@ pub(crate) fn usage() -> ExitCode {
             \x20                       [--mute-in-background] [--audio-channels 2|6|8] [--steam]\n\
             \x20                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
             \x20                       [--no-clipboard] [--hdr] [--yuv444]\n\
-            \x20      ping xbox sign-in | sign-out | consoles | wake NAME | off NAME | games\n\
+            \x20      ping xbox sign-in | sign-out | consoles | wake NAME | off NAME | games | friends\n\
             \x20      ping xbox stream CONSOLE [--keyboard] [stream flags]\n\
             \x20      ping xbox play GAME [--keyboard] [--region NAME] [stream flags]"
     );

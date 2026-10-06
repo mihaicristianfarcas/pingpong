@@ -11,6 +11,7 @@ use pingpong_xbox::store::AccountStore;
 
 pub use pingpong_xbox::auth::{AuthError, DeviceCode};
 pub use pingpong_xbox::consoles::{Command, Console};
+pub use pingpong_xbox::people::Friend;
 
 /// A game the account may play in the cloud.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +62,11 @@ pub fn sign_out() -> Result<(), String> {
 /// The account's consoles.
 pub fn consoles() -> Result<Vec<Console>, AuthError> {
     pingpong_xbox::consoles::list(&mut load()?)
+}
+
+/// The account's friends, those online first.
+pub fn friends() -> Result<Vec<Friend>, AuthError> {
+    pingpong_xbox::people::friends(&mut load()?)
 }
 
 /// Send `command` to the console `id` (wake it, turn it off).

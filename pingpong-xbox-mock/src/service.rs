@@ -170,6 +170,20 @@ impl Service {
                 }
                 Response::json(json!({ "status": { "errorCode": "OK", "errorMessage": null } }))
             }
+            ("GET", "peoplehub.xboxlive.com", people)
+                if people.starts_with("/users/me/people/social") =>
+            {
+                if !self.web_authorized(r) {
+                    return Response::status(401, "");
+                }
+                Response::json(json!({ "people": [
+                    { "xuid": "2533274800000002", "gamertag": "Mock Friend", "displayName": "",
+                      "presenceState": "Online", "presenceText": "Online",
+                      "presenceDetails": [{ "IsGame": true, "IsPrimary": true, "PresenceText": "Mock Game", "TitleId": "1" }] },
+                    { "xuid": "2533274800000003", "gamertag": "Away Friend", "displayName": "",
+                      "presenceState": "Offline", "presenceText": "Last seen 1h ago: Mock Xbox", "presenceDetails": [] }
+                ]}))
+            }
             ("POST", "catalog.gamepass.com", "/v3/products") => Response::json(json!({
                 "Products": {
                     CLOUD_PRODUCT: { "ProductTitle": "Mock Game", "PublisherName": "pingpong", "StoreId": CLOUD_PRODUCT }

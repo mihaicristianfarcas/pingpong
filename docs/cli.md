@@ -67,6 +67,7 @@ by its name (any case) or its id.
 | `ping xbox consoles` | The account's consoles: name, model, state, id |
 | `ping xbox wake NAME`, `ping xbox off NAME` | Turn a console on (from sleep), or off |
 | `ping xbox games` | The cloud games the account may play |
+| `ping xbox friends` | The account's friends, online first, with what they play |
 | `ping xbox stream CONSOLE [FLAGS]` | Stream a console |
 | `ping xbox play GAME [FLAGS]` | Play a cloud game (a part of its name will do) |
 

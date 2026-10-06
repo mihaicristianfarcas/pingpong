@@ -27,8 +27,9 @@ Microsoft's own web client speaks, as
    microsoft.com/link on any device (**Open the Page** does it here), enter
    the code, and sign in there. Ping never sees your password; the sheet
    closes when you are done.
-2. The page lists your consoles, asleep or on, and the cloud games your
-   account may play. **Stream** starts a console's stream, waking it if it
+2. The page lists your consoles, asleep or on, the cloud games your
+   account may play, and which of your friends are online and what they
+   play. **Stream** starts a console's stream, waking it if it
    sleeps; **Play** starts a cloud game, through the cloud's queue when
    there is one. **Turn On** and **Turn Off** wake a console or turn it off.
 3. Ctrl+Alt+Shift+Q (⌃⌥⇧Q) ends the stream, as for a Pong host. The console
@@ -89,7 +90,8 @@ ping xbox play "Fortnite"
 | Audio | Chromium | Ping's own player and its adaptive buffer, stereo |
 | Input latency | Controllers polled every 16 ms | Sent the moment the platform reports it (the connection's thread is woken for it) |
 | Tokens | Kept in Electron's store, written to its debug log | An owner-only file, never logged |
-| Friends, achievements, profile | Yes | No |
+| Friends | Online friends, in a sidebar refreshed every 30 s | Online friends and what they play, on the Xbox page and `ping xbox friends`, asked for when looked at (Xbox Live allows 30 requests in five minutes) |
+| Achievements, profile | Yes | No: they are not streaming |
 | Microphone (party chat) | Prepared, not finished | No |
 | Touch controls | Yes | No: desktops have no touch screen |
 

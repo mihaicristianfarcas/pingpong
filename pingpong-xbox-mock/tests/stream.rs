@@ -159,6 +159,10 @@ fn a_console_streams_end_to_end() {
         (list[0].name.as_str(), list[0].state()),
         (CONSOLE_NAME, "Asleep")
     );
+    let friends = pingpong_xbox::people::friends(&mut auth).unwrap();
+    assert_eq!(friends.len(), 2);
+    assert!(friends[0].online);
+    assert_eq!(friends[0].activity, "Mock Game");
 
     let running = start(
         &http,

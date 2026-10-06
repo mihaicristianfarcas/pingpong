@@ -12,6 +12,7 @@
 //! - [`auth`]: signing in with a Microsoft account (a code to type on any
 //!   device), and the tokens each service takes.
 //! - [`consoles`]: the account's consoles, turning them on and off.
+//! - [`people`]: the account's friends, and who is online.
 //! - [`gssv`]: the streaming service: sessions, the cloud catalogue.
 //! - [`connection`]: the WebRTC connection (str0m) and the stream over it.
 //! - [`stream`]: a stream from start to end, over all of the above.
@@ -34,6 +35,7 @@ pub mod ice;
 pub mod input;
 pub mod keymap;
 pub mod messages;
+pub mod people;
 pub mod rumble;
 pub mod store;
 pub mod stream;
