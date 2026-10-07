@@ -5754,6 +5754,7 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "getrandom 0.3.4",
+ "image",
  "objc2-core-video",
  "parking_lot",
  "ping-core",
@@ -5913,7 +5914,6 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "ffmpeg-sys-next",
- "memchr",
  "objc2-core-foundation",
  "objc2-core-media",
  "objc2-core-video",
@@ -5950,6 +5950,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-video-toolbox",
  "pingpong-capture",
+ "pingpong-proto",
  "tracing",
  "tracing-subscriber",
  "windows 0.61.3",
@@ -6005,6 +6006,7 @@ name = "pingpong-proto"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "memchr",
  "proptest",
  "reed-solomon-simd",
  "serde",

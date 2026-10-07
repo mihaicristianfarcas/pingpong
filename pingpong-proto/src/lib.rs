@@ -1,6 +1,7 @@
 //! The pingpong wire protocol: datagram headers, frame packetization and
-//! Reed-Solomon FEC, reassembly, frame pacing, and the control, input, audio
-//! and clipboard messages that ride beside the video.
+//! Reed-Solomon FEC, reassembly, frame pacing, the control, input, audio
+//! and clipboard messages that ride beside the video, and the Annex-B framing
+//! of the video itself.
 //!
 //! This crate performs no I/O and has no platform or GPU dependencies, so
 //! everything in it is unit-tested, property-tested and fuzzed on any machine.
@@ -8,6 +9,7 @@
 //! Section references in this crate (`v1 design §5.1`, `v2 design §4.3`) are
 //! to the original design documents in `docs/design/`.
 
+pub mod annexb;
 pub mod audio;
 pub mod clip;
 pub mod clock;

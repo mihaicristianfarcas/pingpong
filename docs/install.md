@@ -173,10 +173,16 @@ needs those permissions). Details and limits: [platforms/macos.md](platforms/mac
 First, on the host PC:
 
 1. An **NVIDIA GPU** and a current driver (Pong encodes with NVENC).
+   Without one, Pong encodes H.264 in software, with Media Foundation's
+   encoder (part of Windows): no HDR, 4:4:4, HEVC or AV1.
 2. **SudoVDA**, the virtual display driver: installed by
    [Apollo](https://github.com/ClassicOldSong/Apollo), or from
    [SudoMaker/SudoVDA](https://github.com/SudoMaker/SudoVDA). If Apollo is
    installed, stop its service while Pong runs (they share the driver).
+   Without it, Pong streams the PC's main display as it is.
+
+   [platforms/windows.md](platforms/windows.md#without-nvenc-or-sudovda)
+   says what a host without them can do.
 3. Optional: **[ViGEmBus](https://github.com/nefarius/ViGEmBus)**, for
    controllers; **Steam** (its *Steam Streaming Speakers* device keeps the
    sound on the client only, as Sunshine does).

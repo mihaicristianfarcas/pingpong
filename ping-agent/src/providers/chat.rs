@@ -1,9 +1,9 @@
 //! Any OpenAI-compatible chat endpoint with function calling and images:
-//! OpenRouter (hundreds of models behind one key, TypeSafe's Jev Router
-//! among them), a local Ollama or LM Studio, a company gateway. The
-//! computer's actions are offered as functions -- the MCP server's tools --
-//! and the screen after each turn goes back as an image (tool messages
-//! carry no images in this API, so it rides in a user message).
+//! OpenRouter (hundreds of models behind one key), a local Ollama or LM
+//! Studio, a company gateway. The computer's actions are offered as
+//! functions -- the MCP server's tools -- and the screen after each turn
+//! goes back as an image (tool messages carry no images in this API, so it
+//! rides in a user message).
 //!
 //! Only the last few screenshots stay in the conversation: smaller models
 //! have small windows, and an old screen is worth nothing.

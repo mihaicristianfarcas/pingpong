@@ -11,12 +11,10 @@ description = "Hardware video decoding for the pingpong client: VideoToolbox (ma
 # The objc2-* crates gate one feature per framework header (there is no
 # "all" feature in the 0.3 line), so each lists exactly the headers used.
 [dependencies]
-# Only for the shared microsecond clock, so decoded_at_us is comparable with
-# every other client-side timestamp.
+# The shared microsecond clock, so decoded_at_us is comparable with every
+# other client-side timestamp; the Annex-B splitter.
 pingpong-proto = { path = "../pingpong-proto" }
 tracing = "0.1"
-# SIMD start-code search over every frame (annexb.rs).
-memchr = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-core-foundation = { version = "0.3", features = [

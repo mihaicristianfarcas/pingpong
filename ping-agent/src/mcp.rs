@@ -929,6 +929,10 @@ pub fn main(args: &[String]) -> std::process::ExitCode {
             other => eprintln!("ignoring unknown flag {other}"),
         }
     }
+    // The checks the person turned on in Ping apply to every agent that
+    // uses the hosts, this server's included.
+    let checks = crate::providers::AgentSettings::load(&config.data_dir).checks;
+    config.judge = crate::judge::Judge::new(&config.data_dir, &checks).map(std::sync::Arc::new);
     match serve(Computer::new(config), opts) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {

@@ -225,6 +225,38 @@ pub struct Rgb {
 }
 
 impl Rgb {
+    /// An 8-bit RGB PNG (as `png` writes them, and as the computer's
+    /// screenshots are), or None for anything else.
+    pub fn from_png(png: &[u8]) -> Option<Rgb> {
+        let decoder = png::Decoder::new(Cursor::new(png));
+        let mut reader = decoder.read_info().ok()?;
+        let mut buf = vec![0; reader.output_buffer_size()?];
+        let info = reader.next_frame(&mut buf).ok()?;
+        if info.color_type != png::ColorType::Rgb || info.bit_depth != png::BitDepth::Eight {
+            return None;
+        }
+        buf.truncate(info.buffer_size());
+        Some(Rgb {
+            width: info.width,
+            height: info.height,
+            data: buf,
+        })
+    }
+
+    /// As a JPEG of `quality` (1-100).
+    pub fn jpeg(&self, quality: u8) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality)
+            .encode(
+                &self.data,
+                self.width,
+                self.height,
+                image::ExtendedColorType::Rgb8,
+            )
+            .expect("JPEG of an RGB picture into memory");
+        out
+    }
+
     pub fn png(&self) -> Vec<u8> {
         let mut out = Vec::new();
         {
@@ -281,6 +313,27 @@ impl Rgb {
             height: oh,
             data: out,
         })
+    }
+
+    /// A ring of `color`, `width` pixels thick, its inner edge `radius`
+    /// from `centre`: it marks a point and leaves what is at it readable.
+    pub fn ring(&mut self, centre: (u32, u32), radius: u32, width: u32, color: [u8; 3]) {
+        let (cx, cy) = (centre.0 as i64, centre.1 as i64);
+        let (inner, outer) = (radius as i64, (radius + width) as i64);
+        let (x0, x1) = ((cx - outer).max(0), (cx + outer).min(self.width as i64 - 1));
+        let (y0, y1) = (
+            (cy - outer).max(0),
+            (cy + outer).min(self.height as i64 - 1),
+        );
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let d2 = (x - cx).pow(2) + (y - cy).pow(2);
+                if d2 >= inner * inner && d2 < outer * outer {
+                    let i = ((y as u64 * self.width as u64 + x as u64) * 3) as usize;
+                    self.data[i..i + 3].copy_from_slice(&color);
+                }
+            }
+        }
     }
 
     /// Scaled down so neither side exceeds `max` (thumbnails for a UI).
@@ -496,5 +549,28 @@ mod tests {
         .fit(100);
         assert_eq!((small.width, small.height), (100, 50));
         assert!(small.data.iter().all(|&b| b == 9));
+    }
+
+    #[test]
+    fn a_ring_leaves_its_centre_and_clips_at_the_edges() {
+        let mut img = Rgb {
+            width: 40,
+            height: 30,
+            data: vec![0; 40 * 30 * 3],
+        };
+        let at = |img: &Rgb, x: u32, y: u32| {
+            let i = ((y * img.width + x) * 3) as usize;
+            [img.data[i], img.data[i + 1], img.data[i + 2]]
+        };
+        img.ring((20, 15), 5, 2, [255, 0, 255]);
+        assert_eq!(at(&img, 20, 15), [0, 0, 0]);
+        assert_eq!(at(&img, 25, 15), [255, 0, 255]);
+        assert_eq!(at(&img, 20, 9), [255, 0, 255]);
+        assert_eq!(at(&img, 28, 15), [0, 0, 0]);
+        // Over a corner: only what is on the picture is drawn.
+        img.ring((0, 0), 3, 2, [1, 2, 3]);
+        img.ring((39, 29), 3, 2, [1, 2, 3]);
+        assert_eq!(at(&img, 3, 0), [1, 2, 3]);
+        assert_eq!(at(&img, 39, 25), [1, 2, 3]);
     }
 }

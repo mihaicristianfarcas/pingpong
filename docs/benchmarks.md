@@ -35,6 +35,14 @@ Unless a section says otherwise:
   second: `RUST_LOG=info,ping_core::stats=debug ping stream NAME ...`. The
   host logs a line a second too (`pong.log`: frames, capture to encoded,
   Mbit/s, recoveries).
+- **The client's presentation alone** (macOS), with no host: synthetic
+  frames through the stream window and renderer, a line a second of frames
+  shown and decode to glass (the options are at the top of the file):
+
+  ```sh
+  cargo run --release -p ping-core --example mac-present -- --fps 120 --secs 10
+  ```
+
 - **Host capture to the client's screen** is measured directly: the two
   machines' clocks are related through the ping/pong exchange the stream
   already runs (every 500 ms; as in NTP, the sample with the shortest round
@@ -115,6 +123,36 @@ refresh; frame pacing is an opt-in setting, as in Moonlight.
 The rest of the pipeline in the same runs, from the overlay: host capture to
 encoded 2.2–2.6 ms, in flight about half the ~9 ms Wi-Fi round trip, first
 packet to complete frame 1–1.6 ms, decode 1.5–2 ms.
+
+### Recording the screen (macOS client)
+
+Measured 2026-10-07 with `ping-core`'s `mac-present` (synthetic frames
+through the stream window and renderer, no host or decoder; each frame
+handed over up to 3 ms late), on the MacBook's built-in 120 Hz display at
+3600x2338, V-Sync on, full screen. "Recorded" is `screencapture -V` running
+through the whole run; "a window over it" is a small window above the
+stream for 4 s, as a recorder's controls or a dialog would be. Before is Ping
+0.8.2, which let one frame at a time wait for the glass full screen; after,
+three while the trips to the glass say the picture is composited.
+
+| Case | Before: shown | Before: decode to glass | After: shown | After: decode to glass |
+|---|---|---|---|---|
+| Nothing over it, 60 fps | 60 of 60 | 6.1 ms | 60 of 60 | 6.0 ms |
+| Nothing over it, 120 fps | 120 of 120 | 10.1 ms | 120 of 120 | 10.0 ms |
+| Recorded, 60 fps | 40 of 60 | 34.0 ms | 60 of 60 | 22.2 ms |
+| Recorded, 120 fps | 40 of 120 | 28.6 ms | 119 of 120 | 25.6 ms |
+| A window over it, 60 fps | 40 of 60 | 30–34 ms | 57–60 of 60 | 20–23 ms |
+| A window over it, 120 fps | 39–48 of 120 | 25–28 ms | 111–119 of 120 | 24–29 ms |
+
+Composited, a drawable reaches the glass 17.8–27.4 ms after it is committed,
+against 2.8–11.3 ms straight to the display; with one at a time a frame is
+shown every third refresh. After the window over it is gone, the stream is
+straight again within 1–2 s. A recording that starts while the stream is
+already full screen is composited for 1.5–2 s; macOS then takes the stream
+straight to the display again, with some frames a refresh late: 105–117 of
+120 shown at 120 fps, before as after (at 60 fps, all of them). Real
+streams with a recording running, through CleanShot X: 39 of 60 and 40 of
+120 shown before.
 
 ## Against Moonlight + Apollo
 

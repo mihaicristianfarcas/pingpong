@@ -6,9 +6,10 @@ rust-version.workspace = true
 repository.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Video encoding for the pingpong host: NVENC (Windows), VideoToolbox (macOS), FFmpeg (Linux)"
+description = "Video encoding for the pingpong host: NVENC or Media Foundation (Windows), VideoToolbox (macOS), FFmpeg (Linux)"
 
 [dependencies]
+pingpong-proto = { path = "../pingpong-proto" }
 tracing = "0.1"
 
 # NVENC is loaded from the driver's nvEncodeAPI64.dll at runtime (see
@@ -22,7 +23,11 @@ windows = { version = "0.61", features = [
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
     "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
 ] }
 
 [target.'cfg(windows)'.dev-dependencies]

@@ -1,7 +1,8 @@
 //! The session's video pipeline on Windows: Desktop Duplication → BGRA→NV12
-//! → NVENC, on one thread and one D3D11 device, feeding the paced sender.
-//! The pipeline's shape and timing (Sunshine's) are shared with the other
-//! hosts: see `pipeline`.
+//! → NVENC (or, without NVENC, Media Foundation's H.264 encoder), on one
+//! thread and one D3D11 device, feeding the paced sender. The pipeline's
+//! shape and timing (Sunshine's) are shared with the other hosts: see
+//! `pipeline`.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -11,8 +12,9 @@ use pingpong_capture::dda::{sync_thread_desktop, DdaCapture};
 use pingpong_capture::gpu::Gpu;
 use pingpong_capture::Grab;
 use pingpong_encode::convert::{Converter, Output};
+use pingpong_encode::mf::MfEncoder;
 use pingpong_encode::nvenc::NvencEncoder;
-use pingpong_encode::EncoderConfig;
+use pingpong_encode::{EncodeError, EncodedFrame, EncoderConfig};
 use pingpong_proto::clock;
 use pingpong_transport::Endpoint;
 
@@ -20,9 +22,19 @@ use crate::pipeline::{Cadence, EncodeThread, FrameOut};
 pub use crate::pipeline::{VideoCmd, VideoHandle};
 use crate::sender;
 
+/// Which encoder a session's video goes through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// NVIDIA's NVENC, on the GPU.
+    Nvenc,
+    /// Media Foundation's H.264 encoder, in software: there is no NVENC.
+    MediaFoundation,
+}
+
 #[derive(Debug, Clone)]
 pub struct VideoParams {
     pub gdi_name: String,
+    pub backend: Backend,
     pub encoder: EncoderConfig,
     pub pace_mbps: u32,
     /// SDR white on the display, cd/m²: where an SDR frame (or the pointer)
@@ -39,6 +51,35 @@ pub fn start(
 ) -> Result<VideoHandle, String> {
     let pace_mbps = params.pace_mbps;
     crate::pipeline::start(params, pace_mbps, endpoint, recipients, encode_loop)
+}
+
+enum Encoder {
+    Nvenc(NvencEncoder),
+    MediaFoundation(MfEncoder),
+}
+
+impl Encoder {
+    /// `None`: the encoder gave nothing back for this frame.
+    fn encode(&mut self, index: u64, force_idr: bool) -> Result<Option<EncodedFrame>, EncodeError> {
+        match self {
+            Encoder::Nvenc(e) => e.encode(index, force_idr).map(Some),
+            Encoder::MediaFoundation(e) => e.encode(index, force_idr),
+        }
+    }
+
+    fn invalidate(&mut self, first: u64, last: u64) -> bool {
+        match self {
+            Encoder::Nvenc(e) => e.invalidate(first, last),
+            Encoder::MediaFoundation(e) => e.invalidate(first, last),
+        }
+    }
+
+    fn set_bitrate(&mut self, bitrate_bps: u32) -> Result<(), EncodeError> {
+        match self {
+            Encoder::Nvenc(e) => e.set_bitrate(bitrate_bps),
+            Encoder::MediaFoundation(e) => e.set_bitrate(bitrate_bps),
+        }
+    }
 }
 
 /// Reconstruct a 64-bit frame index from the 32-bit id the client echoes,
@@ -60,7 +101,7 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
     // The thread must be on the input desktop before duplicating it.
     sync_thread_desktop();
 
-    let setup = (|| -> Result<(DdaCapture, Converter, NvencEncoder), String> {
+    let setup = (|| -> Result<(DdaCapture, Converter, Encoder), String> {
         let gpu = Gpu::for_output(&params.gdi_name).map_err(|e| {
             let seen: Vec<String> = Gpu::list_outputs()
                 .into_iter()
@@ -95,7 +136,14 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
             params.sdr_white_nits,
         )
         .map_err(|e| e.to_string())?;
-        let enc = NvencEncoder::new(&device, conv.output(), e).map_err(|e| e.to_string())?;
+        let enc = match params.backend {
+            Backend::Nvenc => Encoder::Nvenc(
+                NvencEncoder::new(&device, conv.output(), e).map_err(|e| e.to_string())?,
+            ),
+            Backend::MediaFoundation => Encoder::MediaFoundation(
+                MfEncoder::new(&device, &context, conv.output(), e).map_err(|e| e.to_string())?,
+            ),
+        };
         let (cw, ch) = cap.size();
         if (cw, ch) != (e.width, e.height) {
             tracing::warn!(desktop = ?(cw, ch), stream = ?(e.width, e.height), "desktop and stream differ; scaling");
@@ -123,7 +171,12 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
     let mut index: u64 = 0;
     let mut force_idr = true;
     let mut last_encode: Option<Instant> = None;
-    let mut have_new = false;
+    // The desktop setup grabbed (or the black one in its place) has not been
+    // converted yet. Looks harmless to start at false, is not: a still
+    // desktop presents nothing more, and the converter's untouched NV12
+    // output went out instead -- all zeros, a green picture, until something
+    // on the screen changed.
+    let mut have_new = true;
 
     while !stop.load(Ordering::Relaxed) {
         for cmd in cmds.try_iter() {
@@ -201,7 +254,13 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
             have_new = false;
         }
         let encoded = match enc.encode(index, force_idr) {
-            Ok(f) => f,
+            Ok(Some(f)) => f,
+            // Nothing out for this one: try again next time round (an IDR
+            // still owed stays owed).
+            Ok(None) => {
+                last_encode = Some(now);
+                continue;
+            }
             Err(e) => {
                 tracing::error!(error = %e, "encode failed; ending the video pipeline");
                 break;

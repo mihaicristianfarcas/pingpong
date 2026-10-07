@@ -597,8 +597,9 @@ fn force_mode(name: &str, mode: DisplayMode) -> Result<(), DisplayError> {
 
 /// True if a SudoVDA-driven display is attached to the desktop right now.
 ///
-/// Exists for the watchdog test: proving the keepalive works means proving the
-/// display is still *there*, which no return code can tell you.
+/// The watchdog test needs it: proving the keepalive works means proving the
+/// display is still *there*, which no return code can tell you. The host asks
+/// it too, to know whether a session's display is one of its own.
 pub fn virtual_display_present() -> bool {
     let mut i = 0u32;
     loop {

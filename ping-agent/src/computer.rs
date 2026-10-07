@@ -7,6 +7,7 @@
 //! host makes its display the stream's size (Windows, Mac) or scales its
 //! screen to it (Linux), so nothing is ever rescaled here.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -17,6 +18,7 @@ use pingpong_proto::input::{Button, InputEvent};
 
 use crate::frame::Rgb;
 use crate::headless::{HeadlessOptions, HeadlessSession};
+use crate::judge::{Judge, Personal, Showing};
 
 /// A screenshot, as PNG.
 #[derive(Clone)]
@@ -362,6 +364,8 @@ pub struct Config {
     /// Short by default: an MCP client gives a call a minute (Codex's
     /// default); Ping's own runs and sessions raise it to `HOLD_WAIT`.
     pub hold_wait: Duration,
+    /// Clef, for the checks the person turned on (see `judge`).
+    pub judge: Option<Arc<Judge>>,
 }
 
 impl Config {
@@ -379,6 +383,7 @@ impl Config {
             control: None,
             full_screens: false,
             hold_wait: Duration::from_secs(50),
+            judge: None,
         }
     }
 }
@@ -395,6 +400,9 @@ pub struct Computer {
     /// Set when the last action waited for a person instead of being done.
     held_last: Option<Duration>,
     plan_observer: Option<PlanObserver>,
+    /// What the person said this turn about the model seeing each kind of
+    /// personal information (see `judge::showing`).
+    shown: BTreeMap<Personal, bool>,
 }
 
 /// After an action, the screen is looked at no sooner than this (an app
@@ -426,6 +434,7 @@ impl Computer {
             waits: Waits::default(),
             held_last: None,
             plan_observer: None,
+            shown: BTreeMap::new(),
         }
     }
 
@@ -504,6 +513,7 @@ impl Computer {
         self.config.until = Some(until);
         self.config.control = Some((control_dir.clone(), approvals));
         self.control = Some(crate::control::Control::new(control_dir, approvals));
+        self.shown.clear();
         tracing::info!(max_actions, approvals = approvals.id(), "turn begins");
     }
 
@@ -641,7 +651,8 @@ impl Computer {
                 since = Instant::now();
             }
         }
-        let mut out = self.screenshot_outcome(None)?;
+        let shot = self.screenshot_outcome(None)?;
+        let mut out = self.screened(shot)?;
         out.text = format!(
             "Connected to {host} ({os}). The screen is {w}x{h} pixels; coordinates are pixels of this screenshot, \
                 (0, 0) at the top left.{}",
@@ -678,7 +689,7 @@ impl Computer {
             Action::MouseDown { .. } | Action::MouseUp { .. } => self.pointer,
             _ => None,
         });
-        let result = self.act_inner(&action);
+        let result = self.act_inner(&action).and_then(|out| self.screened(out));
         let held = self.held_last.take();
         let point = point.and_then(|(x, y)| {
             let (w, h) = self.session.as_ref().map(|s| s.size())?;
@@ -775,7 +786,7 @@ impl Computer {
                 // Paused from Ping, or waiting for a yes: time spent waiting
                 // for the person is not the run's.
                 let stop = self.stop_check();
-                let risk = crate::risk::assess(action);
+                let risk = crate::risk::assess(action).or_else(|| self.judged(action));
                 let waited = Instant::now();
                 let hold = self.config.hold_wait;
                 let gated = self.control.as_mut().expect("there").gate(
@@ -956,6 +967,120 @@ impl Computer {
             return Ok(Outcome::text(text));
         }
         self.screenshot_outcome(Some(started))
+    }
+
+    /// Clef's reason for `action` to wait for a yes, when approvals are for
+    /// risky steps and a check covers it. When clef cannot say, the rules
+    /// alone decide, as without it.
+    fn judged(&self, action: &Action) -> Option<String> {
+        let judge = self.config.judge.as_ref()?;
+        if self.control.as_ref()?.approvals() != crate::providers::Approvals::Risky {
+            return None;
+        }
+        let subject = crate::judge::Subject::of(action, self.pointer, judge.checks())?;
+        let screen = self.session.as_ref()?.frames.latest()?.picture.to_rgb();
+        match judge.judge(&screen, &subject) {
+            Ok(Some(why)) => {
+                tracing::info!(action = action.describe(), why, "clef holds the action");
+                Some(why)
+            }
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!(
+                    action = action.describe(),
+                    error = e,
+                    "clef could not judge the action; the rules alone decide"
+                );
+                None
+            }
+        }
+    }
+
+    /// `out` as the model may have it: a screen clef finds personal
+    /// information on goes to the model only if the person allows it this
+    /// turn; otherwise a blank screen of the same size takes its place (each
+    /// provider's loop wants a picture after every step).
+    fn screened(&mut self, mut out: Outcome) -> Result<Outcome, String> {
+        let Some(judge) = self.config.judge.clone() else {
+            return Ok(out);
+        };
+        let Some(shot) = out.shot.as_ref().filter(|_| judge.checks().personal_info) else {
+            return Ok(out);
+        };
+        let found = judge.personal(shot).unwrap_or_else(|e| {
+            tracing::warn!(error = e, "clef could not check the screen");
+            vec![Personal::Unchecked]
+        });
+        let (kinds, asked) = match crate::judge::showing(&found, &self.shown) {
+            Showing::Show => return Ok(out),
+            Showing::Withhold(kinds) => (kinds, true),
+            Showing::Ask(kinds) => match self.ask_to_show(&kinds)? {
+                Some(yes) => {
+                    self.shown.extend(kinds.iter().map(|k| (*k, yes)));
+                    if yes {
+                        return Ok(out);
+                    }
+                    (kinds, true)
+                }
+                None => (kinds, false),
+            },
+        };
+        let what = crate::judge::describe_all(&kinds);
+        tracing::info!(what, "the screen is withheld from the model");
+        let blank = Rgb {
+            width: shot.width,
+            height: shot.height,
+            data: vec![128; (shot.width * shot.height * 3) as usize],
+        };
+        out.shot = Some(Shot {
+            png: blank.png(),
+            width: shot.width,
+            height: shot.height,
+        });
+        let why = if asked {
+            "and the person chose not to let you see it"
+        } else {
+            "and nobody is here to let you see it"
+        };
+        out.text = format!(
+            "{} The screen is withheld from you (the picture is blank): it shows {what}, {why}. \
+                Don't try to see it another way. Carry on if you can without it, or stop and \
+                say what you need.",
+            out.text
+        )
+        .trim_start()
+        .to_string();
+        Ok(out)
+    }
+
+    /// Ask the person whether the model may see a screen showing `kinds`:
+    /// their answer, or None when nobody can be asked (no one runs this from
+    /// Ping).
+    fn ask_to_show(&mut self, kinds: &[Personal]) -> Result<Option<bool>, String> {
+        let stop = self.stop_check();
+        let hold = self.config.hold_wait;
+        let Some(control) = &mut self.control else {
+            return Ok(None);
+        };
+        let why = if kinds == [Personal::Unchecked] {
+            "Clef could not check it for personal information. A yes lets the model see the \
+                screens it cannot check until this turn ends."
+                .to_string()
+        } else {
+            format!(
+                "Clef finds {} on it. A yes lets the model see such screens until this turn \
+                    ends.",
+                crate::judge::describe_all(kinds)
+            )
+        };
+        let ask = crate::providers::Ask {
+            what: "Show the model this screen".into(),
+            why,
+        };
+        let waited = Instant::now();
+        let answer = control.show(&ask, &stop, hold);
+        self.count_waited(waited.elapsed());
+        answer.map(Some)
     }
 
     /// A person has the keyboard and mouse (or must answer a secure screen,
@@ -1384,20 +1509,7 @@ fn thumbnail(shot: &Shot) -> Option<Shot> {
 /// A screenshot (as the computer takes them: RGB PNG) at most `max` pixels
 /// on its longer side.
 pub fn shrink_png(png: &[u8], max: u32) -> Option<Shot> {
-    let decoder = png::Decoder::new(std::io::Cursor::new(png));
-    let mut reader = decoder.read_info().ok()?;
-    let mut buf = vec![0; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut buf).ok()?;
-    if info.color_type != png::ColorType::Rgb {
-        return None;
-    }
-    buf.truncate(info.buffer_size());
-    let small = Rgb {
-        width: info.width,
-        height: info.height,
-        data: buf,
-    }
-    .fit(max);
+    let small = Rgb::from_png(png)?.fit(max);
     Some(Shot {
         png: small.png(),
         width: small.width,
@@ -1525,5 +1637,73 @@ mod tests {
         let e = c.act(Action::Screenshot).err().unwrap();
         assert!(e.contains("none is paired"), "{e}");
         assert!(c.status().starts_with("Not connected"));
+    }
+
+    #[test]
+    fn a_screen_clef_cannot_clear_reaches_the_model_only_with_a_yes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::new(dir.path().to_path_buf());
+        // No token: every check fails at once, as when Cloudflare is down.
+        let checks = crate::judge::Checks {
+            personal_info: true,
+            ..Default::default()
+        };
+        config.judge = Some(Arc::new(Judge::with(
+            checks,
+            "clef",
+            Ok("http://127.0.0.1:9/".into()),
+            None,
+        )));
+        let mut c = Computer::new(config);
+        let screen = Rgb {
+            width: 4,
+            height: 3,
+            data: vec![200; 4 * 3 * 3],
+        };
+        let outcome = || Outcome {
+            text: "OK".into(),
+            shot: Some(Shot {
+                png: screen.png(),
+                width: 4,
+                height: 3,
+            }),
+        };
+        // Nobody to ask: a blank screen of the same size, and why.
+        let out = c.screened(outcome()).unwrap();
+        let shot = out.shot.unwrap();
+        assert_eq!((shot.width, shot.height), (4, 3));
+        assert_ne!(shot.png, screen.png());
+        assert!(
+            out.text.starts_with("OK The screen is withheld"),
+            "{}",
+            out.text
+        );
+        assert!(out.text.contains("nobody is here"), "{}", out.text);
+        // A person who says yes is asked once a turn.
+        let control = dir.path().join("control");
+        c.begin_turn(
+            10,
+            u64::MAX,
+            control.clone(),
+            crate::providers::Approvals::Off,
+        );
+        let person = std::thread::spawn(move || loop {
+            if let Some((n, ask)) = crate::control::pending(&control).into_iter().next() {
+                crate::control::answer(&control, n, true);
+                return ask;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        });
+        assert_eq!(
+            c.screened(outcome()).unwrap().shot.unwrap().png,
+            screen.png()
+        );
+        let ask = person.join().unwrap();
+        assert_eq!(ask.what, "Show the model this screen");
+        assert!(ask.why.contains("could not check"), "{}", ask.why);
+        assert_eq!(
+            c.screened(outcome()).unwrap().shot.unwrap().png,
+            screen.png()
+        );
     }
 }

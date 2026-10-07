@@ -63,10 +63,11 @@ something, look over its shoulder, do a bit yourself, ask again.
   `git push --force`, `DROP TABLE`, `curl … | sh`, …), what looks like a
   password, a key or a card number, and Shift+Delete, Ctrl+Alt+Delete,
   emptying the Trash or locking the screen. A click is never judged by rule:
-  only the model knows what is under it. A question waits up to 15 minutes
-  (not counted against the turn); no answer is a no. A yes to the model's
-  own request covers the next few risky actions that carry it out (2
-  minutes, 3 actions), so you are not asked twice.
+  only the model knows what is under it, and clef, if you turn its
+  [screen checks](#screen-checks-cloudflare-clef) on. A question waits up
+  to 15 minutes (not counted against the turn); no answer is a no. A yes
+  to the model's own request covers the next few risky actions that carry
+  it out (2 minutes, 3 actions), so you are not asked twice.
 - **Notifications** (macOS): when a session is not on screen, Ping tells you
   when the agent asks for your go-ahead (with **Allow** and **Don't** on the
   notification), waits at a sign-in or administrator prompt, is done, or
@@ -87,7 +88,7 @@ menu):
 | Claude Code (Claude plan) | `claude -p`, with pingpong's tools only | Claude Code installed and signed in |
 | Anthropic API key | Ping drives Claude's computer toolset itself | a key (`ANTHROPIC_API_KEY`, or saved in Agent setup) |
 | OpenAI API key | Ping drives OpenAI's computer tool itself | a key (`OPENAI_API_KEY`, or saved) |
-| OpenRouter API key | the actions offered as functions | a key; any model with tools and images (`:free` models cost nothing; Jev Router picks a model per request) |
+| OpenRouter API key | the actions offered as functions | a key; any model with tools and images (`:free` models cost nothing) |
 | OpenAI-compatible endpoint | the same, against your URL | Ollama, LM Studio, a gateway |
 
 A turn stops after **60 actions or 15 minutes** by default; both, the
@@ -102,7 +103,7 @@ screenshots included — that is how the next turn resumes it (Codex under
 `~/.codex/sessions/`, Claude Code under `~/.claude/projects/`) — and ending
 the session does not remove those. One-off runs (`ping-agent run`) keep
 nothing. Whatever the provider, the screenshots go to the model's maker as
-the model's input.
+the model's input; with screen checks on, they also go to Cloudflare.
 
 From the command line:
 
@@ -116,6 +117,45 @@ echo "$KEY" | ping-agent set-key openrouter
 ```
 
 The full list of flags is in [cli.md](cli.md#ping-agent--ai-agents).
+
+### Screen checks (Cloudflare clef)
+
+Clef, Cloudflare's decision model (`@cf/cloudflare/clef` on Workers AI),
+can look at the screen before the agent's steps. It answers questions about
+a picture with probabilities: it writes nothing and does nothing, so it
+never drives the host; it holds steps for you. Turn each check on under
+**Agent setup** → **Screen checks**:
+
+| Check | Before | Clef is asked | When it is 50% sure or more |
+|---|---|---|---|
+| Clicks | A left click, a drag's drop, Enter | With a ring where the click lands: does it delete, spend, send or post, change settings, or install? | The step waits for your go-ahead, as a rule's catch does (with **Ask for your go-ahead** on risky steps) |
+| Typing a secret | Typing | Is the focus in a field for a password, a PIN, a key or a card number? Clef is told how many characters, never which | The step waits for your go-ahead |
+| Personal information | Every screen the model gets | Does it show passwords or keys, payment or bank details, ID numbers, health records, private messages, or people's addresses or phone numbers? | Ping asks whether the model may see it. A yes covers screens with that kind for the rest of the turn; on a no, or no answer in 15 minutes, the model gets a blank grey screen of the same size and a note saying why |
+
+You need a Cloudflare account ID and a Workers AI API token: on the Workers
+AI page of Cloudflare's dashboard, **Create a Workers AI API Token**. Save
+the token in Agent setup or with `ping-agent set-key cloudflare`, or set
+`CLOUDFLARE_AUTH_TOKEN` (and `CLOUDFLARE_ACCOUNT_ID`).
+
+- **Checks only add holds.** A click clef thinks harmless still meets the
+  rules and the model's own question.
+- **When clef cannot be reached**, clicks and typing go on as they would
+  without it; a screen goes to the model only if you allow it.
+- **The personal-information check asks whatever the approvals setting.**
+  It applies to every agent that uses your hosts from this computer,
+  `Ping mcp` included; where nobody can be asked (an agent outside Ping),
+  such a screen is withheld.
+- **OpenAI's computer tool carries pictures only**: with an OpenAI key, the
+  model gets the blank screen without the note.
+- **Each check sends the screen to Cloudflare**, at most 1280 pixels
+  across, as a JPEG: Workers AI refuses larger pictures (a PNG of
+  Windows 11's own desktop is one) before clef sees them. Clef costs $0.24 per million input tokens; clef-flash, smaller
+  and faster, $0.09. A check adds clef's time to the step: 209 ms median
+  in Cloudflare's own run, plus the network.
+- **Not measured on screens yet.** Cloudflare's benchmarks have no
+  screenshots in them. `ping-agent check SCREEN.png --click X,Y` (or
+  `--enter`, `--typing N`, `--personal`) prints what clef makes of a
+  screenshot of yours.
 
 ### 3. Or use your hosts from another agent (MCP)
 
@@ -316,6 +356,16 @@ what can be judged without the screen — typed text and key chords — is
 judged by rule too, tuned to stay quiet for everyday typing: a gate that
 asks all the time gets clicked through.
 
+**Clef looks where the rules cannot** (`ping-agent/src/judge.rs`). What is
+under a click, or whether a field takes a password, is on the screen, so a
+check needs a model that sees it. Clef is a decision model: one pass
+returns a probability per answer, with no text to parse, which suits a gate
+before every click. Clef (27B) is the default over clef-flash (9B): in
+Cloudflare's run of its Decision Index, clef tells what fits none of the
+options far better (CLINC150+OOS: 97.4 against 66.8), and most clicks fit
+none. A text-only decision model, such as TypeSafe's Jev, would need the
+screen read out first (OCR or an accessibility tree).
+
 **Watching is a second recipient of the same encode**: no second encoder,
 and the watcher sees exactly what the agent sees. Watching is for agents'
 sessions only; a person's session is not watchable.
@@ -386,6 +436,9 @@ Not verified yet:
   (Claude Code and Codex list the entry, and Claude Code connects to it).
 - Sessions with Claude Code (`--session-id`, then `--resume`) and with an
   API key's model: built, not run.
+- The screen checks against Cloudflare's API: the requests and answers are
+  unit-tested against a local stand-in, and clef has not judged a real
+  screen yet.
 
 ## Tests
 

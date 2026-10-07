@@ -14,7 +14,7 @@ use windows::Win32::Graphics::Direct3D11::{
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIAdapter1, IDXGIDevice, IDXGIDevice1, IDXGIFactory1,
-    IDXGIOutput, IDXGIOutput6, DXGI_ADAPTER_DESC1,
+    IDXGIOutput, IDXGIOutput6, DXGI_ADAPTER_DESC1, DXGI_ERROR_UNSUPPORTED,
 };
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows::Win32::System::Threading::GetCurrentProcess;
@@ -126,26 +126,45 @@ impl Gpu {
         let desc: DXGI_ADAPTER_DESC1 =
             unsafe { adapter.GetDesc1() }.map_err(platform("IDXGIAdapter1::GetDesc1"))?;
 
-        let mut device = None;
-        let mut context = None;
         let levels: [D3D_FEATURE_LEVEL; 2] = [D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0];
-        unsafe {
-            D3D11CreateDevice(
-                &adapter
-                    .cast::<IDXGIAdapter>()
-                    .map_err(platform("IDXGIAdapter"))?,
-                // UNKNOWN is mandatory when an explicit adapter is passed.
-                D3D_DRIVER_TYPE_UNKNOWN,
-                HMODULE::default(),
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
-                Some(&levels),
-                D3D11_SDK_VERSION,
-                Some(&mut device),
-                None,
-                Some(&mut context),
-            )
-        }
-        .map_err(platform("D3D11CreateDevice"))?;
+        let dxgi_adapter = adapter
+            .cast::<IDXGIAdapter>()
+            .map_err(platform("IDXGIAdapter"))?;
+        let make = |flags| {
+            let mut device = None;
+            let mut context = None;
+            // SAFETY: an explicit adapter, and out-pointers to locals.
+            unsafe {
+                D3D11CreateDevice(
+                    &dxgi_adapter,
+                    // UNKNOWN is mandatory when an explicit adapter is passed.
+                    D3D_DRIVER_TYPE_UNKNOWN,
+                    HMODULE::default(),
+                    flags,
+                    Some(&levels),
+                    D3D11_SDK_VERSION,
+                    Some(&mut device),
+                    None,
+                    Some(&mut context),
+                )
+            }
+            .map(|()| (device, context))
+        };
+        let (device, context) =
+            match make(D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT) {
+                // Microsoft's Basic Render Driver (a virtual machine, or no GPU
+                // driver) has no video support. Nothing here uses D3D11's video
+                // API: capture, the converter and both encoders do without it.
+                Err(e) if e.code() == DXGI_ERROR_UNSUPPORTED => {
+                    tracing::info!(
+                        adapter = utf16_name(&desc.Description),
+                        "the adapter has no D3D11 video support; opening it without"
+                    );
+                    make(D3D11_CREATE_DEVICE_BGRA_SUPPORT)
+                }
+                other => other,
+            }
+            .map_err(platform("D3D11CreateDevice"))?;
         let device: ID3D11Device =
             device.ok_or_else(|| CaptureError::Platform("no device".into()))?;
         let context = context.ok_or_else(|| CaptureError::Platform("no context".into()))?;

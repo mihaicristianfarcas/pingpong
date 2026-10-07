@@ -6,10 +6,12 @@ rust-version.workspace = true
 repository.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "The pingpong wire protocol: headers, FEC, reassembly, control, input, audio and clipboard messages (no I/O)"
+description = "The pingpong wire protocol: headers, FEC, reassembly, control, input, audio and clipboard messages, Annex-B video (no I/O)"
 
 [dependencies]
 reed-solomon-simd = "3"
+# SIMD start-code search over every frame (annexb.rs).
+memchr = "2"
 # Permissions read and written as names (`permission`); no I/O.
 serde = "1"
 

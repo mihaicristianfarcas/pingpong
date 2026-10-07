@@ -75,6 +75,19 @@ enum Item {
     Error(String),
 }
 
+/// Tokens in and out, and dollars where the provider says.
+type Tokens = (u64, u64, Option<f64>);
+
+/// The session's tokens: the turns before this one, and this one's running
+/// total (`RunEvent::Usage` counts from the turn's start).
+fn session_tokens(before: Tokens, turn: Tokens) -> Tokens {
+    let cost = match (before.2, turn.2) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0.0) + b.unwrap_or(0.0)),
+    };
+    (before.0 + turn.0, before.1 + turn.1, cost)
+}
+
 struct Turn {
     started: Instant,
     paused: bool,
@@ -124,7 +137,11 @@ pub struct Chat {
     pub panel: bool,
     pub composer: Entity<TextField>,
     scroll: ScrollHandle,
-    tokens: (u64, u64, Option<f64>),
+    /// The session's tokens in and out, and dollars where the provider
+    /// says.
+    tokens: Tokens,
+    /// `tokens` when the current turn began: a turn reports its own totals.
+    tokens_before_turn: Tokens,
     actions: u32,
     last_active: Instant,
     connected: bool,
@@ -309,6 +326,7 @@ impl Chat {
             composer,
             scroll: ScrollHandle::new(),
             tokens: (0, 0, None),
+            tokens_before_turn: (0, 0, None),
             actions: 0,
             last_active: Instant::now(),
             connected: false,
@@ -376,6 +394,7 @@ impl Chat {
         }
         self.items.push(Item::You(text));
         self.turn_actions = 0;
+        self.tokens_before_turn = self.tokens;
         self.turn = Some(Turn {
             started: Instant::now(),
             paused: false,
@@ -560,12 +579,7 @@ impl Chat {
                 cost_usd,
                 ..
             } => {
-                // Totals per turn, summed over the session.
-                self.tokens = (
-                    self.tokens.0.max(input),
-                    self.tokens.1.max(output),
-                    cost_usd.or(self.tokens.2),
-                );
+                self.tokens = session_tokens(self.tokens_before_turn, (input, output, cost_usd));
             }
             RunEvent::Confirm(q) => {
                 let body = if q.why.is_empty() {
@@ -771,3 +785,34 @@ impl Chat {
 
 // ---------------------------------------------------------------------------
 // The session's page
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_turns_running_totals_add_to_the_turns_before_it() {
+        // Two Codex turns: each reports its totals as they grow.
+        let mut tokens: Tokens = (0, 0, None);
+        for (input, output) in [(40_000, 90), (106_526, 265)] {
+            tokens = session_tokens((0, 0, None), (input, output, None));
+        }
+        let before = tokens;
+        for (input, output) in [(52_000, 120), (109_210, 276)] {
+            tokens = session_tokens(before, (input, output, None));
+        }
+        assert_eq!(tokens, (215_736, 541, None));
+    }
+
+    #[test]
+    fn dollars_add_up_where_any_turn_says() {
+        assert_eq!(
+            session_tokens((1_000, 10, Some(0.25)), (2_000, 20, Some(0.5))),
+            (3_000, 30, Some(0.75))
+        );
+        assert_eq!(
+            session_tokens((1_000, 10, Some(0.25)), (2_000, 20, None)).2,
+            Some(0.25)
+        );
+    }
+}
