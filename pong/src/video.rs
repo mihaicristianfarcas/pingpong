@@ -171,7 +171,12 @@ fn encode_loop(thread: EncodeThread<VideoParams>) {
     let mut index: u64 = 0;
     let mut force_idr = true;
     let mut last_encode: Option<Instant> = None;
-    let mut have_new = false;
+    // The desktop setup grabbed (or the black one in its place) has not been
+    // converted yet. Looks harmless to start at false, is not: a still
+    // desktop presents nothing more, and the converter's untouched NV12
+    // output went out instead -- all zeros, a green picture, until something
+    // on the screen changed.
+    let mut have_new = true;
 
     while !stop.load(Ordering::Relaxed) {
         for cmd in cmds.try_iter() {
