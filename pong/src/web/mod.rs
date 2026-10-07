@@ -32,7 +32,6 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::clients::Access;
 use crate::config::HostConfig;
 use crate::host::Host;
 use crate::pairing::PinResult;
@@ -540,8 +539,6 @@ async fn clients(State(web): State<Shared>, headers: HeaderMap) -> Response {
                 "name": c.name, "id": id, "key": c.x25519, "paired_at": c.paired_at, "online": online,
                 "agent": c.agent, "permissions": c.permissions,
                 "possible": Permissions::possible(c.agent),
-                // For Pong windows from before permissions.
-                "access": c.access().name(),
             })
         })
         .collect();
@@ -591,53 +588,19 @@ async fn set_permissions(
     Json(req): Json<SetPermissions>,
 ) -> Response {
     require_auth!(web, headers);
-    change_permissions(&web, &req.key, |_| req.permissions)
-}
-
-#[derive(Deserialize)]
-struct SetAccess {
-    key: String,
-    access: String,
-}
-
-/// What Pong windows from before permissions set: an agent's access in
-/// three steps (a person's device: everything, see only, nothing).
-async fn set_access(
-    State(web): State<Shared>,
-    headers: HeaderMap,
-    Json(req): Json<SetAccess>,
-) -> Response {
-    require_auth!(web, headers);
-    let Some(access) = Access::parse(&req.access) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "access is control, view or off"})),
-        )
-            .into_response();
-    };
-    change_permissions(&web, &req.key, |agent| match (access, agent) {
-        (Access::Control, false) => Permissions::PERSON_ALL,
-        _ => access.permissions(),
-    })
-}
-
-/// Give the client with `key` the permissions `to` makes for its kind
-/// (true: an agent).
-fn change_permissions(web: &Web, key: &str, to: impl FnOnce(bool) -> Permissions) -> Response {
     let found = web
         .host
         .clients
         .lock()
         .list()
         .iter()
-        .find(|c| c.x25519 == key)
+        .find(|c| c.x25519 == req.key)
         .map(|c| (c.name.clone(), c.agent));
     let Some((name, agent)) = found else {
         return Json(json!({"ok": false})).into_response();
     };
-    let permissions = to(agent);
-    tracing::info!(client = name, permissions = ?permissions.fit(agent).names(), "web UI: permissions");
-    match web.host.set_permissions(key, permissions) {
+    tracing::info!(client = name, permissions = ?req.permissions.fit(agent).names(), "web UI: permissions");
+    match web.host.set_permissions(&req.key, req.permissions) {
         Ok(now) => Json(json!({"ok": now.is_some(), "permissions": now})).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -805,7 +768,6 @@ pub fn serve(host: Arc<Host>) {
         .route("/api/clients", get(clients))
         .route("/api/clients/remove", post(unpair))
         .route("/api/clients/permissions", post(set_permissions))
-        .route("/api/clients/access", post(set_access))
         .route("/api/agent/log", get(agent_log))
         .route("/api/agent/{op}", post(agent_op))
         .route("/api/config", get(get_config).put(put_config))

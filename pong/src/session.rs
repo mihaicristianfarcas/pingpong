@@ -55,7 +55,7 @@ use pingpong_proto::permission::{self, Permissions};
 use pingpong_transport::{Endpoint, Peer, PeerId};
 
 use crate::audio::AudioHandle;
-use crate::clients::{Access, Clients, Role};
+use crate::clients::{Clients, Role};
 use crate::config::HostConfig;
 use crate::host::SessionStatus;
 use crate::platform::{self, Platform};
@@ -1349,7 +1349,6 @@ impl SessionManager {
                     .to_string()
             };
             crate::host::AgentStatus {
-                access: Access::of(run.permissions).name().to_string(),
                 permissions: run.permissions,
                 flags: run.state(Instant::now()).flags,
                 watchers: run.watchers.iter().map(|w| name(&w.peer)).collect(),

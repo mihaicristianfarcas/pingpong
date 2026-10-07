@@ -257,7 +257,7 @@ impl HeadlessSession {
     }
 
     /// What the agent may do on the host, as it last said (None: it has
-    /// not, or predates permissions).
+    /// not said yet; an admitted session always may `VIEW`).
     pub fn permissions(&self) -> Option<pingpong_proto::permission::Permissions> {
         let bits = self.seen.0.lock().permissions;
         (bits != 0).then(|| pingpong_proto::permission::Permissions::from_bits(bits))

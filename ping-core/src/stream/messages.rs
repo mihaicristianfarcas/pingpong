@@ -56,11 +56,10 @@ pub(super) fn watch_notice(state: AgentState, host: &str) -> String {
 
 /// What the host's permissions for this device hold back of a person's
 /// stream: the input it ignores. None when it takes the keyboard and mouse
-/// (controllers alone are not worth a word to someone who may have none),
-/// or the host predates permissions (0).
+/// (controllers alone are not worth a word to someone who may have none).
 pub(super) fn held_back(bits: u16, host: &str) -> Option<String> {
     let p = Permissions::from_bits(bits);
-    if bits == 0 || p.allows(permission::KEYBOARD | permission::MOUSE) {
+    if p.allows(permission::KEYBOARD | permission::MOUSE) {
         return None;
     }
     let ignored: Vec<&str> = [
@@ -185,7 +184,5 @@ mod tests {
         assert_eq!(held_back(Permissions::PERSON_CONTROL.bits(), "pc"), None);
         let no_pads = Permissions::PERSON_ALL.with(permission::CONTROLLER, false);
         assert_eq!(held_back(no_pads.bits(), "pc"), None);
-        // A host from before permissions says nothing, and holds nothing back.
-        assert_eq!(held_back(0, "pc"), None);
     }
 }

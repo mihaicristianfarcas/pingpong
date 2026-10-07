@@ -236,7 +236,7 @@ struct NetLoop {
     /// Sharing the clipboard, when the host agreed to.
     clip: Option<pingpong_clipboard::ClipSync>,
     /// What this device may do on the host, as it last said
-    /// (`permission::*`; 0: it has not, or predates permissions).
+    /// (`permission::*`; 0 until it has said).
     permissions: u16,
     test_loss: Option<TestLoss>,
 }
@@ -1058,12 +1058,9 @@ fn start_audio(channels: u8) -> Option<Player> {
 
 /// Which ways the clipboard goes, as the host's permissions for this device
 /// say: our copies to the host if it may write there, the host's to us if
-/// it may read them. A host that says nothing (0) shares both ways.
+/// it may read them.
 fn clip_directions(permissions: u16) -> pingpong_clipboard::Directions {
     use pingpong_proto::permission::{Permissions, CLIPBOARD_READ, CLIPBOARD_WRITE};
-    if permissions == 0 {
-        return pingpong_clipboard::Directions::BOTH;
-    }
     let p = Permissions::from_bits(permissions);
     pingpong_clipboard::Directions {
         send: p.allows(CLIPBOARD_WRITE),

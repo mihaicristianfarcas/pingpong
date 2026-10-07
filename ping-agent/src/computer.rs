@@ -1395,7 +1395,7 @@ fn alive(pid: u32) -> bool {
 }
 
 /// What the agent drives on a host that allows `p` (None: the host has not
-/// said, so as before permissions, both).
+/// said yet, so both).
 fn what_it_may_use(p: Option<pingpong_proto::permission::Permissions>) -> &'static str {
     use pingpong_proto::permission::{KEYBOARD, MOUSE};
     match p {

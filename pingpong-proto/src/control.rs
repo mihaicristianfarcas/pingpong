@@ -228,8 +228,8 @@ pub struct SessionAck {
     /// `video::*`: what the stream is. Absent from older hosts (none).
     pub video: u8,
     /// What this device may do here (`permission::*` bits), so it can say
-    /// what the host holds back. 0 from older hosts, which hold nothing
-    /// back (an `Ok` ack always allows `permission::VIEW`).
+    /// what the host holds back. An `Ok` ack always allows
+    /// `permission::VIEW`.
     pub permissions: u16,
 }
 

@@ -63,13 +63,12 @@ reason other than you quitting.
 | `pong add-client NAME X25519 MLKEM [--agent] [--permissions LIST]` | Pair a client by hand (headless setups), with the keys from `ping identity` or `ping-agent identity`. Without `--permissions` it gets what pairing gives: everything for the first person's device, see only after it; an agent sees and acts |
 | `pong remove-client X25519` | Unpair a client |
 | `pong permissions X25519 [LIST]` | Show what a paired client may do, or set it. `LIST`: `all`, `none`, `see-only`, or names joined by commas (`view,keyboard,mouse`; the names are in [usage.md](usage.md#what-each-device-may-do)). What a client of its kind cannot have is left out |
-| `pong agent-access X25519 control\|view\|off` | An agent's permissions in three steps: see and act, see only, nothing |
 | `pong install`, `pong uninstall` | Windows: install or remove `PongService` and its firewall rules (as administrator) |
 | `pong service` | Windows: the service itself (started by Windows) |
 | `pong clipboard-agent` | Windows: clipboard sharing as the signed-in user (started by the host for a session) |
 
-Changes made with `add-client`, `remove-client`, `permissions` and
-`agent-access` apply to a running host after it restarts; the window and the web UI apply theirs at
+Changes made with `add-client`, `remove-client` and `permissions` apply to
+a running host after it restarts; the window and the web UI apply theirs at
 once. On Windows the installed host's data folder is private to SYSTEM and
 Administrators, so these commands need an administrator's terminal there.
 

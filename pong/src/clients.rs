@@ -11,15 +11,12 @@
 //! watch agents. They can be changed without unpairing it.
 //!
 //! A file from before permissions has none written: a person's device then
-//! keeps everything it could do, and an agent what its `access` said. An
-//! agent's `access` is still written, from its permissions, so that an
-//! older Pong reading the file gives the agent no more than this one does.
-//! (An older Pong ignores a person's permissions: going back gives every
-//! person's device everything again.)
+//! keeps everything it could do, and an agent what its `access` said. The
+//! next save writes permissions in their place.
 
 use std::path::{Path, PathBuf};
 
-use pingpong_proto::permission::{self, Permissions};
+use pingpong_proto::permission::Permissions;
 use pingpong_transport::PublicIdentity;
 use serde::{Deserialize, Serialize};
 
@@ -52,12 +49,13 @@ struct Stored {
     rendezvous: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     agent: bool,
-    /// Agents only: what Pong before permissions reads.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    access: Option<Access>,
     /// Absent from files written before permissions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     permissions: Option<Permissions>,
+    /// An agent's permissions in files written before them: read, never
+    /// written.
+    #[serde(default, skip_serializing)]
+    access: Option<Access>,
 }
 
 impl From<Stored> for Client {
@@ -82,7 +80,6 @@ impl From<Stored> for Client {
 impl From<Client> for Stored {
     fn from(c: Client) -> Stored {
         Stored {
-            access: c.agent.then(|| Access::of(c.permissions)),
             name: c.name,
             x25519: c.x25519,
             mlkem: c.mlkem,
@@ -90,15 +87,15 @@ impl From<Client> for Stored {
             rendezvous: c.rendezvous,
             agent: c.agent,
             permissions: Some(c.permissions),
+            access: None,
         }
     }
 }
 
-/// What an agent could do before permissions, in three steps: the shape
-/// of older files, `pong agent-access` and the web API's `access`.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+/// What an agent could do before permissions, in three steps.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Access {
+enum Access {
     /// See the screen and use the keyboard and mouse.
     #[default]
     Control,
@@ -109,42 +106,11 @@ pub enum Access {
 }
 
 impl Access {
-    pub fn parse(s: &str) -> Option<Access> {
-        match s {
-            "control" => Some(Access::Control),
-            "view" => Some(Access::View),
-            "off" => Some(Access::Off),
-            _ => None,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Access::Control => "control",
-            Access::View => "view",
-            Access::Off => "off",
-        }
-    }
-
-    /// The permissions it stands for.
-    pub fn permissions(self) -> Permissions {
+    fn permissions(self) -> Permissions {
         match self {
             Access::Control => Permissions::AGENT_ALL,
             Access::View => Permissions::SEE_ONLY,
             Access::Off => Permissions::NONE,
-        }
-    }
-
-    /// The step a set of permissions comes closest to, never above it: an
-    /// agent that may not act unwatched, or lacks the keyboard or the
-    /// mouse, could only look.
-    pub fn of(p: Permissions) -> Access {
-        if !p.allows(permission::VIEW) {
-            Access::Off
-        } else if p.allows(Access::Control.permissions().bits()) {
-            Access::Control
-        } else {
-            Access::View
         }
     }
 }
@@ -159,23 +125,6 @@ pub enum Role {
 impl Client {
     pub fn public(&self) -> Option<PublicIdentity> {
         PublicIdentity::from_b64(&self.x25519, &self.mlkem).ok()
-    }
-
-    /// What a Pong window from before permissions shows: an agent's access
-    /// (`Access::of`), a person's device's in the same three steps.
-    pub fn access(&self) -> Access {
-        if self.agent {
-            Access::of(self.permissions)
-        } else if !self.permissions.allows(permission::VIEW) {
-            Access::Off
-        } else if self
-            .permissions
-            .allows(permission::KEYBOARD | permission::MOUSE)
-        {
-            Access::Control
-        } else {
-            Access::View
-        }
     }
 
     pub fn rendezvous_key(&self) -> Option<[u8; 32]> {
@@ -426,18 +375,18 @@ mod tests {
     }
 
     #[test]
-    fn an_agents_permissions_persist_with_an_access_older_pong_reads() {
+    fn an_agents_permissions_persist_and_fit_an_agent() {
         let dir = tempfile::tempdir().unwrap();
         let agent = Identity::generate();
         let mut c = Clients::load(dir.path());
         c.add("mac agent", agent.public(), None, true, None)
             .unwrap();
         let (x, _) = agent.public().to_b64();
-        // Only while watched: an older Pong must not let it act unwatched.
+        // Only while watched.
         let watched = Permissions::from_bits(VIEW | KEYBOARD | MOUSE);
         assert_eq!(c.set_permissions(&x, watched).unwrap(), Some(watched));
         let text = std::fs::read_to_string(dir.path().join("clients.toml")).unwrap();
-        assert!(text.contains("access = \"view\""), "{text}");
+        assert!(!text.contains("access"), "{text}");
         let c = Clients::load(dir.path());
         assert_eq!(c.role_of(&agent.public().x25519), (Role::Agent, watched));
         // What a person's device could have means nothing for an agent.

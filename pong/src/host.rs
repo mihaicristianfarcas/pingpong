@@ -39,9 +39,6 @@ pub struct SessionStatus {
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct AgentStatus {
-    /// The agent's access here (`control`, `view`), for Pong windows from
-    /// before permissions.
-    pub access: String,
     /// What the agent may do here.
     pub permissions: pingpong_proto::permission::Permissions,
     /// `control::agent_state::*`.

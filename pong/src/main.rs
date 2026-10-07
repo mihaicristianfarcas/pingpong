@@ -7,7 +7,6 @@
 //!                                    pair a client by hand (headless setups)
 //!   pong remove-client X25519        unpair a client
 //!   pong permissions X25519 [LIST]   what a paired client may do: show, or set
-//!   pong agent-access X25519 control|view|off   the same, for an agent, in three steps
 //!
 //! On Windows, also:
 //!
@@ -155,14 +154,13 @@ fn main() -> ExitCode {
         },
         "identity" => print_identity(&dir),
         "clients" => list_clients(&dir),
-        "agent-access" => set_agent_access(&dir, &args),
         "permissions" => permissions(&dir, &args),
         "add-client" => add_client(&dir, &args),
         "remove-client" => remove_client(&dir, &args),
         other => {
             eprintln!(
                 "unknown command {other}\n\nusage: pong \
-                    [host|identity|clients|add-client|remove-client|permissions|agent-access{}]",
+                    [host|identity|clients|add-client|remove-client|permissions{}]",
                 if cfg!(windows) {
                     "|install|uninstall"
                 } else {
@@ -314,17 +312,6 @@ fn permissions(dir: &std::path::Path, args: &[String]) -> ExitCode {
         Ok(p) => save_permissions(dir, x, p),
         Err(e) => fail(format!("{e}\n{USAGE}")),
     }
-}
-
-fn set_agent_access(dir: &std::path::Path, args: &[String]) -> ExitCode {
-    let (Some(x), Some(access)) = (
-        args.get(1),
-        args.get(2).and_then(|a| clients::Access::parse(a)),
-    ) else {
-        eprintln!("usage: pong agent-access X25519 control|view|off");
-        return ExitCode::FAILURE;
-    };
-    save_permissions(dir, x, access.permissions())
 }
 
 fn add_client(dir: &std::path::Path, args: &[String]) -> ExitCode {
