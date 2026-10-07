@@ -140,6 +140,7 @@ impl XboxStream {
                         motion: (0.0, 0.0),
                         buttons: 0,
                         epoch: Instant::now(),
+                        input_waits: InputWaits::default(),
                     };
                     let outcome = pingpong_xbox::stream::run(
                         &dir,
@@ -239,6 +240,41 @@ fn button_bit(b: Button) -> u8 {
     }
 }
 
+/// How long the window's keys and mouse waited for the connection's
+/// thread, logged once a second while there is input: the part of a key's
+/// way to the console that is Ping's. Counted once the console has taken
+/// the handshake: input from before has waited for the connection itself.
+#[derive(Default)]
+struct InputWaits {
+    live: bool,
+    events: u32,
+    longest_us: u32,
+    since: Option<Instant>,
+}
+
+impl InputWaits {
+    fn add(&mut self, queued_us: u32) {
+        if !self.live {
+            return;
+        }
+        let wait = pingpong_proto::clock::now_us().wrapping_sub(queued_us);
+        self.events += 1;
+        self.longest_us = self.longest_us.max(wait);
+        let since = *self.since.get_or_insert_with(Instant::now);
+        if since.elapsed() >= std::time::Duration::from_secs(1) {
+            tracing::debug!(
+                events = self.events,
+                longest_ms = format_args!("{:.2}", self.longest_us as f64 / 1000.0),
+                "input"
+            );
+            *self = InputWaits {
+                live: true,
+                ..InputWaits::default()
+            };
+        }
+    }
+}
+
 /// Where the connection's output meets Ping's platform layer.
 struct CoreSink {
     video: Box<dyn VideoOut>,
@@ -256,6 +292,7 @@ struct CoreSink {
     motion: (f64, f64),
     buttons: u8,
     epoch: Instant,
+    input_waits: InputWaits,
 }
 
 impl CoreSink {
@@ -350,8 +387,12 @@ impl Sink for CoreSink {
         match e {
             XEvent::Status(text) => (self.events)(Event::Status(text)),
             XEvent::Connected => {}
-            XEvent::Ready => self.started(),
+            XEvent::Ready => {
+                self.input_waits.live = true;
+                self.started();
+            }
             XEvent::VideoSize { width, height } => {
+                tracing::info!(width, height, "the console's picture");
                 if (width, height) != self.size && width > 0 && height > 0 {
                     self.size = (width, height);
                     self.started();
@@ -390,7 +431,8 @@ impl Sink for CoreSink {
             take(Input::Pad(state));
         }
         let mut moved = false;
-        while let Ok((msg, _)) = self.input_rx.try_recv() {
+        while let Ok((msg, queued_us)) = self.input_rx.try_recv() {
+            self.input_waits.add(queued_us);
             match msg {
                 Msg::Motion(dx, dy) => {
                     self.motion.0 += dx;
