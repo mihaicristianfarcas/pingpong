@@ -259,7 +259,9 @@ pub enum RunEvent {
         detail: String,
         thumbnail: Option<Vec<u8>>,
     },
-    /// Tokens used so far (and dollars, when the provider says).
+    /// Tokens used so far in this run, a turn of a conversation (and
+    /// dollars, when the provider says): each provider counts from the
+    /// run's start, so a session sums its turns.
     Usage {
         input: u64,
         output: u64,
