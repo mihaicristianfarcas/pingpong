@@ -87,10 +87,10 @@ const panels: Panel[] = [
   {
     app: 'Pong',
     system: 'windows',
-    needs: 'Windows 10 or 11, an NVIDIA GPU and SudoVDA',
+    needs: 'Windows 10 or 11; best with an NVIDIA GPU and SudoVDA',
     files: one,
     steps: [
-      'Install <a href="https://github.com/SudoMaker/SudoVDA">SudoVDA</a>, the virtual display driver, and a current NVIDIA driver: Pong encodes with NVENC. If Apollo is installed, it brought SudoVDA; stop its service while Pong runs.',
+      'Install <a href="https://github.com/SudoMaker/SudoVDA">SudoVDA</a>, the virtual display driver, and a current NVIDIA driver: Pong encodes with NVENC. Without them, Pong streams the PC’s main display in H.264, encoded in software. If Apollo is installed, it brought SudoVDA; stop its service while Pong runs.',
       'Extract the zip and double-click <strong>Install Pong.cmd</strong>. It is not signed yet, so Windows asks whether to run it, then whether PowerShell may make changes. Pong then runs as a service from startup, before anyone signs in.',
       'Open <strong>Pong</strong> from the Start menu to see the host and pair devices.',
     ],
