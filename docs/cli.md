@@ -86,9 +86,14 @@ window, the statistics, the sound), and:
 
 | Flag | |
 |---|---|
+| `--controller` | The keys are the first controller, as for a cloud game; the mouse is a mouse |
 | `--shooter` | The keys and the mouse are the first controller: WASD moves, the mouse aims, its buttons fire ([xbox.md](xbox.md#using-it)) |
-| `--keyboard` | The console gets a keyboard and a mouse, not a controller |
+| `--keyboard` | A keyboard and a mouse, as for a console, in a cloud game too |
 | `--region NAME` | Play in this cloud region rather than the account's default |
+
+Without `--controller`, `--shooter` or `--keyboard`, a console gets a keyboard
+and a mouse and a cloud game the keys as a controller, as the app's
+**Automatic** does.
 
 ## `pong` — the host
 

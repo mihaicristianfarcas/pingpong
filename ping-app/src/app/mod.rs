@@ -645,11 +645,12 @@ impl PingApp {
             target = name,
             width = request.width,
             height = request.height,
+            keyboard_mouse = ?self.prefs.xbox_input,
             "streaming from an Xbox"
         );
         let source = ping_core::xbox::XboxSource {
             target,
-            keyboard_mouse: self.prefs.xbox_keyboard_mouse,
+            keyboard_mouse: self.prefs.xbox_input,
             region: None,
         };
         let id = self.next_stream;

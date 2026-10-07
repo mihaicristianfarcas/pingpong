@@ -573,13 +573,19 @@ impl PingApp {
     /// What the keyboard and mouse are in an Xbox stream; the line under it
     /// says what the chosen one does.
     fn xbox_keyboard_mouse(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
-        const MODES: [KeyboardMouse; 3] = [
+        const MODES: [KeyboardMouse; 4] = [
+            KeyboardMouse::Auto,
             KeyboardMouse::Controller,
             KeyboardMouse::Shooter,
             KeyboardMouse::Native,
         ];
-        let mode = self.prefs.xbox_keyboard_mouse;
+        let mode = self.prefs.xbox_input;
         let detail = match mode {
+            KeyboardMouse::Auto => {
+                "In an Xbox stream, a console gets a keyboard and a mouse, as from Microsoft's \
+                    own app; a cloud game, which mostly takes neither, gets the keys as a \
+                    controller (as Controller does)."
+            }
             KeyboardMouse::Controller => {
                 "In an Xbox stream, keys are a controller: Enter or Space A, Backspace or Esc \
                     B, the arrows the D-pad, [ ] the bumpers, - = the triggers, M Menu, V \
@@ -592,19 +598,19 @@ impl PingApp {
                     Xbox button."
             }
             KeyboardMouse::Native => {
-                "In an Xbox stream, the console gets a keyboard and a mouse, for games that \
-                    take them."
+                "In an Xbox stream, a console and a cloud game alike get a keyboard and a \
+                    mouse, for games that take them."
             }
         };
         let control = select(
             "xbox-keyboard-mouse",
-            vec!["Controller", "Shooter", "Keyboard and mouse"],
+            vec!["Automatic", "Controller", "Shooter", "Keyboard and mouse"],
             MODES.iter().position(|&m| m == mode),
             t,
         )
         .width(190.0)
         .on_select(self.prefs_setter(cx, |p, i: usize| {
-            p.xbox_keyboard_mouse = MODES[i];
+            p.xbox_input = MODES[i];
         }));
         setting(
             "Keyboard and mouse on an Xbox".to_string(),

@@ -188,7 +188,9 @@ fn run_session(
             width: options.width,
             height: options.height,
             install_id: install_id(auth),
-            keyboard_mouse: options.keyboard_mouse,
+            keyboard_mouse: options
+                .keyboard_mouse
+                .resolve(matches!(target, Target::Console { .. })),
         },
     )?;
     let stopped = || stop.load(Ordering::Relaxed);

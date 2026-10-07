@@ -674,7 +674,10 @@ impl Connection {
         if self.ready {
             return;
         }
-        tracing::info!("the console took the handshake");
+        tracing::info!(
+            keyboard_mouse = ?self.options.keyboard_mouse,
+            "the console took the handshake"
+        );
         self.send_later(Chan::Control, messages::control::authorization());
         let mut opening = [0u8; MAX_REPORT_LEN];
         let n = self

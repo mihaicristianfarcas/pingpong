@@ -18,7 +18,7 @@ use pingpong_xbox::connection::{
 };
 use pingpong_xbox::consoles;
 use pingpong_xbox::http::Http;
-use pingpong_xbox::input::{xbutton, MouseFrame, PadFrame};
+use pingpong_xbox::input::{xbutton, KeyFrame, MouseFrame, PadFrame};
 use pingpong_xbox::stream::{self, StreamOptions, Target};
 use pingpong_xbox::virtual_pad::KeyboardMouse;
 use pingpong_xbox_mock::{Cloud, Config, MockConsole, CLOUD_TITLE, CONSOLE_ID, CONSOLE_NAME};
@@ -221,9 +221,8 @@ fn a_console_streams_end_to_end() {
     })));
     assert!(mock.wait_for(LONG, |r| r.gamepads.contains(&(0, true))));
 
-    // A controller's A, then the keyboard's Enter (A as well): both reach
-    // the console as the first controller, and the console's rumble comes
-    // back.
+    // A controller's A reaches the console as the first controller, and
+    // the console's rumble comes back.
     running.send(Input::Pad(GamepadState {
         index: 0,
         connected: true,
@@ -249,16 +248,37 @@ fn a_console_streams_end_to_end() {
         connected: true,
         ..Default::default()
     }));
-    running.send(Input::Key {
-        key: Key::KeyY,
-        down: true,
-    });
-    assert!(until(LONG, || mock_last_pad_buttons(&mock) == Some(xbutton::Y)));
-    running.send(Input::Key {
-        key: Key::KeyY,
-        down: false,
-    });
-    assert!(until(LONG, || mock_last_pad_buttons(&mock) == Some(0)));
+    // The keys are a keyboard to a console (the automatic choice): W and
+    // Shift reach it as the Windows keys Microsoft's web client sends (the
+    // left Shift's own), and no controller button with them.
+    for (key, down) in [
+        (Key::KeyW, true),
+        (Key::ShiftLeft, true),
+        (Key::ShiftLeft, false),
+        (Key::KeyW, false),
+    ] {
+        running.send(Input::Key { key, down });
+    }
+    let typed = [
+        KeyFrame {
+            vk: b'W',
+            down: true,
+        },
+        KeyFrame {
+            vk: 0xA0,
+            down: true,
+        },
+        KeyFrame {
+            vk: 0xA0,
+            down: false,
+        },
+        KeyFrame {
+            vk: b'W',
+            down: false,
+        },
+    ];
+    assert!(until(LONG, || mock_keys(&mock).ends_with(&typed)));
+    assert_eq!(mock_last_pad_buttons(&mock), Some(0));
     assert_eq!(mock.record().bad_reports, 0);
 
     // A second controller is announced when it appears.
@@ -321,6 +341,15 @@ fn mock_last_pad(mock: &MockConsole) -> Option<PadFrame> {
         .find_map(|r| r.pads.iter().find(|p| p.index == 0).copied())
 }
 
+/// Every key the console was sent, in order.
+fn mock_keys(mock: &MockConsole) -> Vec<KeyFrame> {
+    mock.record()
+        .reports
+        .iter()
+        .flat_map(|r| r.keys.iter().copied())
+        .collect()
+}
+
 /// The first controller's buttons in the last report that had it.
 fn mock_last_pad_buttons(mock: &MockConsole) -> Option<u16> {
     mock.record()
@@ -368,6 +397,20 @@ fn a_cloud_game_queues_then_connects_with_the_transfer_token() {
     );
     assert!(running.wait(LONG, |s| s.frames >= 10));
     assert_eq!(mock.record().transfer_tokens, vec!["mock-transfer-token"]);
+    // A cloud game gets the keys as a controller (the automatic choice):
+    // Y is the controller's Y, and no key.
+    assert!(mock.wait_for(LONG, |r| r.gamepads.contains(&(0, true))));
+    running.send(Input::Key {
+        key: Key::KeyY,
+        down: true,
+    });
+    assert!(until(LONG, || mock_last_pad_buttons(&mock) == Some(xbutton::Y)));
+    running.send(Input::Key {
+        key: Key::KeyY,
+        down: false,
+    });
+    assert!(until(LONG, || mock_last_pad_buttons(&mock) == Some(0)));
+    assert!(mock_keys(&mock).is_empty());
     assert!(running
         .seen
         .lock()

@@ -45,10 +45,11 @@ pub struct Prefs {
     pub yuv444: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub share_clipboard: bool,
-    /// What the keyboard and mouse are in an Xbox stream: the first
-    /// controller (keys alone, Greenlight's default, or keys and mouse as a
-    /// shooter plays) or a keyboard and a mouse.
-    pub xbox_keyboard_mouse: KeyboardMouse,
+    /// What the keyboard and mouse are in an Xbox stream: by default a
+    /// keyboard and a mouse for a console and a controller for a cloud
+    /// game; or the first controller (keys alone, Greenlight's layout, or
+    /// keys and mouse as a shooter plays), or a keyboard and a mouse.
+    pub xbox_input: KeyboardMouse,
     /// What the update check follows, once the user has chosen (until
     /// then, what suits the build that runs: see [`Prefs::update_channel`]).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,7 +80,7 @@ impl Default for Prefs {
             hdr: false,
             yuv444: false,
             share_clipboard: true,
-            xbox_keyboard_mouse: KeyboardMouse::default(),
+            xbox_input: KeyboardMouse::default(),
             updates: None,
         }
     }

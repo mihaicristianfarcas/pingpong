@@ -7,13 +7,15 @@
 //!   pingctl xbox wake NAME | off NAME  turn a console on, or off
 //!   pingctl xbox games                 the cloud games the account may play
 //!   pingctl xbox friends               the account's friends, and what they play
-//!   pingctl xbox stream CONSOLE [--shooter | --keyboard] [stream flags]
-//!   pingctl xbox play GAME [--shooter | --keyboard] [--region NAME] [stream flags]
+//!   pingctl xbox stream CONSOLE [--controller | --shooter | --keyboard] [stream flags]
+//!   pingctl xbox play GAME [--controller | --shooter | --keyboard] [--region NAME] [stream flags]
 //!
-//! A console or game is named by its name (any case) or its id. Keys drive
-//! the first controller; `--shooter` makes the mouse part of it (WASD
+//! A console or game is named by its name (any case) or its id. A console
+//! gets a keyboard and a mouse, and a cloud game the keys as its first
+//! controller (`KeyboardMouse::Auto`). `--controller` makes the keys the
+//! first controller anywhere, `--shooter` the keys and the mouse (WASD
 //! moves, the mouse aims, its buttons fire), and `--keyboard` sends a
-//! keyboard and a mouse instead, for games that take them. The
+//! keyboard and a mouse anywhere, for games that take them. The
 //! stream flags are `pingctl stream`'s; the console chooses its own codec, rate
 //! and bitrate. `PING_XBOX_MOCK=URL` uses a mock console (`xbox-mock`).
 
@@ -162,13 +164,14 @@ fn friends() -> ExitCode {
     }
 }
 
-/// `--shooter`, `--keyboard` and `--region NAME` are ours; the rest are
-/// `pingctl stream`'s.
+/// `--controller`, `--shooter`, `--keyboard` and `--region NAME` are ours;
+/// the rest are `pingctl stream`'s.
 fn split_flags(flags: &[String]) -> (KeyboardMouse, Option<String>, Vec<String>) {
-    let (mut keyboard, mut region, mut rest) = (KeyboardMouse::Controller, None, Vec::new());
+    let (mut keyboard, mut region, mut rest) = (KeyboardMouse::Auto, None, Vec::new());
     let mut it = flags.iter();
     while let Some(f) = it.next() {
         match f.as_str() {
+            "--controller" => keyboard = KeyboardMouse::Controller,
             "--shooter" => keyboard = KeyboardMouse::Shooter,
             "--keyboard" => keyboard = KeyboardMouse::Native,
             "--region" => region = it.next().cloned(),

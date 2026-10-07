@@ -33,9 +33,13 @@ use crate::input::MouseFrame;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum KeyboardMouse {
+    /// What Microsoft's own client does ([`resolve`](Self::resolve)): a
+    /// keyboard and a mouse for a console, the controller layout for a
+    /// cloud game.
+    #[default]
+    Auto,
     /// The keys are the first controller (Greenlight's layout); the mouse is
     /// a mouse.
-    #[default]
     Controller,
     /// The keys and the mouse are the first controller, as a shooter is
     /// played: WASD moves, the mouse aims, its buttons fire.
@@ -43,6 +47,29 @@ pub enum KeyboardMouse {
     /// A keyboard and a mouse, for games that take them (on Xbox Cloud
     /// Gaming, those marked "mouse and keyboard").
     Native,
+}
+
+impl KeyboardMouse {
+    /// What [`Auto`](Self::Auto) is for a console (`console`) or a cloud
+    /// game; the other modes are themselves.
+    ///
+    /// A console takes a keyboard and a mouse: its dashboard is driven by
+    /// the keys, and games made for them (Battlefield, Call of Duty) play
+    /// with them. Microsoft's web client sends a console both with its
+    /// mouse and keyboard setting on (the keys once it holds the keyboard,
+    /// in full screen; Better xCloud has to patch `homeConsoleConnect` to
+    /// turn them off), and Battlefield 6 on a console aims with the mouse
+    /// sent as a mouse. A
+    /// game in the cloud mostly takes neither (the web client sends them
+    /// only to titles marked "mouse and keyboard", which Ping's catalogue
+    /// does not read), so there the keys are a controller.
+    pub fn resolve(self, console: bool) -> KeyboardMouse {
+        match self {
+            KeyboardMouse::Auto if console => KeyboardMouse::Native,
+            KeyboardMouse::Auto => KeyboardMouse::Controller,
+            mode => mode,
+        }
+    }
 }
 
 /// What presses a control.
@@ -154,10 +181,11 @@ pub struct KeyboardPad {
 }
 
 impl KeyboardPad {
-    /// The controller for `mode`; none for a keyboard and mouse.
+    /// The controller for `mode`; none for a keyboard and mouse. `Auto` is
+    /// resolved before a stream starts; unresolved, it is the cloud's.
     pub fn new(mode: KeyboardMouse) -> Option<KeyboardPad> {
         let (layout, stick): (&'static [_], _) = match mode {
-            KeyboardMouse::Controller => (&CONTROLLER, None),
+            KeyboardMouse::Auto | KeyboardMouse::Controller => (&CONTROLLER, None),
             KeyboardMouse::Shooter => (&SHOOTER, Some(MouseStick::default())),
             KeyboardMouse::Native => return None,
         };
@@ -497,6 +525,24 @@ mod tests {
         assert_eq!(kb.merged(&GamepadState::default()).buttons, button::A);
         kb.key(Key::Enter, false);
         assert_eq!(kb.merged(&GamepadState::default()).buttons, 0);
+    }
+
+    #[test]
+    fn automatic_is_a_keyboard_and_mouse_for_a_console_and_a_controller_in_the_cloud() {
+        assert_eq!(KeyboardMouse::default(), KeyboardMouse::Auto);
+        assert_eq!(KeyboardMouse::Auto.resolve(true), KeyboardMouse::Native);
+        assert_eq!(
+            KeyboardMouse::Auto.resolve(false),
+            KeyboardMouse::Controller
+        );
+        for mode in [
+            KeyboardMouse::Controller,
+            KeyboardMouse::Shooter,
+            KeyboardMouse::Native,
+        ] {
+            assert_eq!(mode.resolve(true), mode);
+            assert_eq!(mode.resolve(false), mode);
+        }
     }
 
     #[test]

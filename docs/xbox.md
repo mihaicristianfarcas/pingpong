@@ -42,19 +42,23 @@ to 1080p. The statistics (Ctrl+Alt+Shift+S) work as for Pong.
 **Controllers**: up to four, as the console's first to fourth controllers,
 with rumble when the console sends it. The Xbox button is the Guide button.
 
-**The keyboard and mouse** are one of three things
+**The keyboard and mouse** are one of four things
 (*Settings > Input > Keyboard and mouse on an Xbox*):
 
-- **Controller**, the default: the keys are the first controller, so the
-  console's own interface and every game can be played without one.
+- **Automatic**, the default: a console gets a keyboard and a mouse, as
+  Microsoft's web client sends them with its mouse and keyboard setting
+  on. The console's interface takes the keys
+  (the arrows, Enter, Esc), and games made for a keyboard and mouse
+  (Battlefield, Call of Duty, Fortnite) play with them. A cloud game,
+  which mostly takes neither, gets the keys as **Controller**.
+- **Controller**: the keys are the first controller, so every game can be
+  played without one; the mouse is a mouse.
 - **Shooter**: the keys and the mouse are the first controller, as a
   shooter is played with them: WASD moves, the mouse aims, left click
   fires. For any game, on a console or in the cloud: the console sees a
   controller.
-- **Keyboard and mouse**: the console gets a keyboard and a mouse, for
-  games that take them (on Xbox Cloud Gaming, games marked "mouse and
-  keyboard"; whether a console hands them to a game over remote play is
-  not yet known).
+- **Keyboard and mouse**: a keyboard and a mouse in the cloud too, for
+  the games there that take them (those marked "mouse and keyboard").
 
 | Controller | Shooter | Xbox controller |
 |---|---|---|
@@ -72,7 +76,11 @@ with rumble when the console sends it. The Xbox button is the Guide button.
 | N | `` ` `` | The Xbox button |
 
 Keys are positions: on any keyboard layout they are where the US layout has
-them. The Shooter layout is Better xCloud's "Shooter" virtual controller.
+them. Sent as a keyboard's, they are the Windows key codes Microsoft's web
+client sends: Shift, Ctrl and Alt each as the left or the right one, and
+no Caps Lock, Num Lock or Scroll Lock (it sends none at the input version
+Ping speaks). The Shooter layout is Better xCloud's "Shooter" virtual
+controller.
 The mouse leans the right stick as far as it moves fast: all the way at
 1200 pixels a second (600 points on a Retina Mac, Better xCloud's speed),
 at least a fifth of the way however slowly, so slow aim
@@ -86,6 +94,7 @@ From the command line:
 pingctl xbox sign-in
 pingctl xbox consoles
 pingctl xbox stream "Living room"
+pingctl xbox stream "Living room" --controller
 pingctl xbox stream "Living room" --shooter
 pingctl xbox games
 pingctl xbox play "Fortnite"
@@ -105,7 +114,7 @@ pingctl xbox play "Fortnite"
 | Picture size | Says 1920×1080 to the console whatever the window | Says the size Ping shows it at |
 | Away from home | Teredo addresses turned into IPv4 candidates | The same, and Ping's own public address (STUN) offered, which Greenlight leaves to do |
 | Controllers | The browser's Gamepad API; rumble on xCloud | The platform's own (GameController, XInput, evdev), with rumble wherever the console sends it; four controllers announced as they come and go |
-| Keyboard | As a controller, or a keyboard | The same, by key position; a button two keys hold stays down until both are up |
+| Keyboard | As a controller, or a keyboard | A keyboard for a console and a controller for a cloud game, as Microsoft's app chooses, or either anywhere; by key position; a button two keys hold stays down until both are up |
 | Mouse | A mouse | A mouse, or the right stick with the keys as a shooter's controller (Better xCloud's virtual controller, which Greenlight has not): its speed measured per mouse report, the same at any mouse or display rate, and the stick centred three reports after the mouse stops rather than Better xCloud's fixed 50 ms |
 | Audio | Chromium | Ping's own player and its adaptive buffer, stereo |
 | Input latency | Controllers polled every 16 ms | Sent the moment the platform reports it (the connection's thread is woken for it) |
@@ -169,9 +178,16 @@ Without an Xbox or an account, against a mock of both (below):
   picture): 60 frames a second received, decoded and shown; 0.4 ms from a
   frame's first packet to the decoder; 1.3 ms to decode.
 
-Not yet verified against Microsoft's services or a real console. What
-Greenlight does today is the reference, and the services change without
-notice. Anyone with a Microsoft account can check the sign-in, the
+With a real console (an Xbox on the same network as a MacBook Pro, playing
+Battlefield 6): signing in, the console list, waking it, the stream at 60
+frames a second with no loss (4.9 Mb/s on average, 1.7 ms to decode),
+controllers, and the mouse sent as a mouse aiming in the game. That test
+found two faults, since fixed: input pressed while a stream started could
+leave the stream without input to its end, and the keys were a controller
+by default. Keys sent as a keyboard's, Automatic's choice for a console
+and what Microsoft's web client sends, are not yet seen working on a
+console. What Greenlight does today is the reference, and the services
+change without notice. Anyone with a Microsoft account can check the sign-in, the
 console list and, where it is offered, a free-to-play cloud game, without
 a console.
 
