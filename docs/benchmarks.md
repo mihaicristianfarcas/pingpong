@@ -35,6 +35,14 @@ Unless a section says otherwise:
   second: `RUST_LOG=info,ping_core::stats=debug ping stream NAME ...`. The
   host logs a line a second too (`pong.log`: frames, capture to encoded,
   Mbit/s, recoveries).
+- **The client's presentation alone** (macOS), with no host: synthetic
+  frames through the stream window and renderer, a line a second of frames
+  shown and decode to glass (the options are at the top of the file):
+
+  ```sh
+  cargo run --release -p ping-core --example mac-present -- --fps 120 --secs 10
+  ```
+
 - **Host capture to the client's screen** is measured directly: the two
   machines' clocks are related through the ping/pong exchange the stream
   already runs (every 500 ms; as in NTP, the sample with the shortest round
