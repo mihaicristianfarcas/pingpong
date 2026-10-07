@@ -1,7 +1,7 @@
 //! The host process: one tunnel endpoint for every paired client, a receive
 //! loop that dispatches control and input, and the session thread.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -68,16 +68,12 @@ pub struct Host {
     stop: AtomicBool,
 }
 
-pub fn identity_path(dir: &Path) -> PathBuf {
-    dir.join("identity.toml")
-}
-
 impl Host {
     pub fn open(data_dir: PathBuf) -> Result<Arc<Host>, String> {
         pingpong_proto::fec::warm_up();
         std::fs::create_dir_all(&data_dir).map_err(|e| format!("{}: {e}", data_dir.display()))?;
-        let identity =
-            Identity::load_or_create(&identity_path(&data_dir)).map_err(|e| e.to_string())?;
+        let identity = Identity::load_or_create(&crate::config::identity_path(&data_dir))
+            .map_err(|e| e.to_string())?;
         let config = HostConfig::load_or_default(&data_dir);
         let endpoint = Arc::new(
             Endpoint::bind(Arc::new(identity), config.port)

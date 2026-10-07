@@ -11,6 +11,11 @@ pub const DEFAULT_PAIRING_PORT: u16 = 47801;
 /// Web UI (HTTPS).
 pub const DEFAULT_WEB_PORT: u16 = 47802;
 
+/// The host's keys (X25519 and ML-KEM-768), in the data folder.
+pub fn identity_path(dir: &Path) -> PathBuf {
+    dir.join("identity.toml")
+}
+
 /// `%ProgramData%\Pong` on Windows (shared by the service and the host it
 /// launches), `~/Library/Application Support/Pong` on a Mac,
 /// `$XDG_CONFIG_HOME/pong` (`~/.config/pong`) on Linux. `PONG_DATA_DIR`

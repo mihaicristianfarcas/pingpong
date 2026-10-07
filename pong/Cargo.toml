@@ -8,6 +8,11 @@ license.workspace = true
 publish.workspace = true
 description = "Pong: the pingpong streaming host (Windows, macOS, Linux)"
 
+# The data folder's modules, shared with the command line (see src/lib.rs).
+[lib]
+name = "pong_data"
+path = "src/lib.rs"
+
 [dependencies]
 pingpong-proto = { path = "../pingpong-proto" }
 pingpong-transport = { path = "../pingpong-transport" }

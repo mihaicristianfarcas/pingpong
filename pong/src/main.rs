@@ -23,10 +23,8 @@ mod audio;
 #[path = "unix/audio.rs"]
 mod audio;
 mod bitrate;
-mod clients;
 #[cfg(windows)]
 mod clipagent;
-mod config;
 #[cfg(windows)]
 mod endsession;
 #[cfg(windows)]
@@ -60,7 +58,6 @@ mod power;
 mod power;
 mod presence;
 mod priority;
-mod private;
 mod sender;
 #[cfg(windows)]
 mod service;
@@ -81,6 +78,9 @@ use std::process::ExitCode;
 
 use pingpong_proto::permission::Permissions;
 use pingpong_transport::PublicIdentity;
+// The data folder's modules live in the library, for `pongctl` too; here
+// they keep their `crate::` paths.
+use pong_data::{clients, config, private};
 
 fn init_logging(dir: &std::path::Path) -> tracing_appender::non_blocking::WorkerGuard {
     init_logging_named(dir, "pong.log")
@@ -238,7 +238,7 @@ fn run_service(dir: &std::path::Path) -> ExitCode {
 }
 
 fn print_identity(dir: &std::path::Path) -> ExitCode {
-    match pingpong_transport::Identity::load_or_create(&host::identity_path(dir)) {
+    match pingpong_transport::Identity::load_or_create(&config::identity_path(dir)) {
         Ok(id) => {
             let (x, m) = id.public().to_b64();
             println!("x25519 = \"{x}\"\nmlkem = \"{m}\"");
