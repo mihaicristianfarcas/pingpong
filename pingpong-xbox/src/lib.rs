@@ -18,9 +18,9 @@
 //! - [`stream`]: a stream from start to end, over all of the above.
 //! - Pure protocol, tested everywhere: [`input`] (the input channel's
 //!   reports), [`messages`] (the message and control channels),
-//!   [`keymap`] (keys as Windows key codes, and as a controller),
-//!   [`rumble`] (the console's rumble patterns as motor states), [`ice`]
-//!   (candidates, Teredo).
+//!   [`keymap`] (keys as Windows key codes), [`virtual_pad`] (the keyboard
+//!   as a controller), [`rumble`] (the console's rumble patterns as motor
+//!   states), [`ice`] (candidates, Teredo).
 //!
 //! Nothing here touches a window, a decoder or a speaker: the client
 //! (`ping_core::xbox`) hands frames to the platform's own decoder and
@@ -40,6 +40,7 @@ pub mod rumble;
 pub mod store;
 pub mod stream;
 pub mod time;
+pub mod virtual_pad;
 
 /// A random (version 4) UUID, as the services take for ids.
 pub fn uuid_v4() -> String {

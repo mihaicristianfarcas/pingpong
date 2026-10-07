@@ -23,8 +23,9 @@ use pingpong_proto::input::Key;
 use crate::input::{
     FrameTimes, KeyFrame, MouseFrame, PadFrame, Report, ReportWriter, MAX_PADS, MAX_REPORT_LEN,
 };
-use crate::keymap::{vk, KeyboardPad};
+use crate::keymap::vk;
 use crate::messages::control;
+use crate::virtual_pad::KeyboardPad;
 
 /// A controller's state is sent at least this often (the web client's 33 ms).
 pub const PAD_HEARTBEAT: Duration = Duration::from_millis(33);
