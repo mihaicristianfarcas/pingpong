@@ -14,7 +14,13 @@
 //! `recv_from`. Rather than wake every millisecond to look (the cost of a
 //! 1 ms timeout, and up to a millisecond of input latency), whoever queues
 //! input sends a byte to the socket from a loopback socket of its own, and
-//! the loop knows that sender.
+//! the loop knows that sender. The byte only wakes the loop: what says
+//! input is waiting is the bell's flag, which the loop reads at every wake.
+//! Looks removable, is not: a bell whose byte was lost -- read by STUN
+//! ([`Socket::discover_public`] reads this socket while the window already
+//! takes input), or dropped from a full buffer -- would otherwise stay rung
+//! and never ring again, and no input would reach the console for the rest
+//! of the stream.
 
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -34,14 +40,15 @@ const SEND_BUFFER: usize = 1 << 20;
 /// while the session is set up (seconds), so it costs nothing visible.
 const STUN_WAIT: Duration = Duration::from_millis(800);
 
-/// Wakes the connection's thread. Cheap to clone; rings at most once until
-/// the thread has listened.
+/// Wakes the connection's thread. Cheap to clone; sends at most one byte
+/// until the thread has taken what was queued.
 #[derive(Clone)]
 pub struct Doorbell(Arc<Bell>);
 
 struct Bell {
     udp: UdpSocket,
     to: SocketAddr,
+    /// Input is waiting.
     rung: AtomicBool,
 }
 
@@ -52,9 +59,10 @@ impl Doorbell {
         }
     }
 
-    /// The thread heard it: the next input rings again.
-    pub(crate) fn heard(&self) {
-        self.0.rung.store(false, Ordering::Release);
+    /// Whether input was queued since the last call; the next input rings
+    /// again. Called at every wake, whatever woke the thread.
+    pub(crate) fn take(&self) -> bool {
+        self.0.rung.swap(false, Ordering::AcqRel)
     }
 
     pub(crate) fn addr(&self) -> Option<SocketAddr> {
@@ -195,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn the_doorbell_reaches_the_socket_once_until_heard() {
+    fn the_doorbell_reaches_the_socket_once_until_taken() {
         let s = Socket::bind(IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
         let bell = s.doorbell();
         bell.ring();
@@ -210,9 +218,31 @@ mod tests {
             .set_read_timeout(Some(Duration::from_millis(50)))
             .unwrap();
         assert!(s.udp.recv_from(&mut buf).is_err(), "rang once");
-        bell.heard();
+        assert!(bell.take());
+        assert!(!bell.take(), "taken once");
         bell.ring();
         assert!(s.udp.recv_from(&mut buf).is_ok());
+    }
+
+    #[test]
+    fn a_ring_whose_byte_someone_else_read_is_still_taken() {
+        // STUN reads the socket while the stream starts; the window takes
+        // input meanwhile.
+        let s = Socket::bind(IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        let bell = s.doorbell();
+        bell.ring();
+        s.udp
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .unwrap();
+        let mut buf = [0u8; 16];
+        s.udp.recv_from(&mut buf).unwrap();
+        bell.ring();
+        assert!(bell.take(), "the input is still owed");
+        bell.ring();
+        assert!(
+            s.udp.recv_from(&mut buf).is_ok(),
+            "and the bell rings again"
+        );
     }
 
     #[test]

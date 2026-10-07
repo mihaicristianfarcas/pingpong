@@ -124,8 +124,8 @@ pub trait Sink {
     fn video(&mut self, frame: &VideoFrame<'_>) -> bool;
     fn audio(&mut self, frame: &AudioFrame<'_>);
     fn event(&mut self, event: Event);
-    /// Input waiting to go out: hand each to `take` (called when the
-    /// [`Doorbell`] rang).
+    /// Input waiting to go out: hand each to `take` (called once the
+    /// [`Doorbell`] has rung).
     fn input(&mut self, take: &mut dyn FnMut(Input));
 }
 
@@ -359,7 +359,8 @@ impl Connection {
         }
     }
 
-    /// Wait up to `wait` for a datagram (or the doorbell) and take it in.
+    /// Wait up to `wait` for a datagram (or the doorbell) and take it in,
+    /// then the input waiting, if any.
     fn receive(
         &mut self,
         buf: &mut [u8],
@@ -368,17 +369,9 @@ impl Connection {
     ) -> std::io::Result<()> {
         let _ = self.socket.udp.set_read_timeout(Some(wait));
         let input = match self.socket.udp.recv_from(buf) {
-            Ok((_, from)) if self.socket.is_bell(from) => {
-                self.socket.bell.heard();
-                let inputs = &mut self.inputs;
-                let now = Instant::now();
-                sink.input(&mut |i| inputs.apply(i, now));
-                return Ok(());
-            }
-            Ok((n, from)) => {
-                let Ok(contents) = buf[..n].try_into() else {
-                    return Ok(());
-                };
+            // The doorbell's byte only wakes the loop; its flag is read below.
+            Ok((_, from)) if self.socket.is_bell(from) => None,
+            Ok((n, from)) => buf[..n].try_into().ok().map(|contents| {
                 RtcInput::Receive(
                     Instant::now(),
                     Receive {
@@ -388,22 +381,32 @@ impl Connection {
                         contents,
                     },
                 )
-            }
+            }),
             Err(e)
                 if matches!(
                     e.kind(),
                     std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                 ) =>
             {
-                RtcInput::Timeout(Instant::now())
+                Some(RtcInput::Timeout(Instant::now()))
             }
             // Windows reports an ICMP "port unreachable" for an earlier send
             // as a failed receive; nothing is wrong with the socket.
-            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => None,
             Err(e) => return Err(e),
         };
-        if let Err(e) = self.rtc.handle_input(input) {
-            tracing::debug!(error = %e, "datagram refused");
+        if let Some(input) = input {
+            if let Err(e) = self.rtc.handle_input(input) {
+                tracing::debug!(error = %e, "datagram refused");
+            }
+        }
+        // At every wake, not only the bell's: input does not wait behind
+        // the video datagrams queued ahead of the bell's byte (a keyframe is
+        // hundreds), nor for a byte that never comes (see `socket`).
+        if self.socket.bell.take() {
+            let inputs = &mut self.inputs;
+            let now = Instant::now();
+            sink.input(&mut |i| inputs.apply(i, now));
         }
         Ok(())
     }
@@ -691,5 +694,64 @@ impl Connection {
         self.inputs.start();
         self.ready = true;
         sink.event(Event::Ready);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use pingpong_proto::input::Key;
+
+    /// Hands over the input queued in it.
+    struct Queued(Vec<Input>);
+
+    impl Sink for Queued {
+        fn video(&mut self, _: &VideoFrame<'_>) -> bool {
+            true
+        }
+        fn audio(&mut self, _: &AudioFrame<'_>) {}
+        fn event(&mut self, _: Event) {}
+        fn input(&mut self, take: &mut dyn FnMut(Input)) {
+            for i in self.0.drain(..) {
+                take(i);
+            }
+        }
+    }
+
+    #[test]
+    fn input_goes_out_though_stun_read_the_doorbells_byte() {
+        let socket = Socket::bind(IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        let bell = socket.doorbell();
+        let mut sink = Queued(vec![Input::Key {
+            key: Key::KeyW,
+            down: true,
+        }]);
+        bell.ring();
+        // Read off the socket as STUN reads it while the session starts.
+        let mut buf = [0u8; 2048];
+        socket
+            .udp
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .unwrap();
+        let (_, from) = socket.udp.recv_from(&mut buf).unwrap();
+        assert!(socket.is_bell(from));
+
+        let (mut connection, _) = Connection::offer(
+            socket,
+            Options {
+                width: 1280,
+                height: 720,
+                install_id: "test".into(),
+                keyboard_mouse: KeyboardMouse::Native,
+            },
+        )
+        .unwrap();
+        // Nothing arrives: the loop wakes on its timeout, and looks.
+        connection
+            .receive(&mut buf, Duration::from_millis(5), &mut sink)
+            .unwrap();
+        assert!(sink.0.is_empty(), "the input was taken");
     }
 }
