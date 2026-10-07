@@ -3,6 +3,9 @@
 //!
 //! - **V-Sync on** (default): `displaySyncEnabled = YES`, each frame drawn
 //!   the moment it is decoded and shown on the next refresh. No tearing.
+//!   One drawn frame at a time waits for the glass, or the layer's three
+//!   while the window server composites it (a recording, a window over the
+//!   stream; see `glass`).
 //! - **Frame pacing** (opt-in): Moonlight's pacer. On each refresh of the
 //!   display (a `CVDisplayLink` tick) the newest frame is drawn and shown at
 //!   the next one: even pacing, frames never queue, for about half a refresh
@@ -45,6 +48,7 @@ use pingpong_decode::DecodedFrame;
 use pingpong_proto::clock;
 use pingpong_proto::control::{CursorShape, HdrMetadata};
 
+use super::glass::{GlassPath, Probe};
 use crate::stats::StatsCollector;
 use crate::stream::FrameTiming;
 
@@ -154,8 +158,12 @@ pub struct Layout {
     /// Pixels at the top of the drawable that must stay clear (the notch).
     pub top_inset: f64,
     /// In a window (not full screen): the window server composites the
-    /// frame, so it reaches the glass a refresh later (see `glass_limit`).
+    /// frame, so it reaches the glass a refresh or two later (see
+    /// `room_on_glass`).
     pub windowed: bool,
+    /// The display's shortest refresh interval, in seconds (0: not known),
+    /// which the drawables' trips to the glass are measured in.
+    pub refresh: f64,
 }
 
 /// What the rest of the client hands the render thread.
@@ -184,9 +192,9 @@ pub struct RenderShared {
     paced: bool,
     vsync_ticks: Mutex<u64>,
     vsync_tick: Condvar,
-    /// Drawables committed and not yet on the glass, and the signal that
-    /// one got there. See `wait_for_glass`.
-    glass: Arc<(Mutex<u32>, Condvar)>,
+    /// Drawables committed and not yet on the glass, the path they take, and
+    /// the signal that one got there. See `wait_for_glass`.
+    glass: Arc<(Mutex<GlassPath>, Condvar)>,
     /// The stream is HDR, with this metadata: the layer is BT.2100 PQ.
     hdr: Mutex<Option<HdrMetadata>>,
 }
@@ -217,7 +225,7 @@ impl RenderShared {
             paced: paced && vsync,
             vsync_ticks: Mutex::new(0),
             vsync_tick: Condvar::new(),
-            glass: Arc::new((Mutex::new(0), Condvar::new())),
+            glass: Arc::new((Mutex::new(GlassPath::default()), Condvar::new())),
             hdr: Mutex::new(None),
         })
     }
@@ -244,24 +252,58 @@ impl RenderShared {
         }
     }
 
-    /// Drawn frames that may wait for a refresh at once: one, full screen. In
-    /// a window the window server composites each frame, up to two refreshes
-    /// later, and only the layer's own three drawables keep up: at 120 fps a
-    /// limit of two showed 80 frames a second, one showed 40 of 60 at 60.
-    /// An HDR layer is composited full screen too (the window server maps
-    /// it onto the display's headroom): with a limit of one, 58-104 of 118
-    /// frames a second were shown at 3024x1890@120; with the layer's three,
-    /// 116-120.
-    fn glass_limit(&self) -> u32 {
-        if self.layout.lock().windowed || self.hdr.lock().is_some() {
-            DRAWABLES
+    /// Whether a frame drawn now may go to the glass behind those already
+    /// waiting for it (`path`), `tick` being a refresh tick (frame pacing):
+    /// the frame going on the glass at that refresh reports being there
+    /// only just after it, so one more may be out.
+    ///
+    /// Straight to the display (full screen, nothing over it), one at a
+    /// time. While the window server composites the layer, a frame reaches
+    /// the glass two or three refreshes after it is drawn, and only the
+    /// layer's own three drawables keep up: a window, an HDR layer (the
+    /// window server maps it onto the display's headroom), or whatever the
+    /// trips to the glass say is composited (a screen recording, a window or
+    /// notification over the stream; see `glass`). Measured: in a window at
+    /// 120 fps a limit of two showed 80 frames a second, one showed 40 of 60
+    /// at 60; HDR at 3024x1890@120 showed 58-104 of 118 with one, 116-120
+    /// with three; full screen while the screen was recorded, 40 of 60 and
+    /// 40 of 120 with one, 60 and 119 with three.
+    ///
+    /// With room, the next drawable committed is let through as the probe it
+    /// waited as, if any.
+    fn room_on_glass(&self, path: &mut GlassPath, now: f64, tick: bool) -> bool {
+        let probe = self.probe(path, now);
+        let room = match probe {
+            Some(Probe::Gap) => path.queued() < DRAWABLES - 1 + tick as u32,
+            Some(Probe::Drain) => path.queued() == 0,
+            None if path.composited() || self.always_composited() => {
+                path.queued() < DRAWABLES + tick as u32
+            }
+            None => path.queued() < GLASS_QUEUE_MAX + tick as u32,
+        };
+        if room {
+            path.admit(probe);
+        }
+        room
+    }
+
+    /// The layer is composited whatever its trips say: in a window, or HDR.
+    fn always_composited(&self) -> bool {
+        self.layout.lock().windowed || self.hdr.lock().is_some()
+    }
+
+    /// The probe the next frame is, while a composited path checks whether
+    /// it still is (see `glass`).
+    fn probe(&self, path: &GlassPath, now: f64) -> Option<Probe> {
+        if self.always_composited() {
+            None
         } else {
-            GLASS_QUEUE_MAX
+            path.probe(now)
         }
     }
 
-    /// With V-Sync, wait until fewer than `glass_limit` drawn frames are
-    /// waiting for a refresh, so that the next one drawn is the next shown.
+    /// With V-Sync, wait until there is room on the glass
+    /// (`room_on_glass`), so that the next frame drawn is the next shown.
     ///
     /// The layer would otherwise queue up to its three drawables: when the
     /// stream's rate matches the display's (120 fps on a 120 Hz panel), a
@@ -272,14 +314,11 @@ impl RenderShared {
         if !self.vsync {
             return;
         }
-        let limit = self.glass_limit();
-        let (queued, reached_glass) = &*self.glass;
-        let mut queued = queued.lock();
-        while *queued >= limit {
-            if reached_glass.wait_for(&mut queued, GLASS_WAIT).timed_out() {
-                // A drawable the window server dropped unshown may never
-                // report back: do not wait on it again.
-                *queued = 0;
+        let (path, reached_glass) = &*self.glass;
+        let mut path = path.lock();
+        while !self.room_on_glass(&mut path, CACurrentMediaTime(), false) {
+            if reached_glass.wait_for(&mut path, GLASS_WAIT).timed_out() {
+                path.forget_queued();
                 break;
             }
         }
@@ -368,6 +407,12 @@ impl RenderShared {
         self.overlay_enabled.store(on, Ordering::Release);
         self.dirty.store(true, Ordering::Release);
         self.frame_ready.notify_one();
+    }
+
+    /// The window went into or out of full screen, or to another display:
+    /// the window server's path for the layer is judged afresh.
+    pub fn new_path(&self) {
+        self.glass.0.lock().forget_path();
     }
 
     pub fn set_layout(&self, l: Layout) {
@@ -999,11 +1044,14 @@ impl Renderer {
         let _ = target_time;
         if shared.vsync {
             let glass = shared.glass.clone();
-            *glass.0.lock() += 1;
-            let block = RcBlock::new(move |_d: NonNull<ProtocolObject<dyn MTLDrawable>>| {
-                let (queued, reached_glass) = &*glass;
-                let mut queued = queued.lock();
-                *queued = queued.saturating_sub(1);
+            let trip = glass.0.lock().commit(CACurrentMediaTime());
+            let refresh = layout.refresh;
+            let block = RcBlock::new(move |d: NonNull<ProtocolObject<dyn MTLDrawable>>| {
+                // SAFETY: the drawable this handler was added to, alive for
+                // the call.
+                let at = unsafe { d.as_ref() }.presentedTime();
+                let (path, reached_glass) = &*glass;
+                path.lock().presented(trip, at, refresh);
                 reached_glass.notify_all();
             });
             unsafe { drawable.addPresentedHandler(RcBlock::as_ptr(&block)) };
@@ -1124,12 +1172,13 @@ const PACING_QUEUE_MAX: usize = 3;
 /// The layer's drawables with V-Sync: three, which the window server needs
 /// to take a full-screen layer straight to the display.
 const DRAWABLES: u32 = 3;
-/// Drawn frames that may wait for a refresh at once, full screen (see
-/// `wait_for_glass`). On a refresh tick (frame pacing) one more: the frame
-/// shown at that refresh reports being on the glass only just after it.
+/// Drawn frames that may wait for a refresh at once straight to the display
+/// (see `room_on_glass`).
 const GLASS_QUEUE_MAX: u32 = 1;
-/// Longer than a refresh at any rate the stream runs at.
-const GLASS_WAIT: Duration = Duration::from_millis(40);
+/// How long a frame waits for room on the glass before the drawables still
+/// out are taken for dropped. Longer than a composited trip at 60 Hz (3.3
+/// refreshes, 55 ms), which a probe waits for.
+const GLASS_WAIT: Duration = Duration::from_millis(100);
 /// Refreshes a pacing queue may stand before it is skipped to the newest.
 const PACING_BACKLOG_TICKS: u32 = 10;
 
@@ -1228,10 +1277,10 @@ pub fn run(
             autoreleasepool(|_| {
                 renderer.sync_size(&shared);
                 let due = renderer.has_work(&shared);
-                // Besides the frame going on the glass at this refresh, as many
-                // still waiting as `glass_limit`: this tick's would only queue
-                // behind them.
-                let clear = *shared.glass.0.lock() < shared.glass_limit() + 1;
+                // Room besides the frame going on the glass at this refresh:
+                // without it, this tick's would only queue behind them.
+                let clear =
+                    shared.room_on_glass(&mut shared.glass.0.lock(), CACurrentMediaTime(), true);
                 if due && clear {
                     if let Some(drawable) = renderer.layer.nextDrawable() {
                         renderer.render(&drawable, &shared, None);

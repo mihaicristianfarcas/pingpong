@@ -15,8 +15,10 @@
 //! `--jitter-ms N` (each frame handed over up to N ms late, as a network
 //! delivers them), `--overlay` (the statistics overlay), `--cover AT,FOR` (a
 //! small window over the stream from AT seconds for FOR, as a recorder's
-//! controls or a dialog would be). Prints a line a second and a summary of
-//! the seconds after the first two (the window going full screen).
+//! controls or a dialog would be). Prints a line a second, the renderer's
+//! changes of path (`RUST_LOG=ping_core::mac::glass=trace` for every
+//! drawable's trip to the glass), and a summary of the seconds after the
+//! first two (the window going full screen).
 
 #[cfg(target_os = "macos")]
 fn main() {
@@ -295,7 +297,7 @@ mod mac {
         tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| "warn".into()),
+                    .unwrap_or_else(|_| "warn,ping_core::mac::glass=info".into()),
             )
             .init();
         let o = options();

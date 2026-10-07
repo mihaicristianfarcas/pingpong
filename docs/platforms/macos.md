@@ -16,6 +16,21 @@ measurements here are from an M4 Pro).
   (`CVMetalTextureCache`). Without frame pacing the newest frame is drawn at
   once; with it, Moonlight's pacer draws one frame per display refresh on a
   `CVDisplayLink` tick.
+- **Recording the screen, or something over the stream.** Full screen with
+  nothing over it, macOS takes the picture straight to the display, and one
+  frame at a time waits for it, so the next frame drawn is the next shown.
+  A screen recording, a window, menu or notification over the stream, a
+  window rather than full screen, or HDR makes macOS composite the picture
+  first, two to three refreshes later. Ping tells which from how long its
+  frames take to reach the screen, lets three wait while it lasts, and
+  goes back to one after; every frame is still shown (the log says "the
+  stream is composited"). The composited path costs latency: about 22 ms
+  from decode to the screen at 60 fps, against 6 ms (see
+  [benchmarks](../benchmarks.md#recording-the-screen-macos-client)).
+  macOS also takes a recorded stream straight to the display at times
+  and shows some of its frames a refresh late; at the display's full rate
+  (120 fps at 120 Hz), Ping then shows 105–117 frames of 120 rather than
+  add a refresh to every one.
 - **AV1.** On a Mac with an AV1 decoder (M3 and later), VideoToolbox
   decodes it in hardware, 8- and 10-bit: the format description carries an
   `av1C` record built from the stream's sequence header, and samples go in

@@ -687,6 +687,10 @@ impl StreamView {
                 style.contains(NSWindowStyleMask::Titled)
                     && !style.contains(NSWindowStyleMask::FullScreen)
             }),
+            refresh: self
+                .window()
+                .and_then(|w| w.screen())
+                .map_or(0.0, |s| s.minimumRefreshInterval()),
         });
     }
 }
@@ -757,17 +761,28 @@ define_class!(
             retry_fullscreen(FULLSCREEN_TRIES);
         }
 
-        // The layout follows the window into and out of full screen.
+        // The layout, and the window server's path for the layer, follow
+        // the window into and out of full screen.
         #[unsafe(method(windowDidEnterFullScreen:))]
         fn window_did_enter_full_screen(&self, _n: &NSNotification) {
             self.ivars().view.publish_layout();
+            self.ivars().view.ivars().render.new_path();
             tracing::info!(fullscreen = true, "window mode");
         }
 
         #[unsafe(method(windowDidExitFullScreen:))]
         fn window_did_exit_full_screen(&self, _n: &NSNotification) {
             self.ivars().view.publish_layout();
+            self.ivars().view.ivars().render.new_path();
             tracing::info!(fullscreen = false, "window mode");
+        }
+
+        // Another display may refresh at another rate, and take the layer
+        // another way.
+        #[unsafe(method(windowDidChangeScreen:))]
+        fn window_did_change_screen(&self, _n: &NSNotification) {
+            self.ivars().view.publish_layout();
+            self.ivars().view.ivars().render.new_path();
         }
 
         #[unsafe(method(windowShouldClose:))]
