@@ -76,8 +76,9 @@ the app has no Dock icon; on Linux, with no tray, closing the window quits.
   recoveries); this host (ID, tunnel port, internet address, the router's
   port mapping, devices, version); the agent's recent actions.
 - **Devices**: pairing requests first, each with its PIN field (Return
-  pairs); then the paired devices and agents with their access, each
-  unpairable.
+  pairs) and what the device may do once paired; then the paired devices
+  and agents, each with a button that names what it may do and opens the
+  sheet that sets each permission, and unpairable.
 - **Settings** save as they change (text fields on Return). Encoder settings
   a Mac host does not have (NVENC, AV1) are not shown there. General's last
   section, **This window**, is the window's own: its icon at login and the
@@ -145,6 +146,7 @@ person:
 PING_UI_DEMO=settings=video,snapshot=/tmp/video.png,quit target/debug/ping-app
 PING_UI_DEMO=agents=sample,snapshot=/tmp/session.png,quit target/debug/ping-app
 PONG_UI_DEMO=sample,devices,snapshot=/tmp/devices.png,quit target/debug/pong-app
+PONG_UI_DEMO=sample,devices,permissions=macbook,snapshot=/tmp/may.png,quit target/debug/pong-app
 ```
 
 Ping's steps: `settings[=general|video|audio|input|agents]`,
@@ -163,8 +165,10 @@ sample sessions a screenshot to show.
 Pong's steps: a page's name (`overview`, `devices`, `general`, `video`,
 `network`, `agents`, `logs`), `sample` (a made-up session, request,
 devices and settings), `signin`, `setup`, `offline`,
-`signin-as=USER:PASSWORD`, `update`, `update-main`, `updates`, `menus` (the
-menu bar and the tray icon's menu, to the log), `snapshot=PATH`, `close`
+`signin-as=USER:PASSWORD`, `update`, `update-main`, `updates`,
+`permissions=NAME` (the permissions sheet of the paired device called
+NAME), `menus` (the menu bar and the tray icon's menu, to the log),
+`snapshot=PATH`, `close`
 (the window closes as its button closes it; the app stays behind its icon),
 `quit`. `PONG_DATA_DIR` points the window at a test host's data folder,
 and keeps the window's own files there too; `PONG_APP_URL`, `PONG_APP_CERT`

@@ -9,6 +9,7 @@ mod demo;
 mod devices;
 mod logs;
 mod overview;
+mod permissions;
 mod settings;
 mod sidebar;
 mod signin;
@@ -93,6 +94,12 @@ pub struct PongApp {
     config_ahead: Option<(Value, Instant)>,
     pins: HashMap<u32, Entity<TextField>>,
     pin_errors: HashMap<u32, String>,
+    /// What a device asking to pair may do, where it was chosen.
+    pair_choice: HashMap<u32, pingpong_proto::permission::Permissions>,
+    /// The device whose permissions sheet is open (its key).
+    editing: Option<String>,
+    /// A permissions change made here, ahead of the host's word on it.
+    permissions_ahead: Option<(String, pingpong_proto::permission::Permissions, Instant)>,
     note: Option<(IconName, gpui::Rgba, String, Instant)>,
     restart_needed: bool,
     confirm: Option<Confirm>,
@@ -194,6 +201,9 @@ impl PongApp {
             config_ahead: None,
             pins: HashMap::new(),
             pin_errors: HashMap::new(),
+            pair_choice: HashMap::new(),
+            editing: None,
+            permissions_ahead: None,
             note: None,
             restart_needed: false,
             confirm: None,
@@ -218,6 +228,13 @@ impl PongApp {
         let _ = self.cmds.send(cmd);
     }
 
+    /// Pair request `id` with `pin`, and what was chosen for it.
+    fn submit_pin(&mut self, id: u32, pin: String) {
+        self.pin_errors.remove(&id);
+        let chosen = self.pair_choice.get(&id).copied();
+        self.send(Cmd::SubmitPin(id, pin, chosen));
+    }
+
     fn set_page(&mut self, page: Page, cx: &mut Context<Self>) {
         if (page == Page::Logs) != (self.page == Page::Logs) {
             self.send(Cmd::WantLogs(page == Page::Logs));
@@ -234,6 +251,7 @@ impl PongApp {
     pub fn go(&mut self, page: Page, cx: &mut Context<Self>) {
         self.confirm = None;
         self.update_sheet = false;
+        self.editing = None;
         self.set_page(page, cx);
     }
 
@@ -263,6 +281,8 @@ impl PongApp {
             .map(|st| st.pending.iter().map(|p| p.id).collect())
             .unwrap_or_default();
         self.pins.retain(|id, _| pending.contains(id));
+        self.pair_choice.retain(|id, _| pending.contains(id));
+        self.keep_permissions_ahead(&mut s.clients);
         for id in pending {
             if let std::collections::hash_map::Entry::Vacant(slot) = self.pins.entry(id) {
                 let f = cx.new(|cx| TextField::new(cx).placeholder("PIN"));
@@ -270,8 +290,7 @@ impl PongApp {
                     FieldEvent::Submit => {
                         let pin = f.read(cx).text().trim().to_string();
                         if !pin.is_empty() {
-                            this.pin_errors.remove(&id);
-                            this.send(Cmd::SubmitPin(id, pin));
+                            this.submit_pin(id, pin);
                         }
                     }
                     _ => cx.notify(),
@@ -544,15 +563,18 @@ impl Render for PongApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = Theme::of(window);
         let body = self.body(t, window, cx);
+        let window_h = f32::from(window.viewport_size().height);
         let confirm = self
             .confirm_sheet(t, cx)
-            .or_else(|| self.updates_sheet(t, cx));
+            .or_else(|| self.updates_sheet(t, cx))
+            .or_else(|| self.permissions_sheet(window_h, t, cx));
         div()
             .key_context("PongApp")
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &crate::Dismiss, _, cx| {
                 this.confirm = None;
                 this.update_sheet = false;
+                this.editing = None;
                 cx.notify();
             }))
             .on_action(

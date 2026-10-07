@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use pingpong_proto::permission::Permissions;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -385,7 +386,7 @@ pub struct Session {
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct AgentStatus {
-    pub access: String,
+    pub permissions: Permissions,
     pub flags: u8,
     pub watchers: Vec<String>,
     pub controller: Option<String>,
@@ -399,6 +400,8 @@ pub struct Pending {
     pub agent: bool,
     pub peer: String,
     pub waiting_secs: u64,
+    /// What it gets unless chosen otherwise.
+    pub permissions: Permissions,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
@@ -410,7 +413,8 @@ pub struct Client {
     pub paired_at: u64,
     pub online: bool,
     pub agent: bool,
-    pub access: String,
+    /// What it may do here.
+    pub permissions: Permissions,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]

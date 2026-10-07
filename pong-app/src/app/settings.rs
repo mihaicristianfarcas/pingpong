@@ -66,7 +66,9 @@ impl PongApp {
                                 self.toggle(
                                     "allow_takeover",
                                     "Let a client take over a session",
-                                    "Otherwise a second client is refused while one streams.",
+                                    "Otherwise a second client is refused while one \
+                                        streams. A device also needs Take over in its \
+                                        permissions (Devices).",
                                     t,
                                     cx,
                                 ),
@@ -315,8 +317,8 @@ impl PongApp {
                 let this = cx.weak_entity();
                 (
                     "AI agents",
-                    "What agents paired with this host may do. Each one's own access is \
-                        set on Devices.",
+                    "What agents paired with this host may do. Each one's own permissions \
+                        are set on Devices.",
                     div()
                         .flex()
                         .flex_col()

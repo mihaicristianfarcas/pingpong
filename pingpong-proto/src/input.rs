@@ -88,6 +88,43 @@ pub enum InputEvent {
     Text(char),
 }
 
+impl InputEvent {
+    /// The permission a device needs for the host to act on it
+    /// (`permission::KEYBOARD` for keys and text, `MOUSE` for the rest), as
+    /// Apollo's `passthrough` checks each input packet's kind (`input.cpp`).
+    pub fn permission(&self) -> u16 {
+        match self {
+            InputEvent::KeyDown(_) | InputEvent::KeyUp(_) | InputEvent::Text(_) => {
+                crate::permission::KEYBOARD
+            }
+            _ => crate::permission::MOUSE,
+        }
+    }
+}
+
+/// The events `allowed` lets through, in order: `events` itself when it
+/// allows every kind, else the permitted ones, copied into `buf` (no
+/// allocation: this runs for every input packet). A batch holds at most
+/// [`MAX_EVENTS_PER_PACKET`]; events past that many are dropped.
+pub fn permitted<'a>(
+    events: &'a [InputEvent],
+    allowed: crate::permission::Permissions,
+    buf: &'a mut [InputEvent; MAX_EVENTS_PER_PACKET],
+) -> &'a [InputEvent] {
+    use crate::permission::{KEYBOARD, MOUSE};
+    if allowed.allows(KEYBOARD | MOUSE) {
+        return events;
+    }
+    let mut n = 0;
+    for ev in events {
+        if allowed.allows(ev.permission()) && n < buf.len() {
+            buf[n] = *ev;
+            n += 1;
+        }
+    }
+    &buf[..n]
+}
+
 /// Write one event record. Returns bytes written.
 fn encode_event(ev: InputEvent, out: &mut [u8]) -> usize {
     match ev {
@@ -741,6 +778,29 @@ impl RepeatSchedule {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn input_a_device_may_not_send_is_left_out() {
+        use crate::permission::{Permissions, KEYBOARD, MOUSE, VIEW};
+        let events = [
+            InputEvent::KeyDown(0x1e),
+            InputEvent::MouseMoveRel { dx: 3, dy: -2 },
+            InputEvent::Text('a'),
+            InputEvent::ButtonDown(Button::Left),
+            InputEvent::KeyUp(0x1e),
+        ];
+        let mut buf = [InputEvent::Wheel { dv: 0, dh: 0 }; MAX_EVENTS_PER_PACKET];
+        let all = Permissions::from_bits(VIEW | KEYBOARD | MOUSE);
+        assert_eq!(permitted(&events, all, &mut buf), &events);
+        let keys = Permissions::from_bits(VIEW | KEYBOARD);
+        assert_eq!(
+            permitted(&events, keys, &mut buf),
+            &[events[0], events[2], events[4]]
+        );
+        let mouse = Permissions::from_bits(VIEW | MOUSE);
+        assert_eq!(permitted(&events, mouse, &mut buf), &[events[1], events[3]]);
+        assert!(permitted(&events, Permissions::SEE_ONLY, &mut buf).is_empty());
+    }
     use crate::header::{Header, Kind};
 
     #[test]

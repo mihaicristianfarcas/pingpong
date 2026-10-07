@@ -8,6 +8,10 @@
 #   tools/linux-dev tools/linux/loopback-test [PING STREAM ARGS]
 #   PING_TEST_INPUT="..." tools/linux-dev tools/linux/loopback-test
 #
+# LOOPBACK_PERMISSIONS pairs the client with those permissions (`pong
+# permissions` names, or see-only), to see the host hold back what it may
+# not do: PINGPONG_DOCKER_ARGS="-e LOOPBACK_PERMISSIONS=view,mouse".
+#
 # The Wayland host is tested by hand in tools/linux/gnome-desktop.
 set -euo pipefail
 cargo build -q -p pong
@@ -39,7 +43,8 @@ DISPLAY=:1 "$bin/examples/x11-scene" 60 >"$OUT/scene.log" &
 host_keys=$("$bin/pong" identity | sed -E 's/.*= "(.*)"/\1/' | paste -sd' ')
 client_keys=$("$bin/ping" identity)
 # shellcheck disable=SC2086
-"$bin/pong" add-client linux-ping $client_keys >/dev/null
+"$bin/pong" add-client linux-ping $client_keys \
+    ${LOOPBACK_PERMISSIONS:+--permissions "$LOOPBACK_PERMISSIONS"} >/dev/null
 # shellcheck disable=SC2086
 "$bin/ping" add-host linux-loop 127.0.0.1:47810 $host_keys >/dev/null
 

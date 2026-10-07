@@ -87,7 +87,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | A virtual display identity for each client, so Windows remembers each one's settings (Apollo) | One identity for every client: a session that wants the other HDR state than the last waits 3.8 s while Windows switches it ([platforms/windows.md](platforms/windows.md)) | no |
 | Apps: Desktop, Steam Big Picture (closed at the end) | Same | done |
 | Apps of your own, with commands before and after; commands when a client connects or disconnects (Apollo) | Not built | no |
-| Permissions per client (Apollo): which inputs, the clipboard, files, launching apps; a new client may only watch | For AI agents: control, view or nothing, each agent on its own, and actions that ask first ([ai-agents.md](ai-agents.md#the-rules-the-host-holds-agents-to)). A person you pair has full control | no (agents only) |
+| Permissions per client (Apollo): which inputs, the clipboard each way, files, launching apps; the first client may do everything, a later one only watch | Same for every device, set in Pong's window or web UI or with `pong permissions`: seeing the screen, keyboard, mouse, controllers, the clipboard each way, starting apps, plus taking over a running session and watching AI agents; the first device may do everything, later ones see only, with the choice offered at the PIN. Input the host may not take is dropped as it arrives, and taking away seeing ends a running stream, as in Apollo; Ping says what the host holds back. AI agents have the same, and may be allowed to act only while a person watches ([usage.md](usage.md#what-each-device-may-do)). No files beyond the clipboard's, no touch or pen (pingpong has neither) | done (Linux host; Windows and Mac hosts type-checked) |
 | Runs at boot, streams UAC prompts and the lock screen | Windows service; sessions also start while the host is locked (after sleep) | done |
 | Windows asked for streaming: 0.5-1 ms timer, DWM by MMCSS, Wi-Fi in media-streaming mode, Mouse Keys without a mouse | Same (1 ms), undone when the session ends | done |
 | Web UI | Pairing, clients, settings, logs, ending a session; and Pong's own window | done |
@@ -116,7 +116,6 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 ## Not built
 
 PlayStation pads with motion and touchpad, apps of your own and commands
-when a client connects, Apollo's permissions per client for people, clients
-that only send input, a virtual display identity per client, AMD and Intel
+when a client connects, clients that only send input, a virtual display identity per client, AMD and Intel
 encoders on a Windows host, and Linux capture and input beyond X11 and the
 portal. Phones, tablets and TVs are out of scope: pingpong is for desktops.

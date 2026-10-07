@@ -9,8 +9,11 @@
 //! ```text
 //! frame: kind u8 | length u32 LE | bytes
 //! Pong -> agent   PACKET: a clipboard control body from the client
+//!                 DIRECTIONS: which ways copies go from now on (one byte)
 //! agent -> Pong   PACKET: a whole packet for the client;  LOG: a log line
 //! ```
+//!
+//! The ways copies go at the start are on its command line.
 //!
 //! The agent ends when its input closes (the session ended).
 
@@ -39,6 +42,7 @@ use windows::Win32::System::Threading::{
 
 const PACKET: u8 = 0;
 const LOG: u8 = 1;
+const DIRECTIONS: u8 = 2;
 /// A frame larger than this is not one of ours.
 const MAX_FRAME: usize = 64 * 1024;
 
@@ -69,7 +73,8 @@ unsafe impl Send for Process {}
 
 /// The session's clipboard helper, as Pong holds it.
 pub struct ClipAgent {
-    tx: Option<Sender<Vec<u8>>>,
+    /// Frames for the helper: (kind, body).
+    tx: Option<Sender<(u8, Vec<u8>)>>,
     process: Process,
     writer: Option<std::thread::JoinHandle<()>>,
     reader: Option<std::thread::JoinHandle<()>>,
@@ -78,17 +83,25 @@ pub struct ClipAgent {
 impl ClipAgent {
     /// Start the helper as the user signed in at the console; `send` puts
     /// its packets on the tunnel.
-    pub fn spawn(rate: u64, send: impl Fn(&[u8]) + Send + 'static) -> Result<ClipAgent, String> {
+    pub fn spawn(
+        rate: u64,
+        directions: pingpong_clipboard::Directions,
+        send: impl Fn(&[u8]) + Send + 'static,
+    ) -> Result<ClipAgent, String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let cmdline = format!("\"{}\" clipboard-agent {rate}", exe.display());
+        let cmdline = format!(
+            "\"{}\" clipboard-agent {rate} {}",
+            exe.display(),
+            directions.to_bits()
+        );
         let (process, to_child, from_child) = unsafe { spawn_as_user(&cmdline)? };
-        let (tx, rx) = crossbeam_channel::bounded::<Vec<u8>>(8192);
+        let (tx, rx) = crossbeam_channel::bounded::<(u8, Vec<u8>)>(8192);
         let writer = std::thread::Builder::new()
             .name("clip-agent-in".into())
             .spawn(move || {
                 let mut to_child = to_child;
-                for body in rx {
-                    if write_frame(&mut to_child, PACKET, &body).is_err() {
+                for (kind, body) in rx {
+                    if write_frame(&mut to_child, kind, &body).is_err() {
                         break;
                     }
                 }
@@ -120,7 +133,15 @@ impl ClipAgent {
 
     pub fn deliver(&self, body: &[u8]) {
         if let Some(tx) = &self.tx {
-            let _ = tx.try_send(body.to_vec());
+            let _ = tx.try_send((PACKET, body.to_vec()));
+        }
+    }
+
+    /// Which ways copies go, from now on. Waits for room rather than being
+    /// dropped behind a burst of packets: it is a permission.
+    pub fn set_directions(&self, d: pingpong_clipboard::Directions) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send_timeout((DIRECTIONS, vec![d.to_bits()]), Duration::from_secs(1));
         }
     }
 }
@@ -265,9 +286,13 @@ impl Drop for LogWriter {
     }
 }
 
-/// `pong clipboard-agent RATE`: the helper itself, as the user.
+/// `pong clipboard-agent RATE DIRECTIONS`: the helper itself, as the user.
 pub fn run(args: &[String]) -> ExitCode {
     let rate = args.get(1).and_then(|r| r.parse().ok()).unwrap_or(4 << 20);
+    // Nothing either way, unless Pong said.
+    let directions = pingpong_clipboard::Directions::from_bits(
+        args.get(2).and_then(|d| d.parse().ok()).unwrap_or(0),
+    );
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let log_out = out.clone();
     tracing_subscriber::fmt()
@@ -286,14 +311,21 @@ pub fn run(args: &[String]) -> ExitCode {
         rate,
         offer_current: false,
         peer: "the client".into(),
+        directions,
     };
     let sync = pingpong_clipboard::ClipSync::start(opts, move |p| {
         let _ = write_frame(&mut *out.lock(), PACKET, p);
     });
     let mut input = std::io::BufReader::new(std::io::stdin().lock());
     while let Some((kind, body)) = read_frame(&mut input) {
-        if kind == PACKET {
-            sync.deliver(&body);
+        match kind {
+            PACKET => sync.deliver(&body),
+            DIRECTIONS => {
+                if let Some(&bits) = body.first() {
+                    sync.set_directions(pingpong_clipboard::Directions::from_bits(bits));
+                }
+            }
+            _ => {}
         }
     }
     drop(sync);

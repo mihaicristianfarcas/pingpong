@@ -2,7 +2,9 @@
 //!
 //! A client connects and asks to pair; the request waits here until the user
 //! types the PIN the client is showing into the web UI (or declines, or five
-//! minutes pass).
+//! minutes pass). With the PIN, the user may choose what the client may do
+//! here; each request says what it gets otherwise
+//! (`Permissions::on_pairing`), so the choice can start from that.
 
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
@@ -12,6 +14,7 @@ use parking_lot::Mutex;
 use pingpong_pairing::pair::{
     self, HostDescription, Incoming, PairError, PairRequest, PIN_TIMEOUT,
 };
+use pingpong_proto::permission::Permissions;
 use serde::Serialize;
 
 use crate::host::Host;
@@ -33,6 +36,8 @@ pub struct PendingView {
     pub agent: bool,
     pub peer: String,
     pub waiting_secs: u64,
+    /// What it gets unless the user chooses otherwise.
+    pub permissions: Permissions,
 }
 
 #[derive(Default)]
@@ -52,7 +57,8 @@ pub enum PinResult {
 }
 
 impl Pairing {
-    pub fn list(&self) -> Vec<PendingView> {
+    /// The requests waiting, each with what it would get from `clients`.
+    pub fn list(&self, clients: &crate::clients::Clients) -> Vec<PendingView> {
         self.expire();
         self.pending
             .lock()
@@ -63,6 +69,7 @@ impl Pairing {
                 agent: p.agent,
                 peer: p.peer.ip().to_string(),
                 waiting_secs: p.created.elapsed().as_secs(),
+                permissions: clients.default_permissions(p.agent),
             })
             .collect()
     }
@@ -113,8 +120,15 @@ impl Pairing {
         true
     }
 
-    /// Complete request `id` with `pin`. Blocking (a few round trips).
-    pub fn submit(&self, host: &Host, id: u32, pin: &str) -> PinResult {
+    /// Complete request `id` with `pin`; the client gets `permissions`
+    /// (None: the default). Blocking (a few round trips).
+    pub fn submit(
+        &self,
+        host: &Host,
+        id: u32,
+        pin: &str,
+        permissions: Option<Permissions>,
+    ) -> PinResult {
         {
             let mut f = self.failures.lock();
             f.retain(|t| t.elapsed() < Duration::from_secs(60));
@@ -140,9 +154,20 @@ impl Pairing {
         };
         match request.complete(pin, &name, host.endpoint.identity().public(), &extras) {
             Ok((client_name, public, theirs)) => {
-                match host.add_client(&client_name, &public, theirs.rendezvous, theirs.agent) {
-                    Ok(()) => {
-                        tracing::info!(client = client_name, agent = theirs.agent, "paired");
+                match host.add_client(
+                    &client_name,
+                    &public,
+                    theirs.rendezvous,
+                    theirs.agent,
+                    permissions,
+                ) {
+                    Ok(granted) => {
+                        tracing::info!(
+                            client = client_name,
+                            agent = theirs.agent,
+                            permissions = ?granted.names(),
+                            "paired"
+                        );
                         PinResult::Paired(client_name)
                     }
                     Err(e) => PinResult::Failed(e.to_string()),

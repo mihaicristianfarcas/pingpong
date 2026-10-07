@@ -56,6 +56,8 @@ struct Seen {
     ended: Option<(String, bool)>,
     status: Option<String>,
     warning: Option<String>,
+    /// What the agent may do on the host (`permission::*`; 0: not said).
+    permissions: u16,
 }
 
 pub struct HeadlessSession {
@@ -141,6 +143,7 @@ impl HeadlessSession {
                     }
                     Event::Cursor(c) => s.cursor = Some(c),
                     Event::Agent(a) => s.agent = Some(a),
+                    Event::Permissions(p) => s.permissions = p,
                     Event::Ended { reason, error } => s.ended = Some((reason, error)),
                     Event::Status(t) => s.status = Some(t),
                     Event::Notice(t) => s.status = t,
@@ -167,6 +170,7 @@ impl HeadlessSession {
             clipboard: false,
             mouse: Default::default(),
             video: 0,
+            agent: true,
         };
         let video = Box::new(HeadlessVideo::new(frames.clone(), stats.clone()));
         let stream = Stream::start(identity, target, settings, video, events, stats.clone())?;
@@ -250,6 +254,13 @@ impl HeadlessSession {
     /// Who drives, as the host last said (None: it has not said).
     pub fn agent_state(&self) -> Option<AgentState> {
         self.seen.0.lock().agent
+    }
+
+    /// What the agent may do on the host, as it last said (None: it has
+    /// not said yet; an admitted session always may `VIEW`).
+    pub fn permissions(&self) -> Option<pingpong_proto::permission::Permissions> {
+        let bits = self.seen.0.lock().permissions;
+        (bits != 0).then(|| pingpong_proto::permission::Permissions::from_bits(bits))
     }
 
     pub fn cursor(&self) -> Option<CursorState> {

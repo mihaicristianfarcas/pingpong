@@ -93,6 +93,12 @@ pre.logs { background: var(--panel); border: 1px solid var(--line); border-radiu
 .activity time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
 .activity span { font-family: var(--mono); font-size: 13px; word-break: break-word; }
 select.access { padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.may { margin-top: 8px; display: flex; gap: 10px; align-items: center; color: var(--text); }
+.perms td { background: var(--panel-2); }
+.perms-edit { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 28px; margin-top: 14px; }
+.perms-edit h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.perms-edit .check { margin-bottom: 10px; }
+.perms-edit small { display: block; color: var(--muted); font-size: 13px; }
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   nav { flex-direction: row; align-items: center; overflow-x: auto; padding: 10px; border-right: none; border-bottom: 1px solid var(--line); }
@@ -200,7 +206,70 @@ async function show() {
 function setBadge(n) { const b = $('#badge-pair'); if (b) { b.hidden = !n; b.textContent = n; } }
 
 // What holds an agent's keyboard and mouse (control::agent_state bits).
-const agentHolds = [[1, 'paused'], [16, 'a person took over'], [2, 'someone is using this computer'], [4, 'a secure screen is up'], [8, 'view only']];
+const agentHolds = [[1, 'paused'], [16, 'a person took over'], [2, 'someone is using this computer'], [4, 'a secure screen is up'], [8, 'it may only look'], [32, 'waiting for someone to watch']];
+
+// What a paired device may do here (pingpong_proto::permission), as Pong's
+// window shows it: sections of [name, label, what it does].
+const permSections = {
+  person: [
+    ['Screen', [
+      ['view', 'See the screen', "Stream this computer's screen and sound. Off: the device is turned away."],
+      ['launch', 'Start apps', 'Open an app with the stream, such as Steam Big Picture.'],
+      ['take_over', 'Take over', 'Stream while another device does, ending its stream (when Settings lets a client take over).'],
+    ]],
+    ['Input', [
+      ['keyboard', 'Keyboard', 'Type, and press keys and shortcuts.'],
+      ['mouse', 'Mouse', 'Move the pointer, click and scroll.'],
+      ['controller', 'Controllers', 'Play with game controllers (on a Windows host).'],
+    ]],
+    ['Clipboard', [
+      ['clipboard_read', 'Copy from this computer', 'What is copied here can be pasted on the device.'],
+      ['clipboard_write', 'Paste to this computer', 'What is copied on the device can be pasted here.'],
+    ]],
+    ['AI agents', [
+      ['watch', 'Watch AI agents', "Watch an agent's session, pause or stop it, and take over with the keyboard or mouse."],
+    ]],
+  ],
+  agent: [
+    ['Screen', [['view', 'See the screen', 'Take screenshots of this computer. Off: the agent is turned away.']]],
+    ['Input', [
+      ['keyboard', 'Keyboard', 'Type, and press keys and shortcuts.'],
+      ['mouse', 'Mouse', 'Move the pointer, click and scroll.'],
+    ]],
+    ['Supervision', [['unwatched', 'Act while nobody watches', 'Off: the agent waits until someone watches its session (Log In in Ping).']]],
+  ],
+};
+// Sets to choose in one go: [label, what it does, names].
+const presets = {
+  person: [
+    ['Everything', 'Input, clipboard, apps, taking over, watching agents', ['view', 'keyboard', 'mouse', 'controller', 'clipboard_read', 'clipboard_write', 'launch', 'take_over', 'watch']],
+    ['See and control', 'Keyboard, mouse and controllers; nothing else', ['view', 'keyboard', 'mouse', 'controller']],
+    ['See only', 'Sees the screen; its input is ignored', ['view']],
+  ],
+  agent: [
+    ['See and control', 'Sees the screen, uses the keyboard and mouse', ['view', 'keyboard', 'mouse', 'unwatched']],
+    ['Only while watched', 'Acts only while someone watches its session', ['view', 'keyboard', 'mouse']],
+    ['See only', 'Sees the screen; no keyboard or mouse', ['view']],
+  ],
+};
+const kind = (agent) => agent ? 'agent' : 'person';
+const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+const presetIndex = (agent, perms) => presets[kind(agent)].findIndex(([, , p]) => sameSet(p, perms || []));
+function permSummary(agent, perms) {
+  if (!(perms || []).includes('view')) return 'Turned away';
+  const i = presetIndex(agent, perms);
+  if (i >= 0) return presets[kind(agent)][i][0];
+  const all = permSections[kind(agent)].flatMap(([, rows]) => rows).length;
+  return `${perms.length} of ${all} permissions`;
+}
+function presetSelect(agent, perms, attrs) {
+  const i = presetIndex(agent, perms);
+  return `<select class="access" ${attrs}>${i < 0 ? '<option value="" selected>Custom</option>' : ''}${presets[kind(agent)].map(([t, d], j) => `<option value="${j}" title="${esc(d)}" ${i === j ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+}
+// The preset chosen for each pairing request, by its id; and the device
+// whose permissions are open on the Clients page (refreshes keep both).
+const pairChoice = {};
+let openPerms = null;
 function agentLine(a) {
   const held = agentHolds.filter(([bit]) => a.flags & bit).map(([, t]) => t);
   const who = a.watchers.length ? ` · watched by ${a.watchers.map(esc).join(', ')}` : '';
@@ -268,8 +337,9 @@ async function dashboard(el) {
 async function pairPage(el, first) {
   const pending = await api('/api/pairing');
   setBadge(pending.length);
-  const active = document.activeElement && document.activeElement.classList.contains('pin');
-  if (!first && active) return; // don't wipe a PIN being typed
+  const focus = document.activeElement;
+  const active = focus && (focus.classList.contains('pin') || focus.tagName === 'SELECT');
+  if (!first && active) return; // don't wipe a PIN being typed, or a choice being made
   const keep = el.querySelector('#pairmsg')?.cloneNode(true);
   el.replaceChildren(h(`
     <p class="sub">On the device, open Ping, choose <b>${esc(hostName)}</b> and click Pair. Enter the 4-digit PIN it shows.</p>
@@ -278,7 +348,9 @@ async function pairPage(el, first) {
       ${pending.length ? pending.map(p => `
         <form class="req" data-id="${p.id}">
           <div class="who"><b>${esc(p.client_name)}</b> ${p.agent ? '<span class="pill agent">AI agent</span>' : ''}<div>${esc(p.peer)} · waiting ${p.waiting_secs}s</div>
-            ${p.agent ? `<div style="max-width:420px">An AI agent asks to use this computer. Paired, it can see the screen and use the keyboard and mouse, but never while a person streams, never on a secure screen, and you can pause, watch or stop it.</div>` : ''}</div>
+            <label class="may">What it may do here ${presetSelect(p.agent, pairChoice[p.id] != null ? presets[kind(p.agent)][pairChoice[p.id]][2] : p.permissions, `data-may="${p.id}" data-agent="${p.agent ? 1 : 0}"`)}</label>
+            ${p.agent ? `<div style="max-width:420px">An AI agent asks to use this computer. Whatever it may do, it never acts while a person streams or on a secure screen, and you can watch, pause or stop it.</div>` : ''}
+            ${!p.agent && sameSet(p.permissions || [], ['view']) ? `<div style="max-width:420px">The first device paired here may do everything; later ones see only, unless you choose more. Choose Everything for a device of your own.</div>` : ''}</div>
           <div class="row">
             <input class="pin" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="····" required>
             <button class="btn primary">Pair</button>
@@ -290,8 +362,12 @@ async function pairPage(el, first) {
   el.querySelectorAll('form.req').forEach(f => f.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = f.querySelector('button.primary'); btn.disabled = true; btn.textContent = 'Pairing…';
+    const may = f.querySelector('[data-may]');
+    const choice = pairChoice[f.dataset.id];
+    const body = { pin: f.querySelector('.pin').value };
+    if (choice != null) body.permissions = presets[kind(may.dataset.agent === '1')][choice][2];
     try {
-      const r = await post(`/api/pairing/${f.dataset.id}`, { pin: f.querySelector('.pin').value });
+      const r = await post(`/api/pairing/${f.dataset.id}`, body);
       $('#pairmsg').replaceChildren(h(`<p class="note ok" style="margin-bottom:18px">Paired with <b>${esc(r.client)}</b>. It can connect now.</p>`));
     } catch (err) {
       $('#pairmsg').replaceChildren(h(`<p class="note bad" style="margin-bottom:18px">${esc(err.message)}</p>`));
@@ -301,37 +377,63 @@ async function pairPage(el, first) {
   el.querySelectorAll('[data-decline]').forEach(b => b.addEventListener('click', async () => {
     await api(`/api/pairing/${b.dataset.decline}`, { method: 'DELETE' }); pairPage(el, true);
   }));
+  el.querySelectorAll('[data-may]').forEach(s => s.addEventListener('change', () => {
+    if (s.value !== '') pairChoice[s.dataset.may] = Number(s.value);
+  }));
   if (first || !active) { const pin = el.querySelector('.pin'); if (pin && first) pin.focus(); }
+}
+
+// The editor of one device's permissions: a preset, then each permission.
+function permsEditor(c) {
+  const k = esc(c.key);
+  return `<tr class="perms"><td colspan="6">
+    <label class="may">Start from ${presetSelect(c.agent, c.permissions, `data-preset="${k}" data-agent="${c.agent ? 1 : 0}"`)}</label>
+    <div class="perms-edit">${permSections[kind(c.agent)].map(([title, rows]) => `<div><h3>${title}</h3>${rows.map(([name, label, help]) => `
+      <div class="check"><input type="checkbox" id="perm-${k}-${name}" data-perm="${name}" data-pkey="${k}" ${c.permissions.includes(name) ? 'checked' : ''}>
+        <div><label for="perm-${k}-${name}">${label}</label><small>${help}</small></div></div>`).join('')}</div>`).join('')}</div>
+    <p class="sub" style="margin:6px 0 0">${c.agent ? 'A change applies at once, to a session that is running too.' : 'A change applies at once, to a stream that is running too. Clipboard sharing that was off when a stream started comes on with the next one.'}</p>
+  </td></tr>`;
 }
 
 async function clientsPage(el) {
   const list = await api('/api/clients');
+  // Keep the page as it is while a choice is being made in it.
+  if (document.activeElement && document.activeElement.tagName === 'SELECT' && el.contains(document.activeElement)) return;
   el.replaceChildren(h(`
-    <p class="sub">Devices that may connect. Unpairing one revokes its key immediately.</p>
+    <p class="sub">Devices that may connect, and what each may do here. Unpairing one revokes its key immediately.</p>
     <div class="card">${list.length ? `
-      <table><thead><tr><th>Name</th><th class="wide">Key</th><th class="wide">Paired</th><th>Status</th><th>Access</th><th></th></tr></thead><tbody>
+      <table><thead><tr><th>Name</th><th class="wide">Key</th><th class="wide">Paired</th><th>Status</th><th>May do</th><th></th></tr></thead><tbody>
       ${list.map(c => `<tr>
         <td><b>${esc(c.name)}</b>${c.agent ? ' <span class="pill agent">AI agent</span>' : ''}</td>
         <td class="mono wide">${esc(c.id)}</td>
         <td class="wide">${c.paired_at ? new Date(c.paired_at * 1000).toLocaleDateString() : '—'}</td>
         <td>${c.online ? '<span class="pill ok"><span class="dot"></span>Connected</span>' : '<span class="pill idle">Offline</span>'}</td>
-        <td>${c.agent ? `<select class="access" data-access="${esc(c.key)}">${[['control', 'See and control'], ['view', 'See only'], ['off', 'Off']].map(([v, t]) => `<option value="${v}" ${c.access === v ? 'selected' : ''}>${t}</option>`).join('')}</select>` : 'Full'}</td>
+        <td><button class="btn" data-open="${esc(c.key)}" title="What it may do here">${esc(permSummary(c.agent, c.permissions))} ${openPerms === c.key ? '▴' : '▾'}</button></td>
         <td style="text-align:right"><button class="btn danger" data-key="${esc(c.key)}" data-name="${esc(c.name)}">Unpair</button></td>
-      </tr>`).join('')}</tbody></table>` : `<p class="empty">No paired devices yet. <a href="#pair">Pair one →</a></p>`}
+      </tr>${openPerms === c.key ? permsEditor(c) : ''}`).join('')}</tbody></table>` : `<p class="empty">No paired devices yet. <a href="#pair">Pair one →</a></p>`}
     </div>`));
+  const setPerms = async (key, permissions) => { await post('/api/clients/permissions', { key, permissions }); clientsPage(el); };
   el.querySelectorAll('[data-key]').forEach(b => b.addEventListener('click', async () => {
     if (!confirm(`Unpair ${b.dataset.name}? It will need to pair again to connect.`)) return;
     await post('/api/clients/remove', { key: b.dataset.key }); clientsPage(el);
   }));
-  el.querySelectorAll('[data-access]').forEach(s => s.addEventListener('change', async () => {
-    await post('/api/clients/access', { key: s.dataset.access, access: s.value }); clientsPage(el);
+  el.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => {
+    openPerms = openPerms === b.dataset.open ? null : b.dataset.open; clientsPage(el);
+  }));
+  el.querySelectorAll('[data-preset]').forEach(s => s.addEventListener('change', () => {
+    if (s.value !== '') setPerms(s.dataset.preset, presets[kind(s.dataset.agent === '1')][Number(s.value)][2]);
+  }));
+  el.querySelectorAll('[data-perm]').forEach(box => box.addEventListener('change', () => {
+    const c = list.find(c => c.key === box.dataset.pkey);
+    const rest = c.permissions.filter(n => n !== box.dataset.perm);
+    setPerms(c.key, box.checked ? [...rest, box.dataset.perm] : rest);
   }));
 }
 
 const settingSections = [
   ['Host', [
     ['name', 'Host name', 'text', 'Shown to clients.'],
-    ['allow_takeover', 'Let a client take over a running session', 'check', 'Otherwise a second client is refused while one is streaming.'],
+    ['allow_takeover', 'Let a client take over a running session', 'check', 'Otherwise a second client is refused while one is streaming. A device also needs Take over in its permissions (Clients).'],
     ['keep_host_displays', "Keep this PC's monitors on while streaming", 'check', 'Off: the virtual display becomes the whole desktop, so windows open where the client sees them.'],
     ['clipboard', 'Share the clipboard with clients', 'check', "Text, images and files copied on either side can be pasted on the other, when the client asks for it too. Password managers' copies are never shared."],
   ]],
@@ -352,7 +454,7 @@ const settingSections = [
     ['adaptive_bitrate', 'Adapt the bitrate to the network', 'check', 'Lower it when the network congests, climb back when it clears. Random loss is left to FEC.'],
   ]],
   ['AI agents', [
-    ['agents', 'Allow paired AI agents', 'check', 'Agents pair like devices (they are marked AI agent on the Devices page, where each one can be cut to see-only or off). They never take over a person, and a person always takes over from them.'],
+    ['agents', 'Allow paired AI agents', 'check', 'Agents pair like devices (they are marked AI agent on the Clients page, where each one has its own permissions). They never take over a person, and a person always takes over from them.'],
     ['agent_local_input_hold_secs', "Hold an agent after someone uses this computer (seconds)", 'number', "Using this computer's own keyboard or mouse holds an agent's input for this long. 0: never hold."],
   ]],
   ['Network', [

@@ -98,7 +98,10 @@ tools/linux-dev tools/linux/loopback-test        # a Linux host streaming to a L
 - `tools/linux/loopback-test` runs Pong on one virtual X screen (a scene of
   moving boxes that logs the input it receives) and Ping on another, pairs
   them by hand, streams with scripted input and a tone, and leaves the logs,
-  a picture and the input log in `target/linux-out/loopback`.
+  a picture and the input log in `target/linux-out/loopback`. With
+  `PINGPONG_DOCKER_ARGS="-e LOOPBACK_PERMISSIONS=view,mouse"` the client is
+  paired with those permissions, and the input log shows what the host
+  let through (here the click and the wheel, no keys).
 - `tools/linux/gnome-desktop` runs a GNOME desktop (mutter nested in an X
   screen, the portal, PipeWire) to test the Wayland host by hand;
   `pingpong-capture`'s `x11-poke` example answers its dialogs.

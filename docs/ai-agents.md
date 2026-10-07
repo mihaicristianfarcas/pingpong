@@ -232,13 +232,18 @@ connects again.
 - **While you have them, the agent waits** — up to 15 minutes, not against
   the turn's minutes. Its next action is then not done: the model gets the
   screen as you left it and decides again. The same goes when you pause it
-  (in Ping or Pong), use the host's own keyboard or mouse, or a secure
-  screen is up. **Stop** or **End Session** end the wait at once.
+  (in Ping or Pong), use the host's own keyboard or mouse, a secure screen
+  is up, or nobody watches an agent that may act only while watched.
+  **Stop** or **End Session** end the wait at once.
 - **Pong's window and web UI** show an agent's session — who watches, what
   holds the agent, and each action as the agent described it — with
   **Pause**, **Resume**, **Hand back** and **Stop**. Under **Devices**, each
-  agent's access: **See and control**, **See only** or **Off** (a change
-  applies to a running session at once). Under **Settings > AI agents**:
+  agent's permissions: **See the screen**, **Keyboard**, **Mouse** and **Act
+  while nobody watches**, or in one go **See and control**, **Only while
+  watched** or **See only** (a change applies to a running session at
+  once; [usage.md](usage.md#what-each-device-may-do)). A person needs
+  **Watch AI agents** among their device's permissions to watch, and the
+  keyboard or mouse to take over. Under **Settings > AI agents**:
   whether agents are allowed at all, and how long someone using the host's
   own keyboard or mouse holds an agent (10 s).
 
@@ -256,9 +261,14 @@ Pong enforces these, whatever the agent or its model does:
    agent until 10 s after it stops. On a Windows host whose monitors the
    session turned off, it ends the agent's session instead: the person there
    would otherwise sit at a dark screen.
-5. **Access per agent.** See only: screenshots, no input. Off: refused.
-6. **Watchers and take-over.** People may watch an agent's session; a
-   watcher who takes over drives the host while the agent's input is held.
+5. **Permissions per agent.** Without **See the screen** it is refused.
+   Without the keyboard or the mouse, an action that needs it is refused,
+   and the model is told what it may use instead; without both, it may
+   only look. Without **Act while nobody watches**, its input is held until
+   a person watches its session.
+6. **Watchers and take-over.** People whose devices may watch agents may
+   watch an agent's session; a watcher who takes over drives the host, as
+   far as their own permissions go, while the agent's input is held.
 7. **Everything is written down.** The agent says what each action is, and
    Pong logs it and shows it.
 
@@ -279,7 +289,15 @@ Claude Code), as its terms want; Ping never reads their credentials.
 role is sealed with the PIN's key, so the host knows it by key rather than
 by what it claims. So the rules cannot be skipped by an agent that forgets
 to say it is one; a person can watch the agent from the same computer; and
-the agent's access can be changed or revoked without touching the person's.
+the agent's permissions can be changed or revoked without touching the
+person's.
+
+**Permissions say what, the rules say when.** An agent's permissions are a
+person's device's (Apollo's per-client permissions), less what an agent may
+never do — share the clipboard, start apps, watch, take over a person — and
+with one of its own: acting only while watched, for the work you want to
+see done. A keyboard-only agent works by shortcuts; the model is told so
+before anything is sent, rather than finding its clicks did nothing.
 The agent keeps its identity and hosts in `agent/` in Ping's data folder.
 
 **The display is the model's size.** Windows and Mac hosts make their
@@ -375,7 +393,7 @@ questions.
 It protects against an agent that is confused, or instructed by something on
 the screen (prompt injection), acting through pingpong. Such an agent cannot
 act while a person streams, over a person, on a secure screen, while someone
-uses the host, beyond its access, beyond its run's budget or after its run,
+uses the host, beyond its permissions, beyond its run's budget or after its run,
 or unseen: every action is in Pong's log, and a person can watch and stop
 it.
 
@@ -387,9 +405,9 @@ It does not protect against:
 - **An agent outside Ping's runner with other tools.** Claude Code or Codex
   run interactively with pingpong added as an MCP server still have their
   shell on the client machine; that is their sandbox's business.
-- **What an agent does within its access.** It is a real computer. Use See
-  only for looking, watch the first runs, and prefer a host account without
-  administrator rights for agents' work.
+- **What an agent does within its permissions.** It is a real computer. Use
+  See only for looking, Only while watched for the first runs, and prefer a
+  host account without administrator rights for agents' work.
 
 ## Status
 
@@ -399,7 +417,11 @@ Codex and Claude Code runs and sessions, the API loops against a scripted
 mock of all three APIs (`tools/linux/agent-tests/mock-llm.py`), OpenRouter's
 free models, watching and taking over, the host's rules (a UAC prompt, input
 at the host, a person starting a stream, See only set mid-session), typing
-Unicode on every host, and approvals across processes.
+Unicode on every host, and approvals across processes. Permissions in the
+Linux container desktop: a keyboard-only agent (clicks refused with the
+reason, typing done), an agent that may act only while watched (its action
+waited 9 s for a watcher, then went on), See only, turned away, and a
+person whose watching was refused, then taken away mid-watch.
 
 Not verified yet:
 

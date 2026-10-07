@@ -3,15 +3,25 @@
 //! A client is a person's device, or an AI agent's identity on one: an agent
 //! pairs with a key of its own, so the host knows it by key, not by what it
 //! claims, and holds its sessions to the agent rules (`session`): it never
-//! takes over a person, a person always takes over from it, and its access
-//! can be cut to view-only or off here without unpairing it.
+//! takes over a person, and a person always takes over from it.
+//!
+//! Each client has its permissions here (`pingpong_proto::permission`,
+//! Apollo's client permissions): what it may see, which input it may send,
+//! which way the clipboard goes, whether it may start apps, take over or
+//! watch agents. They can be changed without unpairing it.
+//!
+//! A file from before permissions has none written: a person's device then
+//! keeps everything it could do, and an agent what its `access` said. The
+//! next save writes permissions in their place.
 
 use std::path::{Path, PathBuf};
 
+use pingpong_proto::permission::Permissions;
 use pingpong_transport::PublicIdentity;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(from = "Stored", into = "Stored")]
 pub struct Client {
     pub name: String,
     pub x25519: String,
@@ -20,20 +30,72 @@ pub struct Client {
     pub paired_at: u64,
     /// The client's rendezvous key (Ed25519, hex), for connecting from the
     /// internet. Absent for clients paired before it existed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rendezvous: Option<String>,
     /// An AI agent's identity (paired as one).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent: bool,
-    /// What an agent may do here (ignored for people).
-    #[serde(default, skip_serializing_if = "Access::is_default")]
-    pub access: Access,
+    /// What it may do here; only what its kind can be allowed
+    /// (`Permissions::fit`).
+    pub permissions: Permissions,
 }
 
-/// What an agent identity may do on this host.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+/// A client as `clients.toml` holds it.
+#[derive(Serialize, Deserialize)]
+struct Stored {
+    name: String,
+    x25519: String,
+    mlkem: String,
+    paired_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rendezvous: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    agent: bool,
+    /// Absent from files written before permissions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    permissions: Option<Permissions>,
+    /// An agent's permissions in files written before them: read, never
+    /// written.
+    #[serde(default, skip_serializing)]
+    access: Option<Access>,
+}
+
+impl From<Stored> for Client {
+    fn from(s: Stored) -> Client {
+        let permissions = match (s.permissions, s.agent) {
+            (Some(p), agent) => p.fit(agent),
+            (None, false) => Permissions::PERSON_ALL,
+            (None, true) => s.access.unwrap_or_default().permissions(),
+        };
+        Client {
+            name: s.name,
+            x25519: s.x25519,
+            mlkem: s.mlkem,
+            paired_at: s.paired_at,
+            rendezvous: s.rendezvous,
+            agent: s.agent,
+            permissions,
+        }
+    }
+}
+
+impl From<Client> for Stored {
+    fn from(c: Client) -> Stored {
+        Stored {
+            name: c.name,
+            x25519: c.x25519,
+            mlkem: c.mlkem,
+            paired_at: c.paired_at,
+            rendezvous: c.rendezvous,
+            agent: c.agent,
+            permissions: Some(c.permissions),
+            access: None,
+        }
+    }
+}
+
+/// What an agent could do before permissions, in three steps.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Access {
+enum Access {
     /// See the screen and use the keyboard and mouse.
     #[default]
     Control,
@@ -44,24 +106,11 @@ pub enum Access {
 }
 
 impl Access {
-    fn is_default(&self) -> bool {
-        *self == Access::Control
-    }
-
-    pub fn parse(s: &str) -> Option<Access> {
-        match s {
-            "control" => Some(Access::Control),
-            "view" => Some(Access::View),
-            "off" => Some(Access::Off),
-            _ => None,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
+    fn permissions(self) -> Permissions {
         match self {
-            Access::Control => "control",
-            Access::View => "view",
-            Access::Off => "off",
+            Access::Control => Permissions::AGENT_ALL,
+            Access::View => Permissions::SEE_ONLY,
+            Access::Off => Permissions::NONE,
         }
     }
 }
@@ -70,7 +119,7 @@ impl Access {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     Person,
-    Agent(Access),
+    Agent,
 }
 
 impl Client {
@@ -144,14 +193,23 @@ impl Clients {
         pingpong_transport::identity::write_private(&self.path, text.as_bytes())
     }
 
+    /// What a newly paired client gets, unless the person pairing it
+    /// chooses (`Permissions::on_pairing`).
+    pub fn default_permissions(&self, agent: bool) -> Permissions {
+        let people = self.list.iter().filter(|c| !c.agent).count();
+        Permissions::on_pairing(agent, people)
+    }
+
     /// Add (or rename, if the key is already known) a client. `agent`: the
-    /// identity is an AI agent's.
+    /// identity is an AI agent's. `permissions`: what it may do, or the
+    /// default (`default_permissions`, counted before it is added).
     pub fn add(
         &mut self,
         name: &str,
         public: &PublicIdentity,
         rendezvous: Option<[u8; 32]>,
         agent: bool,
+        permissions: Option<Permissions>,
     ) -> std::io::Result<Client> {
         let (x, m) = public.to_b64();
         let now = std::time::SystemTime::now()
@@ -159,6 +217,12 @@ impl Clients {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let rendezvous = rendezvous.map(|k| k.iter().map(|b| format!("{b:02x}")).collect());
+        // Pairing again replaces the entry: it does not count as a person
+        // already here when the default is worked out.
+        let others = self.list.iter().filter(|c| c.x25519 != x && !c.agent);
+        let permissions = permissions
+            .unwrap_or_else(|| Permissions::on_pairing(agent, others.count()))
+            .fit(agent);
         let client = Client {
             name: name.to_string(),
             x25519: x.clone(),
@@ -166,7 +230,7 @@ impl Clients {
             paired_at: now,
             rendezvous,
             agent,
-            access: Access::default(),
+            permissions,
         };
         match self.list.iter_mut().find(|c| c.x25519 == x) {
             Some(existing) => *existing = client.clone(),
@@ -200,34 +264,40 @@ impl Clients {
         Ok(Some(removed))
     }
 
-    /// Set what an agent may do. False if there is no such client.
-    pub fn set_access(&mut self, x25519_b64: &str, access: Access) -> std::io::Result<bool> {
+    /// Set what a client may do (only what its kind can be allowed). The
+    /// permissions it now has, or None if there is no such client.
+    pub fn set_permissions(
+        &mut self,
+        x25519_b64: &str,
+        permissions: Permissions,
+    ) -> std::io::Result<Option<Permissions>> {
         let Some(c) = self.list.iter_mut().find(|c| c.x25519 == x25519_b64) else {
-            return Ok(false);
+            return Ok(None);
         };
-        c.access = access;
+        c.permissions = permissions.fit(c.agent);
+        let now = c.permissions;
         self.save()?;
-        Ok(true)
+        Ok(Some(now))
     }
 
-    /// Who the client with this key is (a person when unknown: every peer
-    /// the tunnel admits is paired).
-    pub fn role_of(&self, key: &[u8; 32]) -> Role {
-        match self
-            .list
+    fn by_key(&self, key: &[u8; 32]) -> Option<&Client> {
+        self.list
             .iter()
             .find(|c| c.public().is_some_and(|p| &p.x25519 == key))
-        {
-            Some(c) if c.agent => Role::Agent(c.access),
-            _ => Role::Person,
+    }
+
+    /// Who the client with this key is, and what it may do. A key that is
+    /// not (or no longer) paired may do nothing.
+    pub fn role_of(&self, key: &[u8; 32]) -> (Role, Permissions) {
+        match self.by_key(key) {
+            Some(c) if c.agent => (Role::Agent, c.permissions),
+            Some(c) => (Role::Person, c.permissions),
+            None => (Role::Person, Permissions::NONE),
         }
     }
 
     pub fn name_of(&self, key: &[u8; 32]) -> Option<&str> {
-        self.list
-            .iter()
-            .find(|c| c.public().is_some_and(|p| &p.x25519 == key))
-            .map(|c| c.name.as_str())
+        self.by_key(key).map(|c| c.name.as_str())
     }
 }
 
@@ -247,6 +317,7 @@ fn read(path: &Path) -> Result<Vec<Client>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pingpong_proto::permission::{KEYBOARD, MOUSE, UNWATCHED, VIEW};
     use pingpong_transport::Identity;
 
     #[test]
@@ -254,39 +325,107 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let id = Identity::generate();
         let mut c = Clients::load(dir.path());
-        c.add("mac", id.public(), None, false).unwrap();
-        c.add("macbook", id.public(), None, false).unwrap();
+        c.add("mac", id.public(), None, false, None).unwrap();
+        c.add("macbook", id.public(), None, false, None).unwrap();
         let c = Clients::load(dir.path());
         assert_eq!(c.list().len(), 1);
         assert_eq!(c.name_of(&id.public().x25519), Some("macbook"));
         assert_eq!(c.list()[0].public().as_ref(), Some(id.public()));
-        assert_eq!(c.role_of(&id.public().x25519), Role::Person);
+        // Pairing again is not a second person: still the first one's.
+        assert_eq!(
+            c.role_of(&id.public().x25519),
+            (Role::Person, Permissions::PERSON_ALL)
+        );
+        // A key that is not paired may do nothing.
+        let stranger = Identity::generate();
+        assert_eq!(c.role_of(&stranger.public().x25519).1, Permissions::NONE);
     }
 
     #[test]
-    fn agents_are_known_by_key_and_their_access_persists() {
+    fn the_first_person_gets_everything_later_ones_see_only_unless_chosen() {
         let dir = tempfile::tempdir().unwrap();
-        let (person, agent) = (Identity::generate(), Identity::generate());
-        let mut c = Clients::load(dir.path());
-        c.add("mac", person.public(), None, false).unwrap();
-        c.add("mac agent", agent.public(), None, true).unwrap();
-        assert_eq!(
-            c.role_of(&agent.public().x25519),
-            Role::Agent(Access::Control)
+        let (a, b, c, agent) = (
+            Identity::generate(),
+            Identity::generate(),
+            Identity::generate(),
+            Identity::generate(),
         );
+        let mut list = Clients::load(dir.path());
+        assert_eq!(list.default_permissions(false), Permissions::PERSON_ALL);
+        list.add("agent", agent.public(), None, true, None).unwrap();
+        // Agents do not count.
+        assert_eq!(list.default_permissions(false), Permissions::PERSON_ALL);
+        list.add("mac", a.public(), None, false, None).unwrap();
+        assert_eq!(list.default_permissions(false), Permissions::SEE_ONLY);
+        list.add("tv", b.public(), None, false, None).unwrap();
+        list.add(
+            "kid",
+            c.public(),
+            None,
+            false,
+            Some(Permissions::PERSON_CONTROL),
+        )
+        .unwrap();
+        let list = Clients::load(dir.path());
+        let of = |id: &Identity| list.role_of(&id.public().x25519);
+        assert_eq!(of(&a), (Role::Person, Permissions::PERSON_ALL));
+        assert_eq!(of(&b), (Role::Person, Permissions::SEE_ONLY));
+        assert_eq!(of(&c), (Role::Person, Permissions::PERSON_CONTROL));
+        assert_eq!(of(&agent), (Role::Agent, Permissions::AGENT_ALL));
+    }
+
+    #[test]
+    fn an_agents_permissions_persist_and_fit_an_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent = Identity::generate();
+        let mut c = Clients::load(dir.path());
+        c.add("mac agent", agent.public(), None, true, None)
+            .unwrap();
         let (x, _) = agent.public().to_b64();
-        assert!(c.set_access(&x, Access::View).unwrap());
+        // Only while watched.
+        let watched = Permissions::from_bits(VIEW | KEYBOARD | MOUSE);
+        assert_eq!(c.set_permissions(&x, watched).unwrap(), Some(watched));
+        let text = std::fs::read_to_string(dir.path().join("clients.toml")).unwrap();
+        assert!(!text.contains("access"), "{text}");
         let c = Clients::load(dir.path());
-        assert_eq!(c.role_of(&agent.public().x25519), Role::Agent(Access::View));
-        assert_eq!(c.role_of(&person.public().x25519), Role::Person);
-        // A file from before agents reads as people.
+        assert_eq!(c.role_of(&agent.public().x25519), (Role::Agent, watched));
+        // What a person's device could have means nothing for an agent.
+        let mut c = c;
+        let all = Permissions::PERSON_ALL.with(UNWATCHED, true);
+        assert_eq!(
+            c.set_permissions(&x, all).unwrap(),
+            Some(Permissions::AGENT_ALL)
+        );
+        assert_eq!(c.set_permissions("nobody", all).unwrap(), None);
+    }
+
+    #[test]
+    fn a_file_from_before_permissions_keeps_what_each_client_could_do() {
+        let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("clients.toml"),
-            "[[client]]\nname = \"old\"\nx25519 = \"a\"\nmlkem = \"b\"\npaired_at = 1\n",
+            "[[client]]\nname = \"old\"\nx25519 = \"a\"\nmlkem = \"b\"\npaired_at = 1\n\n\
+             [[client]]\nname = \"bot\"\nx25519 = \"c\"\nmlkem = \"d\"\npaired_at = 1\nagent = true\n\n\
+             [[client]]\nname = \"viewer\"\nx25519 = \"e\"\nmlkem = \"f\"\npaired_at = 1\nagent = true\n\
+             access = \"view\"\n\n\
+             [[client]]\nname = \"gone\"\nx25519 = \"g\"\nmlkem = \"h\"\npaired_at = 1\nagent = true\n\
+             access = \"off\"\n\n\
+             [[client]]\nname = \"new\"\nx25519 = \"i\"\nmlkem = \"j\"\npaired_at = 1\n\
+             permissions = [\"view\", \"mouse\", \"fly\"]\n",
         )
         .unwrap();
         let c = Clients::load(dir.path());
-        assert!(!c.list()[0].agent);
+        let got: Vec<_> = c.list().iter().map(|c| (c.agent, c.permissions)).collect();
+        assert_eq!(
+            got,
+            vec![
+                (false, Permissions::PERSON_ALL),
+                (true, Permissions::AGENT_ALL),
+                (true, Permissions::SEE_ONLY),
+                (true, Permissions::NONE),
+                (false, Permissions::from_bits(VIEW | MOUSE)),
+            ]
+        );
     }
 
     #[test]
@@ -298,7 +437,7 @@ mod tests {
         let mut c = Clients::load(dir.path());
         assert!(c.list().is_empty());
         let refused = c
-            .add("new", Identity::generate().public(), None, false)
+            .add("new", Identity::generate().public(), None, false, None)
             .unwrap_err();
         assert!(
             refused.to_string().contains("will not save over it"),
@@ -308,7 +447,7 @@ mod tests {
         // No file yet is no clients yet, and saving works.
         std::fs::remove_file(&path).unwrap();
         let mut c = Clients::load(dir.path());
-        c.add("new", Identity::generate().public(), None, false)
+        c.add("new", Identity::generate().public(), None, false, None)
             .unwrap();
         assert_eq!(Clients::load(dir.path()).list().len(), 1);
     }

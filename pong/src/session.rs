@@ -17,6 +17,18 @@
 //!   always when its access is view-only;
 //! - it and its watchers hear who drives, and why, in `Control::AgentState`.
 //!
+//! Every client is held to its permissions (`clients`,
+//! `pingpong_proto::permission`), as Apollo holds its clients to theirs: no
+//! session without seeing the screen, no app without starting apps, no
+//! taking over without that, no watching an agent without watching; input
+//! of a kind the client may not send is dropped as it arrives, and the
+//! clipboard moves only the ways it may. A change applies to a running
+//! session at once: taking away seeing ends it (Apollo's
+//! `update_device_info`, `stream.cpp`), anything else is held back from then
+//! on, and the client is told (`Control::Permissions`). Clipboard sharing
+//! that was off when the session started stays off until the next one: the
+//! client set up none.
+//!
 //! ```text
 //! SessionStart ─▶ display at the client's mode ─▶ video pipeline ready
 //!             ─▶ input installed ─▶ SessionAck ─▶ frames flow
@@ -25,7 +37,7 @@
 //! ```
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -38,11 +50,12 @@ use pingpong_proto::control::{
     SessionAck, SessionStart,
 };
 use pingpong_proto::fec::FecPolicy;
-use pingpong_proto::input::{InputEvent, SequenceGate};
+use pingpong_proto::input::{InputEvent, SequenceGate, MAX_EVENTS_PER_PACKET};
+use pingpong_proto::permission::{self, Permissions};
 use pingpong_transport::{Endpoint, Peer, PeerId};
 
 use crate::audio::AudioHandle;
-use crate::clients::{Access, Clients, Role};
+use crate::clients::{Clients, Role};
 use crate::config::HostConfig;
 use crate::host::SessionStatus;
 use crate::platform::{self, Platform};
@@ -94,10 +107,11 @@ pub enum SessionCmd {
         peer: PeerId,
         op: u8,
     },
-    /// An agent's access changed (web UI): its running session follows.
-    Access {
+    /// A client's permissions changed (web UI): its running session, or
+    /// its watching, follows.
+    Permissions {
         key: String,
-        access: Access,
+        permissions: Permissions,
     },
     Shutdown,
 }
@@ -115,6 +129,8 @@ pub struct InputState {
     pub sink: platform::Sink,
     /// `peer`'s input is dropped (an agent's, while held).
     pub held: bool,
+    /// What `peer` may send: input of other kinds is dropped.
+    pub allowed: Permissions,
     /// When input was last injected: someone at the host is told from the
     /// agent by input more recent than this.
     pub last_injected: Option<Instant>,
@@ -124,8 +140,14 @@ pub struct InputState {
 }
 
 impl InputState {
-    /// Inject what the client sent, and follow the keys for repeats.
+    /// Inject what the client sent and may send, and follow the keys for
+    /// repeats.
     pub fn inject(&mut self, events: &[InputEvent], now: Instant) {
+        let mut buf = [InputEvent::Wheel { dv: 0, dh: 0 }; MAX_EVENTS_PER_PACKET];
+        let events = pingpong_proto::input::permitted(events, self.allowed, &mut buf);
+        if events.is_empty() {
+            return;
+        }
         self.last_injected = Some(now);
         if let Err(e) = self.sink.inject(events) {
             tracing::debug!(error = %e, "input injection");
@@ -148,6 +170,20 @@ impl InputState {
             r.clear();
         }
         let _ = self.sink.release_all();
+    }
+
+    /// From now on, input goes in as `allowed` permits. What is held is
+    /// let go when that is less than before: a key held down when the
+    /// keyboard is taken away must not stay down.
+    pub fn allow(&mut self, allowed: Permissions) {
+        if allowed == self.allowed {
+            return;
+        }
+        let kinds = permission::KEYBOARD | permission::MOUSE;
+        if allowed.bits() & kinds != self.allowed.bits() & kinds {
+            self.release_all();
+        }
+        self.allowed = allowed;
     }
 
     /// Press the held key again if its repeat is due; when the next is.
@@ -195,6 +231,9 @@ pub struct AgentLogEntry {
 #[derive(Default)]
 pub struct Shared {
     pub active_peer: AtomicU32,
+    /// What the session's client may do (`Permissions` bits), for what the
+    /// receive thread checks itself (controllers).
+    pub client_permissions: AtomicU16,
     pub video: Mutex<Option<Sender<VideoCmd>>>,
     pub input: Mutex<Option<InputState>>,
     /// The session client's controllers, as virtual pads.
@@ -230,16 +269,27 @@ impl Clip {
         }
     }
 
+    /// Which ways copies go, from now on.
+    fn set_directions(&self, d: pingpong_clipboard::Directions) {
+        match self {
+            #[cfg(not(windows))]
+            Clip::Here(c) => c.set_directions(d),
+            #[cfg(windows)]
+            Clip::Agent(a) => a.set_directions(d),
+        }
+    }
+
     fn start(
         bitrate_kbps: u32,
         peer_name: String,
+        directions: pingpong_clipboard::Directions,
         send: impl Fn(&[u8]) + Send + 'static,
     ) -> Option<Clip> {
         let rate = pingpong_clipboard::rate_for(bitrate_kbps);
         #[cfg(windows)]
         {
             let _ = peer_name;
-            match crate::clipagent::ClipAgent::spawn(rate, send) {
+            match crate::clipagent::ClipAgent::spawn(rate, directions, send) {
                 Ok(a) => Some(Clip::Agent(a)),
                 Err(e) => {
                     tracing::warn!(error = e, "cannot share the clipboard");
@@ -254,6 +304,7 @@ impl Clip {
                 rate,
                 offer_current: false,
                 peer: peer_name,
+                directions,
             };
             Some(Clip::Here(pingpong_clipboard::ClipSync::start(opts, send)))
         }
@@ -289,16 +340,29 @@ impl Shared {
     }
 }
 
+/// Which ways the clipboard goes for a client with these permissions: the
+/// host's copies to it if it may read them, its copies here if it may
+/// write them.
+fn clip_directions(p: Permissions) -> pingpong_clipboard::Directions {
+    pingpong_clipboard::Directions {
+        send: p.allows(permission::CLIPBOARD_READ),
+        receive: p.allows(permission::CLIPBOARD_WRITE),
+    }
+}
+
 /// Someone watching an agent's session.
 struct Watcher {
     peer: Arc<Peer>,
     /// Their request, to answer its retransmits.
     req: SessionStart,
+    /// What they may do (they may watch).
+    permissions: Permissions,
 }
 
 /// What an agent's session has beyond a person's.
 struct AgentRun {
-    access: Access,
+    /// The agent's permissions.
+    permissions: Permissions,
     watchers: Vec<Watcher>,
     /// The watcher who took over.
     controller: Option<PeerId>,
@@ -325,8 +389,14 @@ impl AgentRun {
         if self.secure {
             flags |= agent_state::SECURE_DESKTOP;
         }
-        if self.access == Access::View {
+        if !self
+            .permissions
+            .allows_any(permission::KEYBOARD | permission::MOUSE)
+        {
             flags |= agent_state::VIEW_ONLY;
+        }
+        if !self.permissions.allows(permission::UNWATCHED) && self.watchers.is_empty() {
+            flags |= agent_state::UNWATCHED;
         }
         AgentState {
             flags,
@@ -350,6 +420,8 @@ struct Active {
     lan_shards: bool,
     /// Who the video goes to: the client, then watchers.
     recipients: crate::sender::Recipients,
+    /// What the client may do.
+    permissions: Permissions,
     /// An agent's session.
     agent: Option<AgentRun>,
 }
@@ -429,7 +501,9 @@ impl SessionManager {
                     }
                 }
                 Ok(SessionCmd::AgentControl { peer, op }) => self.agent_control(peer, op),
-                Ok(SessionCmd::Access { key, access }) => self.access_changed(&key, access),
+                Ok(SessionCmd::Permissions { key, permissions }) => {
+                    self.permissions_changed(&key, permissions)
+                }
                 Ok(SessionCmd::Loss { peer, report }) => self.on_loss(peer, report),
                 Ok(SessionCmd::Shutdown)
                 | Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
@@ -470,6 +544,7 @@ impl SessionManager {
                 host: platform::HOST_KIND,
                 features: 0,
                 video: 0,
+                permissions: 0,
             },
         );
     }
@@ -492,14 +567,15 @@ impl SessionManager {
         }
         self.refused = None;
         let cfg = self.config.read().clone();
-        let role = self.clients.lock().role_of(&peer.public().x25519);
+        let (role, permissions) = self.clients.lock().role_of(&peer.public().x25519);
         if req.flags & control::flags::WATCH != 0 {
-            self.watch(peer, req, role);
+            self.watch(peer, req, role, permissions);
             return;
         }
-        let Ok(agent_access) = self.admit(&peer, &req, role, &cfg) else {
+        if self.admit(&peer, &req, role, permissions, &cfg).is_err() {
             return;
-        };
+        }
+        let agent = role == Role::Agent;
         // A restart with new parameters: the platform keeps what it can of
         // the display (Windows reuses its virtual display).
         drop(self.stop_stream());
@@ -582,6 +658,16 @@ impl SessionManager {
             }
         };
 
+        let agent_run = agent.then(|| AgentRun {
+            permissions,
+            watchers: Vec::new(),
+            controller: None,
+            paused: false,
+            local_until: None,
+            secure: false,
+            last_check: Instant::now() - AGENT_CHECK_EVERY,
+            last_state: None,
+        });
         let sink = self.platform.input_sink(&display, width, height);
         let repeat = key_repeat(&sink, &req);
         *self.shared.input.lock() = Some(InputState {
@@ -589,15 +675,21 @@ impl SessionManager {
             gate: SequenceGate::new(),
             others: std::collections::HashMap::new(),
             sink,
-            held: agent_access == Some(Access::View),
+            held: agent_run
+                .as_ref()
+                .is_some_and(|r| !r.state(Instant::now()).agent_may_act()),
+            allowed: permissions,
             last_injected: None,
             repeat,
         });
         self.shared
-            .agent_session
-            .store(agent_access.is_some(), Ordering::Release);
-        if agent_access.is_some() {
-            tracing::info!(client = self.name_of(&peer), access = ?agent_access, "an AI agent's session");
+            .client_permissions
+            .store(permissions.bits(), Ordering::Release);
+        self.shared.agent_session.store(agent, Ordering::Release);
+        if agent {
+            tracing::info!(client = self.name_of(&peer), permissions = ?permissions.names(), "an AI agent's session");
+        } else {
+            tracing::info!(client = self.name_of(&peer), permissions = ?permissions.names(), "a person's session");
         }
         *self.shared.video.lock() = Some(video.commands());
         self.shared.active_peer.store(peer.id(), Ordering::Release);
@@ -614,11 +706,14 @@ impl SessionManager {
         };
         self.platform.starting(&peer, &self.shared, &self.endpoint);
 
-        // A person's client may share the clipboard (an agent's, and
-        // watchers, never do).
+        // A person's client may share the clipboard, the ways it may (an
+        // agent's, and watchers, never do).
+        let clipboard = !agent
+            && cfg.clipboard
+            && req.flags & control::flags::CLIPBOARD != 0
+            && permissions.allows_any(permission::CLIPBOARD_READ | permission::CLIPBOARD_WRITE);
         let clipboard =
-            agent_access.is_none() && cfg.clipboard && req.flags & control::flags::CLIPBOARD != 0;
-        let clipboard = clipboard && self.start_clipboard(&peer, bitrate_kbps);
+            clipboard && self.start_clipboard(&peer, bitrate_kbps, clip_directions(permissions));
 
         // A client that reassembles LAN-sized shards gets them while it is
         // on this network (the sender looks at its address every frame).
@@ -645,6 +740,7 @@ impl SessionManager {
             host: platform::HOST_KIND,
             features,
             video: picture,
+            permissions: permissions.bits(),
         };
         self.ack(&peer, ack);
         video.open();
@@ -660,49 +756,55 @@ impl SessionManager {
             fec: FecPolicy::DEFAULT,
             lan_shards,
             recipients,
-            agent: agent_access.map(|access| AgentRun {
-                access,
-                watchers: Vec::new(),
-                controller: None,
-                paused: false,
-                local_until: None,
-                secure: false,
-                last_check: Instant::now() - AGENT_CHECK_EVERY,
-                last_state: None,
-            }),
+            permissions,
+            agent: agent_run,
         });
         self.platform.started(&req);
     }
 
-    /// Whether `peer` may have the host now: agents only where agents are
-    /// allowed, never over a person, and a running session is taken over
-    /// only as the rules say. `Ok` holds the agent's access (`None`: a
-    /// person); `Err` means refused, and the client has been told.
+    /// Whether `peer` may have the host now: only if it may see the screen
+    /// (and start the app it asks for); agents only where agents are
+    /// allowed, never over a person; and a running session is taken over
+    /// only as the rules and its permissions say. `Err` means refused, and
+    /// the client has been told.
     fn admit(
         &mut self,
         peer: &Arc<Peer>,
         req: &SessionStart,
         role: Role,
+        permissions: Permissions,
         cfg: &HostConfig,
-    ) -> Result<Option<Access>, ()> {
-        let agent_access = match role {
-            Role::Person => None,
-            Role::Agent(access) => {
-                if !cfg.agents || access == Access::Off {
-                    tracing::warn!(
-                        client = self.name_of(peer),
-                        "an agent's session refused: agents are off here"
-                    );
-                    self.refuse(peer, req, AckStatus::AgentNotAllowed);
-                    return Err(());
-                }
-                Some(access)
-            }
-        };
+    ) -> Result<(), ()> {
+        let agent = role == Role::Agent;
+        if agent && (!cfg.agents || !permissions.allows(permission::VIEW)) {
+            tracing::warn!(
+                client = self.name_of(peer),
+                "an agent's session refused: agents are off here, or this one may not see"
+            );
+            self.refuse(peer, req, AckStatus::AgentNotAllowed);
+            return Err(());
+        }
+        if !permissions.allows(permission::VIEW) {
+            tracing::warn!(
+                client = self.name_of(peer),
+                "a session refused: this device may not see the screen"
+            );
+            self.refuse(peer, req, AckStatus::NotAllowed);
+            return Err(());
+        }
+        if req.app != control::app::DESKTOP && !permissions.allows(permission::LAUNCH) {
+            tracing::warn!(
+                client = self.name_of(peer),
+                app = req.app,
+                "a session refused: this device may not start apps"
+            );
+            self.refuse(peer, req, AckStatus::AppNotAllowed);
+            return Err(());
+        }
         self.platform.claim();
         if let Some(a) = &self.active {
             if a.peer.id() != peer.id() {
-                match (a.agent.is_some(), agent_access.is_some()) {
+                match (a.agent.is_some(), agent) {
                     // A person's session is never an agent's to take.
                     (false, true) => {
                         tracing::info!(
@@ -714,6 +816,14 @@ impl SessionManager {
                     // A person always takes over from an agent.
                     (true, false) => tracing::info!("a person is taking over from the agent"),
                     _ if !cfg.allow_takeover => {
+                        self.refuse(peer, req, AckStatus::Busy);
+                        return Err(());
+                    }
+                    (false, false) if !permissions.allows(permission::TAKE_OVER) => {
+                        tracing::info!(
+                            client = self.name_of(peer),
+                            "a device that may not take over asked while another streams; refused"
+                        );
                         self.refuse(peer, req, AckStatus::Busy);
                         return Err(());
                     }
@@ -729,14 +839,19 @@ impl SessionManager {
                 self.end_watchers_except(EndReason::Replaced, peer.id());
             }
         }
-        Ok(agent_access)
+        Ok(())
     }
 
-    /// Share the clipboard with the session's client. False if it could not
-    /// be started.
-    fn start_clipboard(&self, peer: &Arc<Peer>, bitrate_kbps: u32) -> bool {
+    /// Share the clipboard with the session's client, the ways it may go.
+    /// False if it could not be started.
+    fn start_clipboard(
+        &self,
+        peer: &Arc<Peer>,
+        bitrate_kbps: u32,
+        directions: pingpong_clipboard::Directions,
+    ) -> bool {
         let (endpoint, to) = (self.endpoint.clone(), peer.clone());
-        let clip = Clip::start(bitrate_kbps, self.name_of(peer), move |p| {
+        let clip = Clip::start(bitrate_kbps, self.name_of(peer), directions, move |p| {
             let _ = endpoint.send(&to, p);
         });
         let started = clip.is_some();
@@ -754,8 +869,16 @@ impl SessionManager {
 
     /// A person asks to watch the agent's session: the same picture, from
     /// its next keyframe.
-    fn watch(&mut self, peer: Arc<Peer>, req: SessionStart, role: Role) {
+    fn watch(&mut self, peer: Arc<Peer>, req: SessionStart, role: Role, permissions: Permissions) {
         let name = self.name_of(&peer);
+        if role == Role::Person && !permissions.allows(permission::VIEW | permission::WATCH) {
+            tracing::warn!(
+                client = name,
+                "a watch refused: this device may not watch agents"
+            );
+            self.send_refusal(&peer, &req, AckStatus::NotAllowed);
+            return;
+        }
         // Refused without remembering it (as `refuse` would): the agent's
         // session may start any moment, and the watcher asks again.
         let Some(a) = self.active.as_mut() else {
@@ -767,13 +890,15 @@ impl SessionManager {
             return;
         };
         // Agents watch nobody; and nobody watches themselves.
-        if matches!(role, Role::Agent(_)) || a.peer.id() == peer.id() {
+        if role == Role::Agent || a.peer.id() == peer.id() {
             self.send_refusal(&peer, &req, AckStatus::NothingToWatch);
             return;
         }
+        // The agent's picture, with the watcher's own permissions.
         let ack = SessionAck {
             nonce: req.nonce,
             audio_channels: 0,
+            permissions: permissions.bits(),
             ..a.ack
         };
         match run.watchers.iter_mut().find(|w| w.peer.id() == peer.id()) {
@@ -787,6 +912,7 @@ impl SessionManager {
                 run.watchers.push(Watcher {
                     peer: peer.clone(),
                     req,
+                    permissions,
                 });
                 a.recipients.write().push(peer.clone());
                 self.shared.watchers.lock().push(peer.id());
@@ -834,21 +960,66 @@ impl SessionManager {
         run.last_state = None;
     }
 
-    fn access_changed(&mut self, key: &str, access: Access) {
+    /// A client's permissions changed: its session, or its watching, follows
+    /// at once, and it is told.
+    fn permissions_changed(&mut self, key: &str, permissions: Permissions) {
         let Some(a) = self.active.as_mut() else {
             return;
         };
-        if a.peer.public().to_b64().0 != key {
+        if a.peer.public().to_b64().0 == key {
+            tracing::info!(permissions = ?permissions.names(), "the session's client's permissions changed");
+            if !permissions.allows(permission::VIEW) {
+                tracing::info!("the client may no longer see the screen; ending its session");
+                self.teardown(Some(EndReason::NotAllowed));
+                return;
+            }
+            a.permissions = permissions;
+            self.shared
+                .client_permissions
+                .store(permissions.bits(), Ordering::Release);
+            if let Some(clip) = self.shared.clip.lock().as_ref() {
+                clip.set_directions(clip_directions(permissions));
+            }
+            if let Some(run) = a.agent.as_mut() {
+                run.permissions = permissions;
+                // `agent_tick` works out who drives, and tells them.
+                run.last_state = None;
+            } else if let Some(input) = self.shared.input.lock().as_mut() {
+                input.allow(permissions);
+            }
+            send_control(
+                &self.endpoint,
+                &a.peer,
+                Control::Permissions(permissions.bits()),
+            );
             return;
         }
         let Some(run) = a.agent.as_mut() else { return };
-        tracing::info!(access = access.name(), "the agent's access changed");
-        if access == Access::Off {
-            self.teardown(Some(EndReason::Quit));
+        let Some(w) = run
+            .watchers
+            .iter_mut()
+            .find(|w| w.peer.public().to_b64().0 == key)
+        else {
+            return;
+        };
+        tracing::info!(permissions = ?permissions.names(), "a watcher's permissions changed");
+        w.permissions = permissions;
+        let (peer, id) = (w.peer.clone(), w.peer.id());
+        if !permissions.allows(permission::VIEW | permission::WATCH) {
+            send_control(
+                &self.endpoint,
+                &peer,
+                Control::SessionEnd(EndReason::NotAllowed),
+            );
+            self.drop_watcher(id);
             return;
         }
-        run.access = access;
         run.last_state = None;
+        send_control(
+            &self.endpoint,
+            &peer,
+            Control::Permissions(permissions.bits()),
+        );
     }
 
     /// A watcher (or the web UI, `peer` 0) acts on the agent.
@@ -862,6 +1033,17 @@ impl SessionManager {
         }
         match op {
             agent_control::TAKE_OVER if peer != 0 => {
+                let may = run.watchers.iter().any(|w| {
+                    w.peer.id() == peer
+                        && w.permissions
+                            .allows_any(permission::KEYBOARD | permission::MOUSE)
+                });
+                if !may {
+                    tracing::info!(
+                        "a watcher that may use neither the keyboard nor the mouse cannot take over"
+                    );
+                    return;
+                }
                 if run.controller != Some(peer) {
                     tracing::info!("a watcher took over from the agent");
                     run.controller = Some(peer);
@@ -957,11 +1139,14 @@ impl SessionManager {
         };
         let Some(run) = a.agent.as_mut() else { return };
         let state = run.state(now);
-        // Whose input goes in: a watcher who took over, else the agent
-        // unless something holds it.
-        let (owner, held) = match run.controller {
-            Some(w) => (w, false),
-            None => (a.peer.id(), !state.agent_may_act()),
+        // Whose input goes in, as far as it may: a watcher who took over,
+        // else the agent unless something holds it.
+        let (owner, held, allowed) = match run
+            .controller
+            .and_then(|c| run.watchers.iter().find(|w| w.peer.id() == c))
+        {
+            Some(w) => (w.peer.id(), false, w.permissions),
+            None => (a.peer.id(), !state.agent_may_act(), run.permissions),
         };
         if let Some(input) = self.shared.input.lock().as_mut() {
             if input.peer != owner || input.held != held {
@@ -976,6 +1161,7 @@ impl SessionManager {
                 input.peer = owner;
                 input.held = held;
             }
+            input.allow(allowed);
         }
         let due = match run.last_state {
             Some((last, at)) => last != state || now.duration_since(at) >= AGENT_STATE_EVERY,
@@ -1001,6 +1187,7 @@ impl SessionManager {
     /// session's display, for the caller to keep or give back.
     fn stop_stream(&mut self) -> Option<platform::Display> {
         self.shared.active_peer.store(0, Ordering::Release);
+        self.shared.client_permissions.store(0, Ordering::Release);
         self.shared.agent_session.store(false, Ordering::Release);
         self.shared.watchers.lock().clear();
         *self.shared.video.lock() = None;
@@ -1162,7 +1349,7 @@ impl SessionManager {
                     .to_string()
             };
             crate::host::AgentStatus {
-                access: run.access.name().to_string(),
+                permissions: run.permissions,
                 flags: run.state(Instant::now()).flags,
                 watchers: run.watchers.iter().map(|w| name(&w.peer)).collect(),
                 controller: run

@@ -154,6 +154,9 @@ pub struct Chat {
     pub notices: Vec<Notice>,
     /// The agent waits at a secure screen (said once per wait).
     secure_wait: bool,
+    /// The agent waits for someone to watch (the host lets it act only
+    /// then), and was told so.
+    unwatched_wait: bool,
 }
 
 fn short_title(text: &str) -> String {
@@ -332,6 +335,7 @@ impl Chat {
             watch_pending: false,
             notices: Vec::new(),
             secure_wait: false,
+            unwatched_wait: false,
         }
     }
 
@@ -520,6 +524,25 @@ impl Chat {
             );
         }
         self.secure_wait = secure;
+        // Held until someone watches: logging in is that.
+        let unwatched = held
+            && !secure
+            && self
+                .link
+                .and_then(|l| l.agent)
+                .is_some_and(|a| a.flags & agent_state::UNWATCHED != 0);
+        if unwatched && !self.unwatched_wait {
+            self.notice(
+                NoticeKind::Waiting,
+                format!("{}: the agent waits for you", self.host),
+                format!(
+                    "{} lets this agent act only while someone watches. Log in to \
+                        watch it; it goes on then.",
+                    self.host
+                ),
+            );
+        }
+        self.unwatched_wait = unwatched;
         if changed {
             self.scroll.scroll_to_bottom();
         }
