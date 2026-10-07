@@ -2,6 +2,7 @@
 
 pub mod cursors;
 pub mod gamepad;
+mod glass;
 mod hid;
 pub mod render;
 pub mod text;
