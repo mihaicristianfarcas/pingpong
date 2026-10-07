@@ -4,6 +4,17 @@
 //! Ping's keys are positional ([`Key`], PS/2 set-1 scancodes on the wire);
 //! the virtual-key code is the US layout's key at that position, which is
 //! what a Windows PC would report for it with the US layout.
+//!
+//! The codes are the ones Microsoft's web client sends (xbox.com/play,
+//! `getVKeyValue`: the DOM's `code`, a key's position, to a Windows
+//! virtual-key code), left and right modifiers apart. Two choices follow it:
+//!
+//! - **No lock keys.** The web client drops Caps Lock, Num Lock and Scroll
+//!   Lock (`isLockKey`); from input version 10 it sends their state
+//!   instead, and Ping speaks version 8.
+//! - **The ISO key** (between left Shift and Z) is `VK_OEM_102`, which the
+//!   web client's table gives the key `\` but, looking the key up by its
+//!   position's name (`IntlBackslash`), never reaches; Windows reports it so.
 
 use pingpong_proto::input::{scancode, Key};
 
@@ -13,9 +24,10 @@ pub fn key_for_scancode(sc: u16) -> Option<Key> {
     Key::ALL.iter().copied().find(|&k| scancode(k) == sc)
 }
 
-/// A key's Windows virtual-key code.
-pub fn vk(key: Key) -> u8 {
-    match key {
+/// A key's Windows virtual-key code; `None` for a key a console is not
+/// sent.
+pub fn vk(key: Key) -> Option<u8> {
+    let code = match key {
         Key::Escape => 0x1B,
         Key::Digit1 => b'1',
         Key::Digit2 => b'2',
@@ -73,7 +85,7 @@ pub fn vk(key: Key) -> u8 {
         Key::NumpadMultiply => 0x6A,
         Key::AltLeft => 0xA4,
         Key::Space => 0x20,
-        Key::CapsLock => 0x14,
+        Key::CapsLock | Key::NumLock | Key::ScrollLock => return None,
         Key::F1 => 0x70,
         Key::F2 => 0x71,
         Key::F3 => 0x72,
@@ -86,8 +98,6 @@ pub fn vk(key: Key) -> u8 {
         Key::F10 => 0x79,
         Key::F11 => 0x7A,
         Key::F12 => 0x7B,
-        Key::NumLock => 0x90,
-        Key::ScrollLock => 0x91,
         Key::Numpad0 => 0x60,
         Key::Numpad1 => 0x61,
         Key::Numpad2 => 0x62,
@@ -119,7 +129,8 @@ pub fn vk(key: Key) -> u8 {
         Key::SuperLeft => 0x5B,
         Key::SuperRight => 0x5C,
         Key::ContextMenu => 0x5D,
-    }
+    };
+    Some(code)
 }
 
 #[cfg(test)]
@@ -131,7 +142,7 @@ mod tests {
         let mut codes: Vec<u8> = Key::ALL
             .iter()
             .filter(|&&k| k != Key::NumpadEnter)
-            .map(|&k| vk(k))
+            .filter_map(|&k| vk(k))
             .collect();
         let n = codes.len();
         codes.sort_unstable();
@@ -141,12 +152,36 @@ mod tests {
     }
 
     #[test]
+    fn keys_are_the_codes_microsofts_web_client_sends() {
+        // Its getVKeyValue, by the DOM's code.
+        for (key, code) in [
+            (Key::ShiftLeft, 0xA0),
+            (Key::ShiftRight, 0xA1),
+            (Key::ControlLeft, 0xA2),
+            (Key::ControlRight, 0xA3),
+            (Key::AltLeft, 0xA4),
+            (Key::AltRight, 0xA5),
+            (Key::SuperLeft, 0x5B),
+            (Key::KeyW, 0x57),
+            (Key::Space, 0x20),
+            (Key::Semicolon, 0xBA),
+            (Key::NumpadEnter, 0x0D),
+            (Key::PrintScreen, 0x2C),
+        ] {
+            assert_eq!(vk(key), Some(code), "{key:?}");
+        }
+        for lock in [Key::CapsLock, Key::NumLock, Key::ScrollLock] {
+            assert_eq!(vk(lock), None, "{lock:?}");
+        }
+    }
+
+    #[test]
     fn scancodes_lead_back_to_their_keys() {
         for &k in Key::ALL {
             assert_eq!(key_for_scancode(scancode(k)), Some(k));
         }
         assert_eq!(key_for_scancode(0x7f), None);
-        assert_eq!(vk(key_for_scancode(0x1e).unwrap()), b'A');
-        assert_eq!(vk(key_for_scancode(0x8048).unwrap()), 0x26);
+        assert_eq!(vk(key_for_scancode(0x1e).unwrap()), Some(b'A'));
+        assert_eq!(vk(key_for_scancode(0x8048).unwrap()), Some(0x26));
     }
 }

@@ -138,8 +138,8 @@ impl InputState {
                     }
                     return;
                 }
-                if self.keys.len() < MAX_KEYS * 4 {
-                    self.keys.push(KeyFrame { vk: vk(key), down });
+                if let Some(vk) = vk(key).filter(|_| self.keys.len() < MAX_KEYS * 4) {
+                    self.keys.push(KeyFrame { vk, down });
                 }
             }
             Input::Mouse(m) => {
