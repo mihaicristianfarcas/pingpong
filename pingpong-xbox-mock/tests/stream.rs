@@ -292,11 +292,13 @@ fn a_console_streams_end_to_end() {
     let end = running.thread.join().unwrap();
     assert_eq!(end, Ok(End::ConsoleEnded));
     assert!(mock.wait_for(LONG, |r| r.ended_sessions == 1));
+    // Waited for, not read at once: the client leaves once the console's
+    // side has acknowledged its answer, which can be before the mock's
+    // peer has read it (seen on Windows).
     assert!(mock
-        .record()
-        .transactions
-        .iter()
-        .any(|(kind, id)| kind == "TransactionComplete" && id == "mock-disconnect"));
+        .wait_for(LONG, |r| r.transactions.iter().any(|(kind, id)| kind
+            == "TransactionComplete"
+            && id == "mock-disconnect")));
 }
 
 fn until(timeout: Duration, done: impl Fn() -> bool) -> bool {
