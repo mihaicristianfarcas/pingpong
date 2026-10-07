@@ -119,7 +119,7 @@ Each program writes its own, and never a PIN, password, key or token:
 | Ping | `~/Library/Logs/Ping/ping.log` (macOS), `%LOCALAPPDATA%\Ping\Logs\ping.log` (Windows), `~/.local/state/ping/ping.log` (Linux); the previous two launches' beside it |
 | Pong's window | the same places, `Pong/pong-app.log` |
 | Pong (the host) | `logs/pong.log.DATE` in its data folder (`C:\ProgramData\Pong\logs` for the service) |
-| `ping`, `ping-agent`, `Ping mcp` | stderr |
+| `pingctl`, `ping-agent`, `Ping mcp` | stderr |
 
 `RUST_LOG` narrows or widens any of them (for example
 `RUST_LOG=info,ping_core::input=trace` logs each input event sent).

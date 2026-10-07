@@ -27,7 +27,7 @@ it applies), **no** (not built, with the reason), **n/a** (does not apply).
 | Add a host by address | Same | done |
 | Encryption (AES-GCM, pairing certificates) | WireGuard tunnel with ML-KEM (post-quantum) | done |
 | Reaching the host from outside (UPnP when on, port forwarding, a VPN) | Built in: sealed rendezvous records and hole punching, no port forwarding ([networking.md](networking.md)); from a phone hotspot, no loss, 40 ms round trip. UPnP / NAT-PMP port mapping too, on by default (Sunshine's is off) | done |
-| Wake-on-LAN | Pong announces its adapters; Ping's Wake (or a click on an offline host), `ping wake NAME`. The test host answered 6 s after the packets and streamed its lock screen 1 s later (see [usage.md](usage.md#wake-on-lan) for what the host's BIOS and adapter need) | done |
+| Wake-on-LAN | Pong announces its adapters; Ping's Wake (or a click on an offline host), `pingctl wake NAME`. The test host answered 6 s after the packets and streamed its lock screen 1 s later (see [usage.md](usage.md#wake-on-lan) for what the host's BIOS and adapter need) | done |
 
 ## Video
 

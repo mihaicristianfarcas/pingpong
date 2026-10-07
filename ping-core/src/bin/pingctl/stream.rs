@@ -1,4 +1,4 @@
-//! `ping stream` and `ping watch`: the stream in a window of the platform's
+//! `pingctl stream` and `pingctl watch`: the stream in a window of the platform's
 //! own, until it ends.
 
 use std::process::ExitCode;

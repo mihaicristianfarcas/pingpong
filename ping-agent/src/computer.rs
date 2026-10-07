@@ -1292,7 +1292,7 @@ impl Computer {
             return format!(
                 "Not connected. Hosts this agent may use: {}.",
                 if hosts.is_empty() {
-                    "none (pair one: `ping pair-agent HOST`)".into()
+                    "none (pair one: `pingctl pair-agent HOST`)".into()
                 } else {
                     hosts.join(", ")
                 }

@@ -18,7 +18,7 @@ the host lists it as an **AI agent**.
 - Ping: **Allow…** beside the host, on the Agents page (under **Your
   hosts**) or in **Agent setup** (under **Hosts the agent may use**). Type
   the PIN into Pong's window or web UI, as for Ping.
-- CLI: `ping pair-agent HOST`.
+- CLI: `pingctl pair-agent HOST`.
 - By hand (headless hosts): `ping-agent identity` prints the agent's keys;
   `pong add-client NAME X25519 MLKEM --agent` on the host, and
   `ping-agent add-host NAME ADDR X25519 MLKEM` with `pong identity`'s keys.
@@ -223,7 +223,7 @@ connects again.
 
 ### 4. Watch, take over, stop
 
-- **Log In** (a session's page), or `ping watch HOST`, opens the agent's
+- **Log In** (a session's page), or `pingctl watch HOST`, opens the agent's
   screen in a stream window (waiting up to 25 s for an agent still
   starting). **Ctrl+Alt+Shift+T** takes the keyboard and mouse; pressing it
   again hands them back.

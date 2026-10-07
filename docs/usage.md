@@ -74,7 +74,7 @@ for the host takes over the session (the first is told) unless the host's
 
 ### The statistics
 
-Ctrl+Alt+Shift+S (or `ping stream --stats`) shows Moonlight's figures —
+Ctrl+Alt+Shift+S (or `pingctl stream --stats`) shows Moonlight's figures —
 incoming, decoded and rendered frame rates, bitrate, frames dropped,
 network round trip, host processing, decode and render times — and one more:
 **host capture to screen**, the time from the host capturing a frame to it
@@ -122,7 +122,7 @@ hosts (`hosts.toml`) and this device's keys:
 | Windows | `%APPDATA%\Ping` |
 | Linux | `~/.config/ping` (`$XDG_CONFIG_HOME/ping`) |
 
-`PING_DATA_DIR` points Ping (and `ping`, `ping-agent`) elsewhere.
+`PING_DATA_DIR` points Ping (and `pingctl`, `ping-agent`) elsewhere.
 
 ## Pong's window and web UI
 
@@ -284,7 +284,7 @@ folder.
 
 Copy on one side, paste on the other: text, images, and files and folders,
 both ways, for as long as your stream runs. Ping asks for it (**Share the
-clipboard**, on by default; `ping stream --no-clipboard` for one stream),
+clipboard**, on by default; `pingctl stream --no-clipboard` for one stream),
 and the host agrees unless its **Share the clipboard with clients** is off,
 the ways the device's permissions allow (**Copy from this computer**,
 **Paste to this computer**; see
@@ -308,7 +308,7 @@ does, for places that do not take a paste.
 
 Pong announces its network adapters on the local network, and Ping
 remembers them, so an offline host can be woken: **Wake** in the host's
-menu, a click on an offline host, or `ping wake NAME`. The host must be on a
+menu, a click on an offline host, or `pingctl wake NAME`. The host must be on a
 wired connection with Wake-on-LAN enabled: in its firmware (often called
 "Resume by PCI-E device" or "Wake on LAN"; with ErP off), and in the network
 adapter's settings (power-saving features such as Energy-Efficient Ethernet
@@ -332,7 +332,7 @@ same.
 
 - **Ping finds no hosts (macOS).** Allow Ping on the local network: System
   Settings > Privacy & Security > Local Network.
-- **Windows asks about the firewall.** Allow Ping (and `ping.exe`) on private
+- **Windows asks about the firewall.** Allow Ping (and `pingctl.exe`) on private
   networks. The host's firewall rules are added by `pong install`.
 - **"The host did not answer."** Is Pong running (its window says; on
   Windows, `PongService` in Services)? Is this device still paired (the host's
@@ -360,4 +360,4 @@ same.
   them, e.g. `RUST_LOG=info,ping_core::stats=debug` for a line of
   statistics a second.
 
-The command line (`ping`, `pong`, `ping-agent`) is in [cli.md](cli.md).
+The command line (`pingctl`, `pong`, `ping-agent`) is in [cli.md](cli.md).

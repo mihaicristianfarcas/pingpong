@@ -76,7 +76,7 @@ fn no_answer(host: &str) -> String {
     format!(
         "{host} did not answer this device's AI agent. Either Pong is not running there, or it \
             no longer has the agent paired: pair it again with Allow… on Ping's Agents page (or \
-            `ping pair-agent {host}`), and type the PIN in Pong."
+            `pingctl pair-agent {host}`), and type the PIN in Pong."
     )
 }
 
@@ -97,12 +97,12 @@ fn find_host(data_dir: &Path, host: &str) -> Result<KnownHost, String> {
     let names: Vec<&str> = hosts.iter().map(|h| h.name.as_str()).collect();
     if person.find(host).is_some() {
         return Err(format!(
-            "This device's AI agent is not paired with {host} yet (only Ping is). Pair it once: `ping pair-agent {host}` \
+            "This device's AI agent is not paired with {host} yet (only Ping is). Pair it once: `pingctl pair-agent {host}` \
                 or Ping > Agents > Pair, then type the PIN in Pong's web UI on {host}."
         ));
     }
     Err(if names.is_empty() {
-        "This device's AI agent is not paired with any host. Pair it with `ping pair-agent \
+        "This device's AI agent is not paired with any host. Pair it with `pingctl pair-agent \
             HOST` or in Ping > Agents."
             .to_string()
     } else {
@@ -301,7 +301,7 @@ mod tests {
     fn an_agent_the_host_does_not_answer_is_told_to_pair_again() {
         let said = no_answer("gaming-pc");
         assert!(said.starts_with("gaming-pc did not answer this device's AI agent."));
-        assert!(said.contains("`ping pair-agent gaming-pc`"));
+        assert!(said.contains("`pingctl pair-agent gaming-pc`"));
         assert_ne!(said, ping_core::stream::NO_ANSWER);
     }
 }

@@ -1,18 +1,18 @@
-//! `ping xbox`: a console of the account's, or a game in Xbox Cloud Gaming.
+//! `pingctl xbox`: a console of the account's, or a game in Xbox Cloud Gaming.
 //!
-//!   ping xbox                       who is signed in
-//!   ping xbox sign-in               sign in with a Microsoft account (a code to type)
-//!   ping xbox sign-out
-//!   ping xbox consoles              the account's consoles
-//!   ping xbox wake NAME | off NAME  turn a console on, or off
-//!   ping xbox games                 the cloud games the account may play
-//!   ping xbox friends               the account's friends, and what they play
-//!   ping xbox stream CONSOLE [--keyboard] [stream flags]
-//!   ping xbox play GAME [--keyboard] [--region NAME] [stream flags]
+//!   pingctl xbox                       who is signed in
+//!   pingctl xbox sign-in               sign in with a Microsoft account (a code to type)
+//!   pingctl xbox sign-out
+//!   pingctl xbox consoles              the account's consoles
+//!   pingctl xbox wake NAME | off NAME  turn a console on, or off
+//!   pingctl xbox games                 the cloud games the account may play
+//!   pingctl xbox friends               the account's friends, and what they play
+//!   pingctl xbox stream CONSOLE [--keyboard] [stream flags]
+//!   pingctl xbox play GAME [--keyboard] [--region NAME] [stream flags]
 //!
 //! A console or game is named by its name (any case) or its id. Keys drive
 //! the first controller unless `--keyboard` sends them as a keyboard. The
-//! stream flags are `ping stream`'s; the console chooses its own codec, rate
+//! stream flags are `pingctl stream`'s; the console chooses its own codec, rate
 //! and bitrate. `PING_XBOX_MOCK=URL` uses a mock console (`xbox-mock`).
 
 use std::process::ExitCode;
@@ -53,7 +53,7 @@ pub fn run(args: &[String]) -> ExitCode {
 
 fn auth_fail(e: AuthError) -> ExitCode {
     match e {
-        AuthError::SignedOut => fail("Not signed in to Xbox: run `ping xbox sign-in`."),
+        AuthError::SignedOut => fail("Not signed in to Xbox: run `pingctl xbox sign-in`."),
         e => fail(e),
     }
 }
@@ -61,7 +61,7 @@ fn auth_fail(e: AuthError) -> ExitCode {
 fn status() -> ExitCode {
     match account::signed_in() {
         Some(gamertag) => println!("Signed in to Xbox as {gamertag}."),
-        None => println!("Not signed in to Xbox: run `ping xbox sign-in`."),
+        None => println!("Not signed in to Xbox: run `pingctl xbox sign-in`."),
     }
     ExitCode::SUCCESS
 }
@@ -110,7 +110,7 @@ fn find_console(name: &str) -> Result<Console, ExitCode> {
         .find(|c| c.name.eq_ignore_ascii_case(name) || c.id.eq_ignore_ascii_case(name))
         .ok_or_else(|| {
             fail(format!(
-                "No console named {name}; see `ping xbox consoles`."
+                "No console named {name}; see `pingctl xbox consoles`."
             ))
         })
 }
@@ -160,7 +160,7 @@ fn friends() -> ExitCode {
     }
 }
 
-/// `--keyboard` and `--region NAME` are ours; the rest are `ping stream`'s.
+/// `--keyboard` and `--region NAME` are ours; the rest are `pingctl stream`'s.
 fn split_flags(flags: &[String]) -> (bool, Option<String>, Vec<String>) {
     let (mut keyboard, mut region, mut rest) = (false, None, Vec::new());
     let mut it = flags.iter();
@@ -212,7 +212,7 @@ fn play(name: &str, flags: &[String]) -> ExitCode {
         });
     let Some(game) = game else {
         return fail(format!(
-            "No cloud game named {name}; see `ping xbox games`."
+            "No cloud game named {name}; see `pingctl xbox games`."
         ));
     };
     let (keyboard, region, rest) = split_flags(flags);

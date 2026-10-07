@@ -234,7 +234,7 @@ networks.
 
 ```sh
 cargo build --release -p ping-app          # the app: target/release/ping-app
-cargo build --release -p ping-core --bin ping   # the CLI, if you want it
+cargo build --release -p ping-core --bin pingctl   # the CLI, if you want it
 ```
 
 Run `target/release/ping-app`, or install it as a desktop app for your

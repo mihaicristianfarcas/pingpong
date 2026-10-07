@@ -65,14 +65,14 @@ that take them (on Xbox Cloud Gaming, games marked "mouse and keyboard").
 From the command line:
 
 ```sh
-ping xbox sign-in
-ping xbox consoles
-ping xbox stream "Living room"
-ping xbox games
-ping xbox play "Fortnite"
+pingctl xbox sign-in
+pingctl xbox consoles
+pingctl xbox stream "Living room"
+pingctl xbox games
+pingctl xbox play "Fortnite"
 ```
 
-([cli.md](cli.md#ping-xbox) has all of them.)
+([cli.md](cli.md#pingctl-xbox) has all of them.)
 
 ## Against Greenlight
 
@@ -90,7 +90,7 @@ ping xbox play "Fortnite"
 | Audio | Chromium | Ping's own player and its adaptive buffer, stereo |
 | Input latency | Controllers polled every 16 ms | Sent the moment the platform reports it (the connection's thread is woken for it) |
 | Tokens | Kept in Electron's store, written to its debug log | An owner-only file, never logged |
-| Friends | Online friends, in a sidebar refreshed every 30 s | Online friends and what they play, on the Xbox page and `ping xbox friends`, asked for when looked at (Xbox Live allows 30 requests in five minutes) |
+| Friends | Online friends, in a sidebar refreshed every 30 s | Online friends and what they play, on the Xbox page and `pingctl xbox friends`, asked for when looked at (Xbox Live allows 30 requests in five minutes) |
 | Achievements, profile | Yes | No: they are not streaming |
 | Microphone (party chat) | Prepared, not finished | No |
 | Touch controls | Yes | No: desktops have no touch screen |
@@ -165,8 +165,8 @@ with a tone. It rumbles when A is pressed.
 
 ```sh
 cargo run -p pingpong-xbox-mock --bin xbox-mock     # prints PING_XBOX_MOCK=http://127.0.0.1:47920
-PING_XBOX_MOCK=http://127.0.0.1:47920 PING_DATA_DIR=/tmp/ping-test ping xbox sign-in
-PING_XBOX_MOCK=http://127.0.0.1:47920 PING_DATA_DIR=/tmp/ping-test ping xbox stream "Mock Xbox" --stats
+PING_XBOX_MOCK=http://127.0.0.1:47920 PING_DATA_DIR=/tmp/ping-test pingctl xbox sign-in
+PING_XBOX_MOCK=http://127.0.0.1:47920 PING_DATA_DIR=/tmp/ping-test pingctl xbox stream "Mock Xbox" --stats
 ```
 
 `PING_XBOX_MOCK` sends every request Ping makes for Xbox to the mock

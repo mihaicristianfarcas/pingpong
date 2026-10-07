@@ -10,7 +10,7 @@ changes themselves — code style, comments, docs, commits — are in
 ```
 Cargo.toml            the workspace (every crate below but spikes/ and tools/rawinput-probe)
 ping-app/             Ping's window (GPUI)                    ─┐
-ping-core/            the client: stream, platforms, `ping`    │ the client
+ping-core/            the client: stream, platforms, `pingctl`    │ the client
 ping-agent/           AI agents: MCP server, runners           ─┘
 pong/                 the host: sessions, pipelines, web UI    ─┐ the host
 pong-app/             Pong's window and tray icon (GPUI)       ─┘
@@ -149,7 +149,7 @@ normal use.
 
 | Variable | Does |
 |---|---|
-| `PING_TEST_INPUT="wait 3000; key 1e; click; text Hé!; quit"` | Scripted input once a stream is up (the steps are listed in `ping-core/src/bin/ping/script.rs`) |
+| `PING_TEST_INPUT="wait 3000; key 1e; click; text Hé!; quit"` | Scripted input once a stream is up (the steps are listed in `ping-core/src/bin/pingctl/script.rs`) |
 | `PING_TEST_SNAPSHOT=PATH[@FRAMES]` | The Windows and Linux client save what is on screen as a PNG after that many frames |
 | `PING_TEST_LOSS=N[:B]` | The client drops N% of incoming media datagrams, in bursts of B (after decryption) |
 | `PINGPONG_TEST_WIRE_LOSS=N[:B]` | Any endpoint drops N% of all tunnel datagrams, in bursts of B (before decryption; handshakes included) |

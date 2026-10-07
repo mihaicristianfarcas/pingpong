@@ -1,29 +1,29 @@
 # Command line
 
 Everything the apps do can also be done from a terminal: streaming and
-pairing with `ping`, the host with `pong`, AI agents with `ping-agent`. The
+pairing with `pingctl`, the host with `pong`, AI agents with `ping-agent`. The
 CLIs are built with the apps (`cargo build --release -p ping-core -p pong
 -p ping-agent`; the binaries land in `target/release/`).
 
-## `ping` — the client
+## `pingctl` — the client
 
 The same streaming code as the app, with a window of the platform's own.
 
 | Command | Does |
 |---|---|
-| `ping identity` | Print this client's public keys (X25519 and ML-KEM-768) |
-| `ping discover` | List hosts on the local network, paired or not |
-| `ping pair HOST[:PORT]` | Pair with a host: shows a PIN to type on the host |
-| `ping pair-agent HOST[:PORT]` | Pair this device's AI agent (a key of its own) |
-| `ping hosts` | List paired hosts |
-| `ping add-host NAME ADDR X25519 MLKEM` | Pair by hand, with the host's keys from `pong identity` |
-| `ping remove-host NAME` | Forget a host |
-| `ping wake NAME` | Send Wake-on-LAN packets to a paired host |
-| `ping stream NAME [FLAGS]` | Stream a paired host |
-| `ping watch NAME [FLAGS]` | Watch the AI agent working on a host |
-| `ping xbox …` | An Xbox console or Xbox Cloud Gaming: [below](#ping-xbox) |
+| `pingctl identity` | Print this client's public keys (X25519 and ML-KEM-768) |
+| `pingctl discover` | List hosts on the local network, paired or not |
+| `pingctl pair HOST[:PORT]` | Pair with a host: shows a PIN to type on the host |
+| `pingctl pair-agent HOST[:PORT]` | Pair this device's AI agent (a key of its own) |
+| `pingctl hosts` | List paired hosts |
+| `pingctl add-host NAME ADDR X25519 MLKEM` | Pair by hand, with the host's keys from `pong identity` |
+| `pingctl remove-host NAME` | Forget a host |
+| `pingctl wake NAME` | Send Wake-on-LAN packets to a paired host |
+| `pingctl stream NAME [FLAGS]` | Stream a paired host |
+| `pingctl watch NAME [FLAGS]` | Watch the AI agent working on a host |
+| `pingctl xbox …` | An Xbox console or Xbox Cloud Gaming: [below](#pingctl-xbox) |
 
-`ping stream` flags (the defaults come from this display, fitted to the
+`pingctl stream` flags (the defaults come from this display, fitted to the
 nearest standard aspect ratio as in the app, at 60 fps and Moonlight's
 bitrate for the mode):
 
@@ -54,24 +54,24 @@ Ctrl-C ends the stream properly, as Ctrl+Alt+Shift+Q does, so the host puts
 its displays back at once. The exit status is 1 when the stream ended for a
 reason other than you quitting.
 
-### `ping xbox`
+### `pingctl xbox`
 
 Streaming from an Xbox ([xbox.md](xbox.md)). A console or a game is named
 by its name (any case) or its id.
 
 | Command | Does |
 |---|---|
-| `ping xbox` | Say who is signed in |
-| `ping xbox sign-in` | Sign in with a Microsoft account: shows a code to enter at microsoft.com/link |
-| `ping xbox sign-out` | Forget the account |
-| `ping xbox consoles` | The account's consoles: name, model, state, id |
-| `ping xbox wake NAME`, `ping xbox off NAME` | Turn a console on (from sleep), or off |
-| `ping xbox games` | The cloud games the account may play |
-| `ping xbox friends` | The account's friends, online first, with what they play |
-| `ping xbox stream CONSOLE [FLAGS]` | Stream a console |
-| `ping xbox play GAME [FLAGS]` | Play a cloud game (a part of its name will do) |
+| `pingctl xbox` | Say who is signed in |
+| `pingctl xbox sign-in` | Sign in with a Microsoft account: shows a code to enter at microsoft.com/link |
+| `pingctl xbox sign-out` | Forget the account |
+| `pingctl xbox consoles` | The account's consoles: name, model, state, id |
+| `pingctl xbox wake NAME`, `pingctl xbox off NAME` | Turn a console on (from sleep), or off |
+| `pingctl xbox games` | The cloud games the account may play |
+| `pingctl xbox friends` | The account's friends, online first, with what they play |
+| `pingctl xbox stream CONSOLE [FLAGS]` | Stream a console |
+| `pingctl xbox play GAME [FLAGS]` | Play a cloud game (a part of its name will do) |
 
-`stream` and `play` take `ping stream`'s flags that apply (the size, the
+`stream` and `play` take `pingctl stream`'s flags that apply (the size, the
 window, the statistics, the sound), and:
 
 | Flag | |
@@ -86,7 +86,7 @@ window, the statistics, the sound), and:
 | `pong` or `pong host` | Run the host in this session |
 | `pong identity` | Print the host's public keys |
 | `pong clients` | List paired clients and agents, with what each may do |
-| `pong add-client NAME X25519 MLKEM [--agent] [--permissions LIST]` | Pair a client by hand (headless setups), with the keys from `ping identity` or `ping-agent identity`. Without `--permissions` it gets what pairing gives: everything for the first person's device, see only after it; an agent sees and acts |
+| `pong add-client NAME X25519 MLKEM [--agent] [--permissions LIST]` | Pair a client by hand (headless setups), with the keys from `pingctl identity` or `ping-agent identity`. Without `--permissions` it gets what pairing gives: everything for the first person's device, see only after it; an agent sees and acts |
 | `pong remove-client X25519` | Unpair a client |
 | `pong permissions X25519 [LIST]` | Show what a paired client may do, or set it. `LIST`: `all`, `none`, `see-only`, or names joined by commas (`view,keyboard,mouse`; the names are in [usage.md](usage.md#what-each-device-may-do)). What a client of its kind cannot have is left out |
 | `pong install`, `pong uninstall` | Windows: install or remove `PongService` and its firewall rules (as administrator) |
@@ -154,7 +154,7 @@ For everyone:
 | Variable | Used by | Does |
 |---|---|---|
 | `RUST_LOG` | all | Log filter, e.g. `info,ping_core::stats=debug` |
-| `PING_DATA_DIR` | Ping, `ping`, `ping-agent` | Ping's data folder |
+| `PING_DATA_DIR` | Ping, `pingctl`, `ping-agent` | Ping's data folder |
 | `PONG_DATA_DIR` | Pong, Pong's window | Pong's data folder |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `PING_AGENT_API_KEY` (a custom endpoint) | agents | API keys; win over saved keys |
 | `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | agents | Point the API loops at a gateway or proxy |

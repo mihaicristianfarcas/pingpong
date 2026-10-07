@@ -30,9 +30,9 @@ Unless a section says otherwise:
   ```
 
 - **The stream**: the statistics overlay (Ctrl+Alt+Shift+S, or
-  `ping stream NAME --stats`) shows the same figures as Moonlight's, plus the
+  `pingctl stream NAME --stats`) shows the same figures as Moonlight's, plus the
   host's capture to the client's screen. For a log of them, one line a
-  second: `RUST_LOG=info,ping_core::stats=debug ping stream NAME ...`. The
+  second: `RUST_LOG=info,ping_core::stats=debug pingctl stream NAME ...`. The
   host logs a line a second too (`pong.log`: frames, capture to encoded,
   Mbit/s, recoveries).
 - **The client's presentation alone** (macOS), with no host: synthetic

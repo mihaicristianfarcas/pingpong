@@ -83,5 +83,5 @@ wgpu = "30"
 winit = "0.30"
 
 [[bin]]
-name = "ping"
-path = "src/bin/ping/main.rs"
+name = "pingctl"
+path = "src/bin/pingctl/main.rs"

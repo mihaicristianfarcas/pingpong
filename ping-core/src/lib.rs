@@ -2,7 +2,7 @@
 //!
 //! Everything a stream needs lives here -- the tunnel, session negotiation,
 //! loss recovery, decoding, presentation, input capture -- so the app
-//! (`ping-app`) is only a launcher over it, and the `ping` CLI drives exactly
+//! (`ping-app`) is only a launcher over it, and the `pingctl` CLI drives exactly
 //! the same code. The platform's window, decoder and presenter are in `mac`
 //! and `win`, behind [`session::Session`]. A stream comes from a Pong host
 //! or from an Xbox ([`xbox`]), through the same platform layer.

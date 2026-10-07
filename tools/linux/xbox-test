@@ -9,7 +9,7 @@
 #
 #   tools/linux-dev tools/linux/xbox-test [PING STREAM ARGS]
 set -euo pipefail
-cargo build -q -p ping-core --bin ping
+cargo build -q -p ping-core --bin pingctl
 cargo build -q -p pingpong-xbox-mock --bin xbox-mock
 bin=${CARGO_TARGET_DIR:-/src/target}/debug
 OUT=/src/target/linux-out/xbox
@@ -26,8 +26,8 @@ mock=$!
 sleep 1
 export PING_XBOX_MOCK=http://127.0.0.1:47920
 
-"$bin/ping" xbox sign-in >"$OUT/sign-in.log" 2>&1
-"$bin/ping" xbox consoles | tee "$OUT/consoles.txt"
+"$bin/pingctl" xbox sign-in >"$OUT/sign-in.log" 2>&1
+"$bin/pingctl" xbox consoles | tee "$OUT/consoles.txt"
 
 args=("$@")
 [[ ${#args[@]} -eq 0 ]] && args=(--windowed --size 1280x720 --stats)
@@ -35,7 +35,7 @@ export PING_TEST_SNAPSHOT=${PING_TEST_SNAPSHOT:-$OUT/stream.png@240}
 # A, the left stick right, the right trigger; held through the picture.
 export PING_TEST_INPUT=${PING_TEST_INPUT:-"wait 3000; pad 0x1000 24000 0 0 255; wait 5000; pad 0 0 0; wait 500; quit"}
 DISPLAY=:2 RUST_LOG=${RUST_LOG:-info,mainline=error,ping_core::stats=debug} \
-    "$bin/ping" xbox stream "Mock Xbox" "${args[@]}" >"$OUT/ping.log" 2>&1 || echo "ping exited with $?"
+    "$bin/pingctl" xbox stream "Mock Xbox" "${args[@]}" >"$OUT/ping.log" 2>&1 || echo "pingctl exited with $?"
 
 kill "$mock" 2>/dev/null || true
 wait "$mock" 2>/dev/null || true

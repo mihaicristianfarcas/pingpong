@@ -5,7 +5,7 @@
 //! winit allows one event loop per process, and the app's is the launcher's:
 //! so the app streams from a process of its own -- itself, started with
 //! `--ping-stream` ([`child_main`]) -- which it watches ([`Session`]). The
-//! `ping` CLI runs the stream in its own process directly ([`run`]).
+//! `pingctl` CLI runs the stream in its own process directly ([`run`]).
 
 pub mod gamepad;
 pub mod keymap;

@@ -1,7 +1,7 @@
 //! The window: a sidebar (Hosts, Agents, the open sessions, the settings
 //! pages) beside the page it selects, and the sheets over them (pairing,
 //! adding a host, unpairing, alerts). The logic under it is the same the
-//! `ping` CLI drives.
+//! `pingctl` CLI drives.
 //!
 //! Sessions: your own desktop streams (until the stream ends, from its window
 //! or its hotkey) and agent sessions (until you end them). Neither outlives

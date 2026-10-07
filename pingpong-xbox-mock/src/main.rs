@@ -10,8 +10,8 @@
 //! It prints the `PING_XBOX_MOCK=…` line to give Ping; then sign in, list
 //! the consoles and stream as with a real account:
 //!
-//!   PING_XBOX_MOCK=http://127.0.0.1:47920 ping xbox sign-in
-//!   PING_XBOX_MOCK=http://127.0.0.1:47920 ping xbox stream "Mock Xbox"
+//!   PING_XBOX_MOCK=http://127.0.0.1:47920 pingctl xbox sign-in
+//!   PING_XBOX_MOCK=http://127.0.0.1:47920 pingctl xbox stream "Mock Xbox"
 //!
 //! Listening on a LAN address lets a Ping on another computer use it.
 

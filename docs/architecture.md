@@ -54,7 +54,7 @@ it is, and what was measured on the way, is in the
 | `pingpong-update` | Whether a newer release, or newer commits on `main`, exist (GitHub's public API, once a day), and installing a release from the app: the archive checked against GitHub's SHA-256, then each system's way of putting it in place |
 | `pingpong-xbox` | Streaming from an Xbox console or Xbox Cloud Gaming: Microsoft sign-in, the console and session APIs, the WebRTC connection (str0m) ([xbox.md](xbox.md)) |
 | `pingpong-xbox-mock` | A mock Xbox and Microsoft's services, for testing the above without either (`xbox-mock`) |
-| `ping-core` | The client: session, stream, input, statistics, the host store; per-platform window, decoder and renderer; the `ping` CLI |
+| `ping-core` | The client: session, stream, input, statistics, the host store; per-platform window, decoder and renderer; the `pingctl` CLI |
 | `ping-app` | Ping's window (GPUI), and `Ping mcp` |
 | `ping-agent` | Computer use: a headless session, the actions, the MCP server, the agent runners; the `ping-agent` CLI |
 | `pong` | The host: sessions, the video and audio pipelines, pairing, presence, the web UI, the Windows service |

@@ -64,7 +64,7 @@ static STREAMS_WAITING: AtomicUsize = AtomicUsize::new(0);
 /// identity is streaming from as the same peer. The host moves that peer's
 /// tunnel to the probe's address (any datagram that authenticates does,
 /// `Endpoint::receive`) and installs new keys, and the stream goes dark. A
-/// stream from another process (`ping stream` beside the app) counts too,
+/// stream from another process (`pingctl stream` beside the app) counts too,
 /// so this is a lock on a file, not on memory.
 pub struct TunnelLock {
     /// Held for its lock, which goes with it.
