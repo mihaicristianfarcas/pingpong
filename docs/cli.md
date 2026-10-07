@@ -86,7 +86,8 @@ window, the statistics, the sound), and:
 
 | Flag | |
 |---|---|
-| `--keyboard` | Keys reach the console as a keyboard, not as the first controller |
+| `--shooter` | The keys and the mouse are the first controller: WASD moves, the mouse aims, its buttons fire ([xbox.md](xbox.md#using-it)) |
+| `--keyboard` | The console gets a keyboard and a mouse, not a controller |
 | `--region NAME` | Play in this cloud region rather than the account's default |
 
 ## `pong` — the host

@@ -649,7 +649,7 @@ impl PingApp {
         );
         let source = ping_core::xbox::XboxSource {
             target,
-            keyboard_as_controller: self.prefs.xbox_keyboard_as_controller,
+            keyboard_mouse: self.prefs.xbox_keyboard_mouse,
             region: None,
         };
         let id = self.next_stream;

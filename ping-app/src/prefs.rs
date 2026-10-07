@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use ping_core::aspect::fit_standard_ratio;
 use ping_core::session::{NativeMode, StreamRequest};
+use ping_core::xbox::KeyboardMouse;
 use pingpong_proto::control::{app, codec};
 use pingpong_update::{Build, Channel};
 use serde::{Deserialize, Serialize};
@@ -44,9 +45,10 @@ pub struct Prefs {
     pub yuv444: bool,
     /// Share the clipboard with the host: copy on one, paste on the other.
     pub share_clipboard: bool,
-    /// In an Xbox stream, keys drive the first controller (Greenlight's
-    /// default) rather than reach the console as a keyboard.
-    pub xbox_keyboard_as_controller: bool,
+    /// What the keyboard and mouse are in an Xbox stream: the first
+    /// controller (keys alone, Greenlight's default, or keys and mouse as a
+    /// shooter plays) or a keyboard and a mouse.
+    pub xbox_keyboard_mouse: KeyboardMouse,
     /// What the update check follows, once the user has chosen (until
     /// then, what suits the build that runs: see [`Prefs::update_channel`]).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,7 +79,7 @@ impl Default for Prefs {
             hdr: false,
             yuv444: false,
             share_clipboard: true,
-            xbox_keyboard_as_controller: true,
+            xbox_keyboard_mouse: KeyboardMouse::default(),
             updates: None,
         }
     }

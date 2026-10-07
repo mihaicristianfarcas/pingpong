@@ -7,11 +7,13 @@
 //!   pingctl xbox wake NAME | off NAME  turn a console on, or off
 //!   pingctl xbox games                 the cloud games the account may play
 //!   pingctl xbox friends               the account's friends, and what they play
-//!   pingctl xbox stream CONSOLE [--keyboard] [stream flags]
-//!   pingctl xbox play GAME [--keyboard] [--region NAME] [stream flags]
+//!   pingctl xbox stream CONSOLE [--shooter | --keyboard] [stream flags]
+//!   pingctl xbox play GAME [--shooter | --keyboard] [--region NAME] [stream flags]
 //!
 //! A console or game is named by its name (any case) or its id. Keys drive
-//! the first controller unless `--keyboard` sends them as a keyboard. The
+//! the first controller; `--shooter` makes the mouse part of it (WASD
+//! moves, the mouse aims, its buttons fire), and `--keyboard` sends a
+//! keyboard and a mouse instead, for games that take them. The
 //! stream flags are `pingctl stream`'s; the console chooses its own codec, rate
 //! and bitrate. `PING_XBOX_MOCK=URL` uses a mock console (`xbox-mock`).
 
@@ -19,7 +21,7 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 
 use ping_core::xbox::account::{self, AuthError, Command, Console};
-use ping_core::xbox::{Target, XboxSource};
+use ping_core::xbox::{KeyboardMouse, Target, XboxSource};
 
 use crate::stream::{self, What};
 use crate::{fail, usage};
@@ -160,13 +162,15 @@ fn friends() -> ExitCode {
     }
 }
 
-/// `--keyboard` and `--region NAME` are ours; the rest are `pingctl stream`'s.
-fn split_flags(flags: &[String]) -> (bool, Option<String>, Vec<String>) {
-    let (mut keyboard, mut region, mut rest) = (false, None, Vec::new());
+/// `--shooter`, `--keyboard` and `--region NAME` are ours; the rest are
+/// `pingctl stream`'s.
+fn split_flags(flags: &[String]) -> (KeyboardMouse, Option<String>, Vec<String>) {
+    let (mut keyboard, mut region, mut rest) = (KeyboardMouse::Controller, None, Vec::new());
     let mut it = flags.iter();
     while let Some(f) = it.next() {
         match f.as_str() {
-            "--keyboard" => keyboard = true,
+            "--shooter" => keyboard = KeyboardMouse::Shooter,
+            "--keyboard" => keyboard = KeyboardMouse::Native,
             "--region" => region = it.next().cloned(),
             _ => rest.push(f.clone()),
         }
@@ -186,7 +190,7 @@ fn stream_console(name: &str, flags: &[String]) -> ExitCode {
                 id: console.id,
                 name: console.name,
             },
-            keyboard_as_controller: !keyboard,
+            keyboard_mouse: keyboard,
             region,
         }),
         stream::request(&rest),
@@ -222,7 +226,7 @@ fn play(name: &str, flags: &[String]) -> ExitCode {
                 title_id: game.title_id.clone(),
                 name: game.name.clone(),
             },
-            keyboard_as_controller: !keyboard,
+            keyboard_mouse: keyboard,
             region,
         }),
         stream::request(&rest),

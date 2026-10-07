@@ -8,8 +8,10 @@
 //!   each is sent again every [`PAD_HEARTBEAT`] while plugged in, as the web
 //!   client does (Greenlight's `input/queue.ts`: "send at least every
 //!   33 ms"), though the channel is reliable.
-//! - **The keyboard** is a controller (merged into the first, Greenlight's
-//!   default) or a keyboard (Windows key codes, for games that take one).
+//! - **The keyboard and mouse** are part of the first controller
+//!   ([`KeyboardMouse`]: the keys alone, Greenlight's default, or the keys
+//!   and the mouse as a shooter plays) or a keyboard and a mouse (Windows
+//!   key codes, for games that take them).
 //! - **Mouse** motion between button changes is summed into one frame, so
 //!   a burst of motion is one frame and a click is never merged away.
 //! - Controller 0 is announced when the stream starts (the keyboard is a
@@ -25,7 +27,12 @@ use crate::input::{
 };
 use crate::keymap::vk;
 use crate::messages::control;
-use crate::virtual_pad::KeyboardPad;
+use crate::virtual_pad::{KeyboardMouse, KeyboardPad};
+
+/// The web client sends the browser's mouse movement doubled
+/// (Greenlight's `input/mousekeyboard.ts`); a console has only been seen
+/// with that, so Ping's is doubled too.
+const MOUSE_SCALE: i32 = 2;
 
 /// A controller's state is sent at least this often (the web client's 33 ms).
 pub const PAD_HEARTBEAT: Duration = Duration::from_millis(33);
@@ -45,8 +52,8 @@ pub enum Input {
     Pad(GamepadState),
     /// A key went down or up (positionally, as Ping's keys are).
     Key { key: Key, down: bool },
-    /// Mouse motion and wheel since the last, and the buttons now (the
-    /// DOM's bits: 1 left, 2 right, 4 middle).
+    /// Mouse motion (in pixels) and wheel since the last, and the buttons
+    /// now (the DOM's bits: 1 left, 2 right, 4 middle).
     Mouse(MouseFrame),
 }
 
@@ -66,11 +73,10 @@ pub struct InputState {
 }
 
 impl InputState {
-    /// `keyboard_as_controller`: keys drive the first controller rather
-    /// than reach the console as keys.
-    pub fn new(keyboard_as_controller: bool) -> InputState {
+    /// `keyboard_mouse`: what the keyboard and mouse are to the console.
+    pub fn new(keyboard_mouse: KeyboardMouse) -> InputState {
         InputState {
-            keyboard_pad: keyboard_as_controller.then(KeyboardPad::default),
+            keyboard_pad: KeyboardPad::new(keyboard_mouse),
             pads: std::array::from_fn(|i| GamepadState {
                 index: i as u8,
                 ..GamepadState::default()
@@ -100,7 +106,7 @@ impl InputState {
         }
     }
 
-    pub fn apply(&mut self, input: Input) {
+    pub fn apply(&mut self, input: Input, now: Instant) {
         match input {
             Input::Pad(state) => {
                 let i = state.index;
@@ -137,6 +143,17 @@ impl InputState {
                 }
             }
             Input::Mouse(m) => {
+                if let Some(kb) = self.keyboard_pad.as_mut().filter(|kb| kb.takes_mouse()) {
+                    if kb.mouse(&m, now) {
+                        self.dirty |= 1;
+                    }
+                    return;
+                }
+                let m = MouseFrame {
+                    dx: m.dx.saturating_mul(MOUSE_SCALE),
+                    dy: m.dy.saturating_mul(MOUSE_SCALE),
+                    ..m
+                };
                 let room = self.mouse.len() < MAX_MOUSE * 4;
                 match self.mouse.last_mut() {
                     Some(last) if last.buttons == m.buttons => {
@@ -159,8 +176,12 @@ impl InputState {
         }
     }
 
-    /// Controllers due for their heartbeat are marked to be sent again.
-    pub fn heartbeat(&mut self, now: Instant) {
+    /// Time passed: controllers due for their heartbeat are marked to be
+    /// sent again, and the mouse's stick eases.
+    pub fn tick(&mut self, now: Instant) {
+        if self.keyboard_pad.as_mut().is_some_and(|kb| kb.tick(now)) {
+            self.dirty |= 1;
+        }
         for i in 0..MAX_PADS as usize {
             let due = self.last_sent[i].is_some_and(|t| now.duration_since(t) >= PAD_HEARTBEAT);
             if self.announced[i] && due {
@@ -169,13 +190,15 @@ impl InputState {
         }
     }
 
-    /// When the next heartbeat is due.
-    pub fn next_heartbeat(&self) -> Option<Instant> {
-        (0..MAX_PADS as usize)
+    /// When [`tick`](Self::tick) is next due.
+    pub fn next_tick(&self) -> Option<Instant> {
+        let heartbeat = (0..MAX_PADS as usize)
             .filter(|&i| self.announced[i])
             .filter_map(|i| self.last_sent[i])
             .map(|t| t + PAD_HEARTBEAT)
-            .min()
+            .min();
+        let stick = self.keyboard_pad.as_ref().and_then(KeyboardPad::next_tick);
+        heartbeat.into_iter().chain(stick).min()
     }
 
     /// The next control channel message to send.
@@ -260,7 +283,7 @@ mod tests {
 
     #[test]
     fn the_first_controller_is_announced_at_the_start() {
-        let mut s = InputState::new(true);
+        let mut s = InputState::new(KeyboardMouse::Controller);
         s.start();
         assert_eq!(
             controls(&mut s),
@@ -276,24 +299,33 @@ mod tests {
 
     #[test]
     fn keys_drive_the_first_controller_beside_a_real_one() {
-        let mut s = InputState::new(true);
+        let mut s = InputState::new(KeyboardMouse::Controller);
         s.start();
         controls(&mut s);
         reports(&mut s, Instant::now());
-        s.apply(Input::Pad(GamepadState {
-            index: 0,
-            connected: true,
-            buttons: button::X,
-            ..Default::default()
-        }));
-        s.apply(Input::Key {
-            key: Key::Enter,
-            down: true,
-        });
-        s.apply(Input::Key {
-            key: Key::KeyQ,
-            down: true,
-        });
+        s.apply(
+            Input::Pad(GamepadState {
+                index: 0,
+                connected: true,
+                buttons: button::X,
+                ..Default::default()
+            }),
+            Instant::now(),
+        );
+        s.apply(
+            Input::Key {
+                key: Key::Enter,
+                down: true,
+            },
+            Instant::now(),
+        );
+        s.apply(
+            Input::Key {
+                key: Key::KeyQ,
+                down: true,
+            },
+            Instant::now(),
+        );
         let r = reports(&mut s, Instant::now());
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].pads[0].buttons, xbutton::X | xbutton::A);
@@ -302,17 +334,23 @@ mod tests {
 
     #[test]
     fn keys_reach_the_console_as_keys_when_asked() {
-        let mut s = InputState::new(false);
+        let mut s = InputState::new(KeyboardMouse::Native);
         s.start();
         reports(&mut s, Instant::now());
-        s.apply(Input::Key {
-            key: Key::KeyA,
-            down: true,
-        });
-        s.apply(Input::Key {
-            key: Key::KeyA,
-            down: false,
-        });
+        s.apply(
+            Input::Key {
+                key: Key::KeyA,
+                down: true,
+            },
+            Instant::now(),
+        );
+        s.apply(
+            Input::Key {
+                key: Key::KeyA,
+                down: false,
+            },
+            Instant::now(),
+        );
         let r = reports(&mut s, Instant::now());
         assert_eq!(
             r[0].keys,
@@ -332,7 +370,7 @@ mod tests {
 
     #[test]
     fn a_second_controller_comes_and_goes() {
-        let mut s = InputState::new(true);
+        let mut s = InputState::new(KeyboardMouse::Controller);
         s.start();
         controls(&mut s);
         let pad = GamepadState {
@@ -340,8 +378,8 @@ mod tests {
             connected: true,
             ..Default::default()
         };
-        s.apply(Input::Pad(pad));
-        s.apply(Input::Pad(pad));
+        s.apply(Input::Pad(pad), Instant::now());
+        s.apply(Input::Pad(pad), Instant::now());
         assert_eq!(
             controls(&mut s),
             vec![ControlMessage::GamepadChanged {
@@ -349,10 +387,13 @@ mod tests {
                 added: true
             }]
         );
-        s.apply(Input::Pad(GamepadState {
-            connected: false,
-            ..pad
-        }));
+        s.apply(
+            Input::Pad(GamepadState {
+                connected: false,
+                ..pad
+            }),
+            Instant::now(),
+        );
         assert_eq!(
             controls(&mut s),
             vec![ControlMessage::GamepadChanged {
@@ -361,13 +402,13 @@ mod tests {
             }]
         );
         // Unplugging the first controller keeps it announced.
-        s.apply(Input::Pad(GamepadState::default()));
+        s.apply(Input::Pad(GamepadState::default()), Instant::now());
         assert!(controls(&mut s).is_empty());
     }
 
     #[test]
     fn mouse_motion_is_summed_until_a_button_changes() {
-        let mut s = InputState::new(false);
+        let mut s = InputState::new(KeyboardMouse::Native);
         let m = |dx, buttons| {
             Input::Mouse(MouseFrame {
                 dx,
@@ -375,24 +416,28 @@ mod tests {
                 ..Default::default()
             })
         };
-        s.apply(m(3, 0));
-        s.apply(m(4, 0));
-        s.apply(m(0, 1));
-        s.apply(m(0, 0));
-        s.apply(m(2, 0));
+        s.apply(m(3, 0), Instant::now());
+        s.apply(m(4, 0), Instant::now());
+        s.apply(m(0, 1), Instant::now());
+        s.apply(m(0, 0), Instant::now());
+        s.apply(m(2, 0), Instant::now());
         let r = reports(&mut s, Instant::now());
         let frames: Vec<(i32, u8)> = r[0].mouse.iter().map(|f| (f.dx, f.buttons)).collect();
-        assert_eq!(frames, vec![(7, 0), (0, 1), (2, 0)]);
+        // Doubled, as the web client's.
+        assert_eq!(frames, vec![(14, 0), (0, 1), (4, 0)]);
     }
 
     #[test]
     fn a_burst_too_big_for_one_report_takes_several() {
-        let mut s = InputState::new(false);
+        let mut s = InputState::new(KeyboardMouse::Native);
         for _ in 0..20 {
-            s.apply(Input::Key {
-                key: Key::KeyB,
-                down: true,
-            });
+            s.apply(
+                Input::Key {
+                    key: Key::KeyB,
+                    down: true,
+                },
+                Instant::now(),
+            );
         }
         let r = reports(&mut s, Instant::now());
         assert_eq!(
@@ -405,19 +450,19 @@ mod tests {
     #[test]
     fn controllers_are_sent_again_on_their_heartbeat() {
         let t0 = Instant::now();
-        let mut s = InputState::new(true);
+        let mut s = InputState::new(KeyboardMouse::Controller);
         s.start();
         reports(&mut s, t0);
-        assert_eq!(s.next_heartbeat(), Some(t0 + PAD_HEARTBEAT));
-        s.heartbeat(t0 + PAD_HEARTBEAT / 2);
+        assert_eq!(s.next_tick(), Some(t0 + PAD_HEARTBEAT));
+        s.tick(t0 + PAD_HEARTBEAT / 2);
         assert!(reports(&mut s, t0 + PAD_HEARTBEAT / 2).is_empty());
-        s.heartbeat(t0 + PAD_HEARTBEAT);
+        s.tick(t0 + PAD_HEARTBEAT);
         assert_eq!(reports(&mut s, t0 + PAD_HEARTBEAT).len(), 1);
     }
 
     #[test]
     fn frame_timings_wait_for_input_or_a_batch() {
-        let mut s = InputState::new(false);
+        let mut s = InputState::new(KeyboardMouse::Native);
         for k in 0..METADATA_BATCH as u32 - 1 {
             s.frame_shown(FrameTimes {
                 server_key: k,
@@ -429,11 +474,47 @@ mod tests {
         let r = reports(&mut s, Instant::now());
         assert_eq!(r[0].metadata.len(), METADATA_BATCH);
         s.frame_shown(FrameTimes::default());
-        s.apply(Input::Key {
-            key: Key::KeyC,
-            down: true,
-        });
+        s.apply(
+            Input::Key {
+                key: Key::KeyC,
+                down: true,
+            },
+            Instant::now(),
+        );
         let r = reports(&mut s, Instant::now());
         assert_eq!((r[0].metadata.len(), r[0].keys.len()), (1, 1));
+    }
+
+    #[test]
+    fn the_mouse_aims_with_the_first_controllers_right_stick_in_the_shooters_layout() {
+        let t0 = Instant::now();
+        let mut s = InputState::new(KeyboardMouse::Shooter);
+        s.start();
+        controls(&mut s);
+        reports(&mut s, t0);
+        s.apply(
+            Input::Mouse(MouseFrame {
+                dx: 20,
+                buttons: 1,
+                ..Default::default()
+            }),
+            t0,
+        );
+        let r = reports(&mut s, t0);
+        assert_eq!(r.len(), 1);
+        assert!(r[0].mouse.is_empty(), "the console sees no mouse");
+        assert!(r[0].pads[0].right_x > 0);
+        assert_eq!(r[0].pads[0].right_trigger, u16::MAX);
+        // Still, the stick goes back to the centre, on a tick.
+        let mut t = t0;
+        let mut last = None;
+        while t < t0 + Duration::from_millis(100) {
+            t = s.next_tick().unwrap();
+            s.tick(t);
+            if let Some(r) = reports(&mut s, t).last() {
+                last = Some(r.pads[0].right_x);
+            }
+        }
+        assert_eq!(last, Some(0));
     }
 }

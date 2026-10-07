@@ -17,6 +17,7 @@ use crate::consoles::{self, Command};
 use crate::gssv::{failure_message, Kind, PlaySettings, Service, SessionState};
 use crate::http::Http;
 use crate::ice::with_teredo;
+use crate::virtual_pad::KeyboardMouse;
 
 /// How long a session may stay in "Provisioning" (a console waking from
 /// sleep takes tens of seconds); a cloud queue is not counted.
@@ -47,7 +48,8 @@ pub struct StreamOptions {
     pub locale: String,
     /// The cloud region to play in, when not the account's default.
     pub region: Option<String>,
-    pub keyboard_as_controller: bool,
+    /// What the keyboard and mouse are to the console.
+    pub keyboard_mouse: KeyboardMouse,
 }
 
 impl Default for StreamOptions {
@@ -57,7 +59,7 @@ impl Default for StreamOptions {
             height: 1080,
             locale: "en-US".into(),
             region: None,
-            keyboard_as_controller: true,
+            keyboard_mouse: KeyboardMouse::default(),
         }
     }
 }
@@ -186,7 +188,7 @@ fn run_session(
             width: options.width,
             height: options.height,
             install_id: install_id(auth),
-            keyboard_as_controller: options.keyboard_as_controller,
+            keyboard_mouse: options.keyboard_mouse,
         },
     )?;
     let stopped = || stop.load(Ordering::Relaxed);

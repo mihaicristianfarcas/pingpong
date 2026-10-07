@@ -18,8 +18,9 @@ use pingpong_xbox::connection::{
 };
 use pingpong_xbox::consoles;
 use pingpong_xbox::http::Http;
-use pingpong_xbox::input::xbutton;
+use pingpong_xbox::input::{xbutton, MouseFrame, PadFrame};
 use pingpong_xbox::stream::{self, StreamOptions, Target};
+use pingpong_xbox::virtual_pad::KeyboardMouse;
 use pingpong_xbox_mock::{Cloud, Config, MockConsole, CLOUD_TITLE, CONSOLE_ID, CONSOLE_NAME};
 
 /// What the client received, shared with the test.
@@ -101,6 +102,10 @@ impl Running {
 }
 
 fn start(http: &Http, dir: &Path, target: Target) -> Running {
+    start_with(http, dir, target, KeyboardMouse::default())
+}
+
+fn start_with(http: &Http, dir: &Path, target: Target, keyboard_mouse: KeyboardMouse) -> Running {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let input = Arc::new(Mutex::new(Vec::new()));
     let socket = Socket::bind(stream::route_towards(http)).unwrap();
@@ -119,6 +124,7 @@ fn start(http: &Http, dir: &Path, target: Target) -> Running {
             let options = StreamOptions {
                 width: 1280,
                 height: 720,
+                keyboard_mouse,
                 ..StreamOptions::default()
             };
             stream::run(&dir, http, &target, &options, socket, &mut sink, &stop)
@@ -304,6 +310,15 @@ fn until(timeout: Duration, done: impl Fn() -> bool) -> bool {
     done()
 }
 
+/// The first controller in the last report that had it.
+fn mock_last_pad(mock: &MockConsole) -> Option<PadFrame> {
+    mock.record()
+        .reports
+        .iter()
+        .rev()
+        .find_map(|r| r.pads.iter().find(|p| p.index == 0).copied())
+}
+
 /// The first controller's buttons in the last report that had it.
 fn mock_last_pad_buttons(mock: &MockConsole) -> Option<u16> {
     mock.record()
@@ -473,4 +488,57 @@ fn stopping_while_queued_ends_at_once_and_frees_the_session() {
         asked.elapsed()
     );
     assert_eq!(mock.record().ended_sessions, 1);
+}
+
+#[test]
+fn the_mouse_aims_and_fires_in_the_shooters_layout() {
+    let mock = MockConsole::start(Config::default()).unwrap();
+    let http = Http::with_mock(Some(mock.url()));
+    let dir = tempfile::tempdir().unwrap();
+    sign_in(&http, dir.path());
+    let running = start_with(
+        &http,
+        dir.path(),
+        Target::Console {
+            id: CONSOLE_ID.into(),
+            name: CONSOLE_NAME.into(),
+        },
+        KeyboardMouse::Shooter,
+    );
+    assert!(mock.wait_for(LONG, |r| r.gamepads.contains(&(0, true))));
+    // W held, the mouse moving right with its left button down.
+    running.send(Input::Key {
+        key: Key::KeyW,
+        down: true,
+    });
+    for _ in 0..20 {
+        running.send(Input::Mouse(MouseFrame {
+            dx: 6,
+            buttons: 1,
+            ..Default::default()
+        }));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(until(LONG, || mock_last_pad(&mock).is_some_and(|p| {
+        p.left_y == i16::MAX && p.right_x > 0 && p.right_trigger == u16::MAX
+    })));
+    // Still, and the button up: back to the centre, the trigger let go.
+    running.send(Input::Mouse(MouseFrame::default()));
+    running.send(Input::Key {
+        key: Key::KeyW,
+        down: false,
+    });
+    assert!(until(LONG, || mock_last_pad(&mock).is_some_and(|p| {
+        p.left_y == 0 && p.right_x == 0 && p.right_trigger == 0
+    })));
+    let record = mock.record();
+    assert!(
+        record
+            .reports
+            .iter()
+            .all(|r| r.mouse.is_empty() && r.keys.is_empty()),
+        "the console saw a controller only"
+    );
+    assert_eq!(record.bad_reports, 0);
+    assert_eq!(running.end(), Ok(End::Stopped));
 }

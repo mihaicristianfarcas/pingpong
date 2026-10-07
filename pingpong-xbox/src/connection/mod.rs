@@ -41,6 +41,7 @@ use crate::ice::IceCandidate;
 use crate::input::{parse_server_report, FrameTimes, ServerReport, MAX_REPORT_LEN};
 use crate::messages::{self, Incoming, CHANNELS};
 use crate::rumble::{Motors, Rumble};
+use crate::virtual_pad::KeyboardMouse;
 
 /// How long ICE and DTLS may take before the console is called unreachable.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
@@ -61,9 +62,8 @@ pub struct Options {
     pub height: u32,
     /// This installation's id ([`crate::store::Account::install_id`]).
     pub install_id: String,
-    /// Keys drive the first controller rather than reach the console as a
-    /// keyboard.
-    pub keyboard_as_controller: bool,
+    /// What the keyboard and mouse are to the console.
+    pub keyboard_mouse: KeyboardMouse,
 }
 
 /// A complete video frame: H.264, Annex B.
@@ -235,7 +235,7 @@ impl Connection {
         let (offer, pending) = api
             .apply()
             .ok_or("the connection could not make an offer")?;
-        let keyboard = options.keyboard_as_controller;
+        let keyboard = options.keyboard_mouse;
         Ok((
             Connection {
                 rtc,
@@ -340,7 +340,7 @@ impl Connection {
             let wake = [
                 Some(timeout),
                 self.rumble.next_change(now),
-                self.inputs.next_heartbeat().filter(|_| self.ready),
+                self.inputs.next_tick().filter(|_| self.ready),
                 self.last_keyframe_request
                     .filter(|_| self.awaiting_keyframe && self.connected)
                     .map(|t| t + KEYFRAME_RETRY),
@@ -371,7 +371,8 @@ impl Connection {
             Ok((_, from)) if self.socket.is_bell(from) => {
                 self.socket.bell.heard();
                 let inputs = &mut self.inputs;
-                sink.input(&mut |i| inputs.apply(i));
+                let now = Instant::now();
+                sink.input(&mut |i| inputs.apply(i, now));
                 return Ok(());
             }
             Ok((n, from)) => {
@@ -474,7 +475,7 @@ impl Connection {
             self.drain(sink)?;
         }
         if self.ready {
-            self.inputs.heartbeat(now);
+            self.inputs.tick(now);
             while let Some(msg) = self.inputs.take_control() {
                 self.write(Chan::Control, msg.as_bytes());
                 self.drain(sink)?;

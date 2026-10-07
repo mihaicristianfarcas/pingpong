@@ -36,23 +36,19 @@ use pingpong_xbox::input::MouseFrame;
 use pingpong_xbox::stream::StreamOptions;
 
 pub use pingpong_xbox::stream::Target;
+pub use pingpong_xbox::virtual_pad::KeyboardMouse;
 
 use crate::input::{InputSender, Msg};
 use crate::stats::StatsCollector;
 use crate::stream::{Codec, Event, EventSink, FrameTiming, StreamSettings, VideoOut};
 
-/// The web client sends the browser's mouse movement doubled
-/// (Greenlight's `input/mousekeyboard.ts`); a console has only been seen
-/// with that, so Ping's is doubled too.
-const MOUSE_SCALE: f64 = 2.0;
-
 /// An Xbox to stream from.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct XboxSource {
     pub target: Target,
-    /// Keys drive the first controller (Greenlight's default), rather than
-    /// reach the console as a keyboard (for games that take one).
-    pub keyboard_as_controller: bool,
+    /// What the keyboard and mouse are to the console.
+    #[serde(default)]
+    pub keyboard_mouse: KeyboardMouse,
     /// The cloud region, when not the account's default.
     #[serde(default)]
     pub region: Option<String>,
@@ -121,7 +117,7 @@ impl XboxStream {
             height: settings.height as u32,
             locale: locale(),
             region: source.region.clone(),
-            keyboard_as_controller: source.keyboard_as_controller,
+            keyboard_mouse: source.keyboard_mouse,
         };
         let dir = crate::store::data_dir();
         let net = {
@@ -397,8 +393,8 @@ impl Sink for CoreSink {
         while let Ok((msg, _)) = self.input_rx.try_recv() {
             match msg {
                 Msg::Motion(dx, dy) => {
-                    self.motion.0 += dx * MOUSE_SCALE;
-                    self.motion.1 += dy * MOUSE_SCALE;
+                    self.motion.0 += dx;
+                    self.motion.1 += dy;
                     moved = true;
                 }
                 Msg::Event(ev) => match ev {
@@ -411,8 +407,8 @@ impl Sink for CoreSink {
                         }
                     }
                     InputEvent::MouseMoveRel { dx, dy } => {
-                        self.motion.0 += dx as f64 * MOUSE_SCALE;
-                        self.motion.1 += dy as f64 * MOUSE_SCALE;
+                        self.motion.0 += dx as f64;
+                        self.motion.1 += dy as f64;
                         moved = true;
                     }
                     InputEvent::ButtonDown(b) | InputEvent::ButtonUp(b) => {

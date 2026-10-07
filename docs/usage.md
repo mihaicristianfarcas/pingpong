@@ -111,7 +111,7 @@ Windows and Linux) opens them.
 | | Controller as a mouse | Hold Start to drive the mouse with a controller |
 | | Swap mouse buttons | The left button clicks right on the host, and the right one left (Moonlight's option) |
 | | Reverse scrolling | The wheel and the trackpad scroll the host the other way (Moonlight's option) |
-| | Keyboard as an Xbox controller | In an Xbox stream, keys are the first controller (Enter is A, Backspace B, the arrows the D-pad: [xbox.md](xbox.md#using-it)); off, the console gets a keyboard. On by default, as in Greenlight |
+| | Keyboard and mouse on an Xbox | In an Xbox stream: **Controller**, the keys are the first controller (Enter is A, Backspace B, the arrows the D-pad), the default, as in Greenlight; **Shooter**, the keys and the mouse are, WASD moving and the mouse aiming, as Better xCloud's virtual controller; **Keyboard and mouse**, the console gets those. See [xbox.md](xbox.md#using-it) |
 
 Settings are kept in `settings.toml` in Ping's data folder, beside the paired
 hosts (`hosts.toml`) and this device's keys:

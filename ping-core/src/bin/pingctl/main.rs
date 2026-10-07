@@ -39,8 +39,8 @@ pub(crate) fn usage() -> ExitCode {
             \x20                          [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
             \x20                          [--no-clipboard] [--hdr] [--yuv444]\n\
             \x20      pingctl xbox sign-in | sign-out | consoles | wake NAME | off NAME | games | friends\n\
-            \x20      pingctl xbox stream CONSOLE [--keyboard] [stream flags]\n\
-            \x20      pingctl xbox play GAME [--keyboard] [--region NAME] [stream flags]"
+            \x20      pingctl xbox stream CONSOLE [--shooter | --keyboard] [stream flags]\n\
+            \x20      pingctl xbox play GAME [--shooter | --keyboard] [--region NAME] [stream flags]"
     );
     ExitCode::FAILURE
 }

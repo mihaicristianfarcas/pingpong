@@ -42,25 +42,43 @@ to 1080p. The statistics (Ctrl+Alt+Shift+S) work as for Pong.
 **Controllers**: up to four, as the console's first to fourth controllers,
 with rumble when the console sends it. The Xbox button is the Guide button.
 
-**The keyboard** is the first controller by default, so the console's own
-interface and every game can be played without one
-(*Settings > Input > Keyboard as an Xbox controller*):
+**The keyboard and mouse** are one of three things
+(*Settings > Input > Keyboard and mouse on an Xbox*):
 
-| Key | Controller |
-|---|---|
-| Enter, Space | A |
-| Backspace, Esc | B |
-| X, Y | X, Y |
-| Arrows | D-pad |
-| `[` `]` | Left and right bumper |
-| `-` `=` | Left and right trigger |
-| L, R | Left and right stick click |
-| M, V | Menu, View |
-| N | The Xbox button |
+- **Controller**, the default: the keys are the first controller, so the
+  console's own interface and every game can be played without one.
+- **Shooter**: the keys and the mouse are the first controller, as a
+  shooter is played with them: WASD moves, the mouse aims, left click
+  fires. For any game, on a console or in the cloud: the console sees a
+  controller.
+- **Keyboard and mouse**: the console gets a keyboard and a mouse, for
+  games that take them (on Xbox Cloud Gaming, games marked "mouse and
+  keyboard"; whether a console hands them to a game over remote play is
+  not yet known).
+
+| Controller | Shooter | Xbox controller |
+|---|---|---|
+| Enter, Space | Space, E | A |
+| Backspace, Esc | Left Ctrl, Backspace | B |
+| X | R | X |
+| Y | V | Y |
+| Arrows | Arrows | D-pad |
+| | W A S D | Left stick |
+| | The mouse; I J K L | Right stick |
+| `[` `]` | C or G, Q | Left and right bumper |
+| `-` `=` | Right click, left click | Left and right trigger |
+| L, R | Left Shift, F | Left and right stick click |
+| M, V | Enter, Tab | Menu, View |
+| N | `` ` `` | The Xbox button |
 
 Keys are positions: on any keyboard layout they are where the US layout has
-them. Turned off, the console gets a keyboard and a mouse instead, for games
-that take them (on Xbox Cloud Gaming, games marked "mouse and keyboard").
+them. The Shooter layout is Better xCloud's "Shooter" virtual controller.
+The mouse leans the right stick as far as it moves fast: all the way at
+1200 pixels a second (600 points on a Retina Mac, Better xCloud's speed),
+at least a fifth of the way however slowly, so slow aim
+gets past a game's dead zone, and back to the centre once the mouse has
+missed three of its reports. The game's own stick sensitivity sets how far
+that turns.
 
 From the command line:
 
@@ -68,6 +86,7 @@ From the command line:
 pingctl xbox sign-in
 pingctl xbox consoles
 pingctl xbox stream "Living room"
+pingctl xbox stream "Living room" --shooter
 pingctl xbox games
 pingctl xbox play "Fortnite"
 ```
@@ -87,6 +106,7 @@ pingctl xbox play "Fortnite"
 | Away from home | Teredo addresses turned into IPv4 candidates | The same, and Ping's own public address (STUN) offered, which Greenlight leaves to do |
 | Controllers | The browser's Gamepad API; rumble on xCloud | The platform's own (GameController, XInput, evdev), with rumble wherever the console sends it; four controllers announced as they come and go |
 | Keyboard | As a controller, or a keyboard | The same, by key position; a button two keys hold stays down until both are up |
+| Mouse | A mouse | A mouse, or the right stick with the keys as a shooter's controller (Better xCloud's virtual controller, which Greenlight has not): its speed measured per mouse report, the same at any mouse or display rate, and the stick centred three reports after the mouse stops rather than Better xCloud's fixed 50 ms |
 | Audio | Chromium | Ping's own player and its adaptive buffer, stereo |
 | Input latency | Controllers polled every 16 ms | Sent the moment the platform reports it (the connection's thread is woken for it) |
 | Tokens | Kept in Electron's store, written to its debug log | An owner-only file, never logged |
@@ -137,8 +157,9 @@ Without an Xbox or an account, against a mock of both (below):
 - The console list, waking a sleeping console before its stream.
 - A console's stream and a cloud game's (through its queue and the
   transfer token), end to end: picture, sound, controllers, keys as a
-  controller, rumble back, a second controller, the console ending the
-  stream, Ping ending it.
+  controller, the keys and mouse as a shooter's controller (WASD, the
+  mouse's stick, its buttons the triggers), rumble back, a second
+  controller, the console ending the stream, Ping ending it.
 - 40% video loss: the keyframe asked for both ways, the picture recovering.
 - In Ping's own window on macOS (VideoToolbox, Metal) and on Linux
   (FFmpeg, wgpu), at 60 frames a second, with the input drawn by the mock
