@@ -527,10 +527,15 @@ fn edr_metadata(m: HdrMetadata) -> ([u8; 24], [u8; 4]) {
     (display, content)
 }
 
-/// Everything that must outlive a command buffer.
+/// Everything that must outlive a command buffer. The textures are dropped
+/// before the cache they came from: releasing one reaches into the cache,
+/// and the renderer's own reference can be gone by then (a command buffer
+/// completing just after the renderer stopped crashed in
+/// `CVMetalTextureCache::bufferBackingNotInUse`).
 struct KeepAlive {
     _frame: DecodedFrame,
     _textures: [CFRetained<CVMetalTexture>; 2],
+    _cache: CFRetained<CVMetalTextureCache>,
 }
 
 pub struct Renderer {
@@ -826,6 +831,7 @@ impl Renderer {
                     keep = Some(KeepAlive {
                         _frame: frame.clone_ref(),
                         _textures: [luma, chroma],
+                        _cache: self.cache.clone(),
                     });
                 }
             }
