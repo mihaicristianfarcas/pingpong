@@ -88,6 +88,7 @@ $(arch_limit Ping)
   depends_on macos: :sonoma
 
   app "Ping.app"
+  binary "#{appdir}/Ping.app/Contents/MacOS/pingctl"
 
   zap trash: [
     "~/Library/Application Support/Ping",
@@ -114,6 +115,7 @@ $(arch_limit Pong)
   depends_on macos: :sonoma
 
   app "Pong.app"
+  binary "#{appdir}/Pong.app/Contents/MacOS/pongctl"
   app "Pong Control.app"
 
   uninstall launchctl: [

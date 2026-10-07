@@ -1,9 +1,19 @@
 # Command line
 
 Everything the apps do can also be done from a terminal: streaming and
-pairing with `pingctl`, the host with `pong`, AI agents with `ping-agent`. The
-CLIs are built with the apps (`cargo build --release -p ping-core -p pong
--p ping-agent`; the binaries land in `target/release/`).
+pairing with `pingctl`, the host's keys and clients with `pongctl`, AI agents
+with `ping-agent`; `pong` is the host itself.
+
+`pingctl` and `pongctl` come with the apps:
+
+| | `pingctl` | `pongctl` |
+|---|---|---|
+| macOS | `/Applications/Ping.app/Contents/MacOS/pingctl` (on your PATH when Homebrew installed Ping) | `/Applications/Pong.app/Contents/MacOS/pongctl` (on your PATH when Homebrew installed Pong) |
+| Windows | Beside `Ping.exe` | `C:\Program Files\Pong\pongctl.exe` |
+| Linux | `~/.local/bin/pingctl` | `~/.local/bin/pongctl` |
+
+From a checkout: `cargo build --release -p ping-core -p pong -p ping-agent`,
+and they are in `target/release/`.
 
 ## `pingctl` — the client
 
@@ -16,7 +26,7 @@ The same streaming code as the app, with a window of the platform's own.
 | `pingctl pair HOST[:PORT]` | Pair with a host: shows a PIN to type on the host |
 | `pingctl pair-agent HOST[:PORT]` | Pair this device's AI agent (a key of its own) |
 | `pingctl hosts` | List paired hosts |
-| `pingctl add-host NAME ADDR X25519 MLKEM` | Pair by hand, with the host's keys from `pong identity` |
+| `pingctl add-host NAME ADDR X25519 MLKEM` | Pair by hand, with the host's keys from `pongctl identity` |
 | `pingctl remove-host NAME` | Forget a host |
 | `pingctl wake NAME` | Send Wake-on-LAN packets to a paired host |
 | `pingctl stream NAME [FLAGS]` | Stream a paired host |
@@ -81,17 +91,27 @@ window, the statistics, the sound), and:
 
 ## `pong` — the host
 
+The host itself: what PongService, Pong.app's login item and the systemd
+unit run.
+
 | Command | Does |
 |---|---|
 | `pong` or `pong host` | Run the host in this session |
-| `pong identity` | Print the host's public keys |
-| `pong clients` | List paired clients and agents, with what each may do |
-| `pong add-client NAME X25519 MLKEM [--agent] [--permissions LIST]` | Pair a client by hand (headless setups), with the keys from `pingctl identity` or `ping-agent identity`. Without `--permissions` it gets what pairing gives: everything for the first person's device, see only after it; an agent sees and acts |
-| `pong remove-client X25519` | Unpair a client |
-| `pong permissions X25519 [LIST]` | Show what a paired client may do, or set it. `LIST`: `all`, `none`, `see-only`, or names joined by commas (`view,keyboard,mouse`; the names are in [usage.md](usage.md#what-each-device-may-do)). What a client of its kind cannot have is left out |
 | `pong install`, `pong uninstall` | Windows: install or remove `PongService` and its firewall rules (as administrator) |
 | `pong service` | Windows: the service itself (started by Windows) |
 | `pong clipboard-agent` | Windows: clipboard sharing as the signed-in user (started by the host for a session) |
+
+## `pongctl` — the host's command line
+
+The host's keys and clients, for the person at it.
+
+| Command | Does |
+|---|---|
+| `pongctl identity` | Print the host's public keys |
+| `pongctl clients` | List paired clients and agents, with what each may do |
+| `pongctl add-client NAME X25519 MLKEM [--agent] [--permissions LIST]` | Pair a client by hand (headless setups), with the keys from `pingctl identity` or `ping-agent identity`. Without `--permissions` it gets what pairing gives: everything for the first person's device, see only after it; an agent sees and acts |
+| `pongctl remove-client X25519` | Unpair a client |
+| `pongctl permissions X25519 [LIST]` | Show what a paired client may do, or set it. `LIST`: `all`, `none`, `see-only`, or names joined by commas (`view,keyboard,mouse`; the names are in [usage.md](usage.md#what-each-device-may-do)). What a client of its kind cannot have is left out |
 
 Changes made with `add-client`, `remove-client` and `permissions` apply to
 a running host after it restarts; the window and the web UI apply theirs at
@@ -105,7 +125,7 @@ Administrators, so these commands need an administrator's terminal there.
 | `ping-agent providers` | What can run here, and which provider is chosen |
 | `ping-agent set-key PROVIDER` | Save an API key (`anthropic`, `openai`, `openrouter`, `custom`, or `cloudflare`: the token clef's [screen checks](ai-agents.md#screen-checks-cloudflare-clef) use), read from stdin; an empty line forgets it |
 | `ping-agent check SCREEN.png --click X,Y \| --enter \| --typing N \| --personal` | What clef makes of a screenshot, as a screen check would: its answers, and whether the step would wait |
-| `ping-agent identity` | The agent's public keys (for `pong add-client --agent`) |
+| `ping-agent identity` | The agent's public keys (for `pongctl add-client --agent`) |
 | `ping-agent hosts` | Hosts the agent is paired with |
 | `ping-agent add-host NAME ADDR X25519 MLKEM` | Pair the agent by hand |
 | `ping-agent run --host NAME [FLAGS] TASK` | Run one task, printing each action |

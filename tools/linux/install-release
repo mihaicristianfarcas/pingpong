@@ -15,6 +15,8 @@ UNITS=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 
 # PROGRAM ID: the launcher entry and icon are ID.desktop and ID.png.
 apps=("ping-app dev.pingpong.Ping" "pong-app dev.pingpong.PongApp")
+# The command lines, without a launcher entry.
+clis=(pingctl pongctl)
 
 if [[ ${1:-} == --uninstall ]]; then
     if [[ -f $HERE/pong.service ]]; then
@@ -27,6 +29,9 @@ if [[ ${1:-} == --uninstall ]]; then
         [[ -f $HERE/$program ]] || continue
         rm -f "$BIN/$program" "$DATA/applications/$id.desktop" "$DATA/icons/hicolor/256x256/apps/$id.png"
     done
+    for cli in "${clis[@]}"; do
+        [[ -f $HERE/$cli ]] && rm -f "$BIN/$cli"
+    done
     app=ping
     [[ -f $HERE/pong ]] && app=pong
     echo "uninstalled; your settings and pairings stay in ~/.config/$app"
@@ -35,7 +40,7 @@ fi
 
 # A library the system lacks shows here, not as a program that will not
 # start from the launcher.
-missing=$(for program in ping-app pong-app pong; do
+missing=$(for program in ping-app pingctl pong-app pong pongctl; do
     if [[ -f $HERE/$program ]]; then
         ldd "$HERE/$program" | awk '/not found/ { print $1 }'
     fi
@@ -73,6 +78,11 @@ for app in "${apps[@]}"; do
     sed "s|^Exec=.*|Exec=$BIN/$program|" "$HERE/$id.desktop" > "$DATA/applications/$id.desktop"
     install -Dm644 "$HERE/$id.png" "$DATA/icons/hicolor/256x256/apps/$id.png"
     echo "installed $program"
+done
+for cli in "${clis[@]}"; do
+    [[ -f $HERE/$cli ]] || continue
+    install -Dm755 "$HERE/$cli" "$BIN/$cli"
+    echo "installed $cli"
 done
 command -v update-desktop-database >/dev/null && update-desktop-database -q "$DATA/applications" || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true

@@ -23,6 +23,8 @@ if DEVELOPER_DIR=$XCODE xcrun metal --version >/dev/null 2>&1; then
     FEATURES=(--no-default-features)
 fi
 cargo build --release -p ping-app ${FEATURES[@]+"${FEATURES[@]}"} --manifest-path "$REPO/Cargo.toml"
+# The command line goes in the bundle too (the Homebrew cask links it).
+cargo build --release -p ping-core --bin pingctl --manifest-path "$REPO/Cargo.toml"
 
 ICNS="$REPO/target/AppIcon.icns"
 MAKE_ICON="$REPO/ping-app/examples/make-icon.rs"
@@ -34,6 +36,7 @@ fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/target/release/ping-app" "$APP/Contents/MacOS/Ping"
+cp "$REPO/target/release/pingctl" "$APP/Contents/MacOS/pingctl"
 cp "$REPO/ping-app/macos/Info.plist" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
@@ -48,6 +51,9 @@ else
     DEV=$("$REPO/tools/dev-signing-identity" --check)
     SIGN=(--sign "${DEV:--}")
 fi
+# A second program in the bundle is signed on its own, before the bundle:
+# notarization refuses a bundle with unsigned code in it.
+codesign --force "${SIGN[@]}" --identifier dev.pingpong.pingctl "$APP/Contents/MacOS/pingctl" >/dev/null
 codesign --force "${SIGN[@]}" --identifier dev.pingpong.Ping "$APP" >/dev/null
 echo "built $APP ($VERSION)"
 

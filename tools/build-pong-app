@@ -65,6 +65,10 @@ fi
 
 bundle "$APP" "$REPO/pong/macos/Info.plist"
 cp "$REPO/target/release/pong" "$APP/Contents/MacOS/pong"
+# The host's command line beside it, signed on its own first (as Ping.app's
+# pingctl is); the Homebrew cask links it.
+cp "$REPO/target/release/pongctl" "$APP/Contents/MacOS/pongctl"
+codesign --force "${SIGN[@]}" --identifier dev.pingpong.pongctl "$APP/Contents/MacOS/pongctl" >/dev/null
 codesign --force "${SIGN[@]}" --identifier dev.pingpong.Pong "$APP" >/dev/null
 echo "built $APP ($VERSION)"
 

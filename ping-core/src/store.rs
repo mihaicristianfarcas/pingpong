@@ -151,7 +151,7 @@ pub struct KnownHost {
 }
 
 impl KnownHost {
-    /// A host paired by hand, from its public keys (`pong identity`): nothing
+    /// A host paired by hand, from its public keys (`pongctl identity`): nothing
     /// else is known about it yet.
     pub fn by_hand(name: &str, address: &str, x25519: &str, mlkem: &str) -> KnownHost {
         KnownHost {

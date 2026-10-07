@@ -6,7 +6,7 @@
 //!   pingctl pair-agent HOST[:PORT]              pair this device's AI agent (its own key)
 //!   pingctl watch NAME [stream flags]           watch the AI agent working on NAME
 //!   pingctl hosts                               paired hosts
-//!   pingctl add-host NAME ADDR X25519 MLKEM     pair by hand (see `pong identity`)
+//!   pingctl add-host NAME ADDR X25519 MLKEM     pair by hand (see `pongctl identity`)
 //!   pingctl remove-host NAME
 //!   pingctl wake NAME                           Wake-on-LAN
 //!   pingctl stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]

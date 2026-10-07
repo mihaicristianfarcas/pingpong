@@ -20,8 +20,8 @@ the host lists it as an **AI agent**.
   the PIN into Pong's window or web UI, as for Ping.
 - CLI: `pingctl pair-agent HOST`.
 - By hand (headless hosts): `ping-agent identity` prints the agent's keys;
-  `pong add-client NAME X25519 MLKEM --agent` on the host, and
-  `ping-agent add-host NAME ADDR X25519 MLKEM` with `pong identity`'s keys.
+  `pongctl add-client NAME X25519 MLKEM --agent` on the host, and
+  `ping-agent add-host NAME ADDR X25519 MLKEM` with `pongctl identity`'s keys.
 
 ### 2. Work with it: sessions
 

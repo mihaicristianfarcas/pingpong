@@ -194,7 +194,7 @@ which way the clipboard goes, and more. Set them in Pong's window under
 **Devices** (the button beside each device) or in the web UI under
 **Clients**. A change applies at once, to a stream that is running too.
 
-| Permission | Lets the device | Name (`pong permissions`) |
+| Permission | Lets the device | Name (`pongctl permissions`) |
 |---|---|---|
 | See the screen | Stream the screen and sound. Off: the device stays paired, but is turned away | `view` |
 | Start apps | Open an app with the stream, such as Steam Big Picture | `launch` |
@@ -235,8 +235,8 @@ What the device hears:
   read on the side that may not send them. Sharing that was off when a
   stream started comes on with the next stream.
 
-From a terminal: `pong permissions X25519 view,keyboard,mouse`
-([cli.md](cli.md#pong--the-host)).
+From a terminal: `pongctl permissions X25519 view,keyboard,mouse`
+([cli.md](cli.md#pongctl--the-hosts-command-line)).
 
 ## Xbox
 
@@ -360,4 +360,4 @@ same.
   them, e.g. `RUST_LOG=info,ping_core::stats=debug` for a line of
   statistics a second.
 
-The command line (`pingctl`, `pong`, `ping-agent`) is in [cli.md](cli.md).
+The command line (`pingctl`, `pong`, `pongctl`, `ping-agent`) is in [cli.md](cli.md).

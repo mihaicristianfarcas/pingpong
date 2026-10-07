@@ -255,6 +255,7 @@ async runtimes, and one build cannot have both.
 ```sh
 cargo build --release -p pong
 install -Dm755 target/release/pong ~/.local/bin/pong
+install -Dm755 target/release/pongctl ~/.local/bin/pongctl
 install -Dm644 tools/linux/pong.service ~/.config/systemd/user/pong.service
 systemctl --user enable --now pong
 ```
