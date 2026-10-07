@@ -536,6 +536,67 @@ fn stopping_while_queued_ends_at_once_and_frees_the_session() {
 }
 
 #[test]
+fn a_key_reaches_the_console_within_milliseconds_while_the_picture_flows() {
+    // Each press is timed from the moment it is handed over to the moment
+    // the console reads it, with video arriving all the while, so the
+    // connection's thread is busy with datagrams when the key comes.
+    // Measured on an Apple silicon Mac, loopback, three runs of 40 keys: a
+    // median of 0.18-0.20 ms and at most 0.84 ms in a release build; 0.48-
+    // 0.63 ms and at most 9.8 ms in a debug one.
+    let mock = MockConsole::start(Config::default()).unwrap();
+    let http = Http::with_mock(Some(mock.url()));
+    let dir = tempfile::tempdir().unwrap();
+    sign_in(&http, dir.path());
+    let running = start(
+        &http,
+        dir.path(),
+        Target::Console {
+            id: CONSOLE_ID.into(),
+            name: CONSOLE_NAME.into(),
+        },
+    );
+    assert!(running.wait(LONG, |s| s.frames >= 30));
+    assert!(mock.wait_for(LONG, |r| r.gamepads.contains(&(0, true))));
+    let mut waits = Vec::new();
+    for i in 0..40 {
+        let sent = std::time::Instant::now();
+        running.send(Input::Key {
+            key: Key::KeyW,
+            down: i % 2 == 0,
+        });
+        assert!(until(LONG, || key_arrival(&mock.record(), i).is_some()));
+        let arrived = key_arrival(&mock.record(), i).unwrap();
+        waits.push(arrived.saturating_duration_since(sent));
+        // Off the picture's 60 Hz beat, so presses meet it at every phase.
+        std::thread::sleep(Duration::from_millis(7));
+    }
+    waits.sort();
+    let (median, slowest) = (waits[waits.len() / 2], waits[waits.len() - 1]);
+    // Loose, for a loaded CI runner: a key that waited for the loop's
+    // timers or for a lost doorbell would take tens of milliseconds, or
+    // forever.
+    eprintln!("a key's way to the console: median {median:?}, slowest {slowest:?}");
+    assert!(
+        median < Duration::from_millis(20),
+        "median {median:?}, slowest {slowest:?}"
+    );
+    assert!(slowest < Duration::from_millis(250), "slowest {slowest:?}");
+    assert_eq!(running.end(), Ok(End::Stopped));
+}
+
+/// When the report carrying the `n`th key the console was sent arrived.
+fn key_arrival(record: &pingpong_xbox_mock::Record, n: usize) -> Option<std::time::Instant> {
+    let mut seen = 0;
+    for (report, at) in record.reports.iter().zip(&record.reports_at) {
+        seen += report.keys.len();
+        if seen > n {
+            return Some(*at);
+        }
+    }
+    None
+}
+
+#[test]
 fn the_mouse_aims_and_fires_in_the_shooters_layout() {
     let mock = MockConsole::start(Config::default()).unwrap();
     let http = Http::with_mock(Some(mock.url()));

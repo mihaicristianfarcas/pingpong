@@ -104,6 +104,8 @@ pub struct Record {
     /// Transactions the client completed or turned down: (type, id).
     pub transactions: Vec<(String, String)>,
     pub reports: Vec<ClientReport>,
+    /// When each of `reports` arrived.
+    pub reports_at: Vec<Instant>,
     pub bad_reports: u32,
     /// Keyframes asked for on the control channel, and by RTCP.
     pub keyframe_requests: u32,

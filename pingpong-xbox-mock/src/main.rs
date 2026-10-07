@@ -73,6 +73,7 @@ fn main() {
                 keyframes = r.keyframes,
                 audio = r.audio_packets,
                 reports = r.reports.len(),
+                keys = r.reports.iter().map(|r| r.keys.len()).sum::<usize>(),
                 keyframe_requests = r.keyframe_requests + r.plis,
                 "mock console"
             );

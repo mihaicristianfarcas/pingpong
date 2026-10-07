@@ -117,7 +117,7 @@ pingctl xbox play "Fortnite"
 | Keyboard | As a controller, or a keyboard | A keyboard for a console and a controller for a cloud game, as Microsoft's app chooses, or either anywhere; by key position; a button two keys hold stays down until both are up |
 | Mouse | A mouse | A mouse, or the right stick with the keys as a shooter's controller (Better xCloud's virtual controller, which Greenlight has not): its speed measured per mouse report, the same at any mouse or display rate, and the stick centred three reports after the mouse stops rather than Better xCloud's fixed 50 ms |
 | Audio | Chromium | Ping's own player and its adaptive buffer, stereo |
-| Input latency | Controllers polled every 16 ms | Sent the moment the platform reports it (the connection's thread is woken for it) |
+| Input latency | Controllers polled every 16 ms | Sent the moment the platform reports it: the connection's thread is woken for it, and takes it ahead of video datagrams queued before it. 0.2 ms from a key handed over to the mock console reading it, at most 0.84 ms (release build, loopback, the picture flowing) |
 | Tokens | Kept in Electron's store, written to its debug log | An owner-only file, never logged |
 | Friends | Online friends, in a sidebar refreshed every 30 s | Online friends and what they play, on the Xbox page and `pingctl xbox friends`, asked for when looked at (Xbox Live allows 30 requests in five minutes) |
 | Achievements, profile | Yes | No: they are not streaming |

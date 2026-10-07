@@ -430,7 +430,9 @@ impl Console {
                     ));
                 }
                 self.show_input(&report);
-                self.record.lock().reports.push(report);
+                let mut record = self.record.lock();
+                record.reports.push(report);
+                record.reports_at.push(Instant::now());
             }
             _ => {}
         }
