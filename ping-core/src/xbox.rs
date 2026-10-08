@@ -444,9 +444,16 @@ impl Sink for CoreSink {
                         received_kbps: s.received_kbps,
                     });
                 }
+                // Frames given up for a keyframe are the losses, as Pong's
+                // frame gate counts them; a frame passed over for one is
+                // dropped.
                 self.ctx.stats.gate(pingpong_proto::video::GateStats {
+                    decoded: s.video.frames,
+                    dropped: s.video.skipped,
+                    lost: s.video.given_up,
+                    losses: s.video.given_up,
                     idr_requests: s.keyframe_requests,
-                    ..Default::default()
+                    rfi_requests: 0,
                 });
             }
         }

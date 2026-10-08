@@ -296,6 +296,10 @@ impl Connection {
 
     /// The console's answer.
     pub fn accept_answer(&mut self, sdp: &str) -> Result<(), String> {
+        // What the console agreed to send and how (codecs, feedback,
+        // header extensions): how a stream adapts to its link depends on
+        // it. Nothing secret: no ICE credentials or fingerprints.
+        tracing::info!(media = %media_lines(sdp), "the console's answer");
         let answer = SdpAnswer::from_sdp_string(sdp)
             .map_err(|e| format!("The console's answer could not be read: {e}"))?;
         let pending = self.pending.take().ok_or("an answer was already taken")?;
@@ -794,6 +798,17 @@ impl Connection {
     }
 }
 
+/// An SDP's lines about its media, one string: the sections, bandwidth,
+/// codecs and their parameters, feedback and header extensions.
+fn media_lines(sdp: &str) -> String {
+    const KEPT: [&str; 6] = ["m=", "b=", "a=rtpmap", "a=fmtp", "a=rtcp-fb", "a=extmap"];
+    sdp.lines()
+        .map(str::trim_end)
+        .filter(|l| KEPT.iter().any(|k| l.starts_with(k)))
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 /// `sdp` with the most the video may take, `kbps`: a `b=AS` line in its
 /// video section, which a sender keeps under (RFC 4566 §5.8). Better
 /// xCloud's bitrate limit is this line in the offer (`sdp.ts`
@@ -919,5 +934,20 @@ mod tests {
         assert!(video.contains("\r\nb=AS:12000\r\n"), "{sdp}");
         // str0m's own reading of it is unchanged.
         assert!(SdpOffer::from_sdp_string(&sdp).is_ok());
+    }
+
+    #[test]
+    fn the_answer_is_logged_without_its_secrets() {
+        let sdp = "v=0\r\na=ice-ufrag:abcd\r\na=ice-pwd:secret\r\n\
+                   a=fingerprint:sha-256 AA:BB\r\nm=video 9 UDP/TLS/RTP/SAVPF 102\r\n\
+                   a=rtpmap:102 H264/90000\r\na=rtcp-fb:102 transport-cc\r\n\
+                   a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\n\
+                   a=candidate:1 1 udp 1 192.168.1.20 3074 typ host\r\n";
+        let lines = media_lines(sdp);
+        assert!(lines.contains("a=rtcp-fb:102 transport-cc"));
+        assert!(lines.contains("m=video"));
+        for secret in ["secret", "abcd", "AA:BB", "192.168"] {
+            assert!(!lines.contains(secret), "{lines}");
+        }
     }
 }
