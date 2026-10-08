@@ -47,6 +47,7 @@ pub use socket::{Doorbell, Socket};
 
 use crate::ice::IceCandidate;
 use crate::input::{parse_server_report, FrameTimes, ServerReport, MAX_REPORT_LEN};
+use crate::lateness::Lateness;
 use crate::messages::{self, Incoming, CHANNELS};
 use crate::reassembly::{self, Popped, Reassembler, ReassemblyStats};
 use crate::rumble::{Motors, Rumble};
@@ -187,6 +188,7 @@ pub struct Connection {
     /// Which media each sender's packets are, once seen.
     ssrcs: Vec<(Ssrc, Mid)>,
     frames: Reassembler,
+    lateness: Lateness,
     /// When the first video packet came: a keyframe is asked for if none
     /// comes within [`KEYFRAME_RETRY`] of it.
     first_video: Option<Instant>,
@@ -276,6 +278,7 @@ impl Connection {
                 video,
                 ssrcs: Vec::new(),
                 frames: Reassembler::new(),
+                lateness: Lateness::new(),
                 first_video: None,
                 channels: Vec::new(),
                 options,
@@ -629,6 +632,12 @@ impl Connection {
                     keyframes = video.keyframes,
                     keyframe_requests = self.keyframe_requests,
                     wait_ms = self.frames.wait().as_millis() as u64,
+                    // How much later than its best a frame came this
+                    // second: a queue on the way (see `lateness`).
+                    queue_ms = self
+                        .lateness
+                        .take_worst()
+                        .map_or(0, |d| d.as_millis() as u64),
                     "video"
                 );
                 sink.event(Event::Stats(LinkStats {
@@ -696,6 +705,7 @@ impl Connection {
                     continue;
                 }
                 Some(Popped::Frame(f)) => {
+                    self.lateness.frame(f.time, f.arrived);
                     let rtp_time = f.time as u32;
                     let decoded = sink.video(&VideoFrame {
                         data: f.data,

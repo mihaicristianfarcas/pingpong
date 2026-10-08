@@ -21,7 +21,8 @@
 //!   [`keymap`] (keys as Windows key codes), [`virtual_pad`] (the keyboard
 //!   as a controller), [`rumble`] (the console's rumble patterns as motor
 //!   states), [`ice`] (candidates, Teredo), [`reassembly`] (the video's
-//!   packets as frames, and waiting for the missing).
+//!   packets as frames, and waiting for the missing), [`lateness`] (a
+//!   queue growing on the way).
 //!
 //! Nothing here touches a window, a decoder or a speaker: the client
 //! (`ping_core::xbox`) hands frames to the platform's own decoder and
@@ -35,6 +36,7 @@ pub mod http;
 pub mod ice;
 pub mod input;
 pub mod keymap;
+pub mod lateness;
 pub mod messages;
 pub mod people;
 pub mod reassembly;
