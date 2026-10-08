@@ -52,6 +52,16 @@ import { onGitHub } from '../lib/repo';
         </p>
       </details>
       <details>
+        <summary><h3>How do Ping and Pong stay up to date?</h3></summary>
+        <p>
+          They ask GitHub once a day whether there is a new release, and say so in the window. Choose
+          <strong>Install and Restart</strong> and the app downloads it, checks it against the checksum GitHub
+          keeps for it (on a Mac, also against the developer’s signature), installs it the way you installed
+          the app, Homebrew included, and opens again. Nothing downloads until you choose to. See
+          <a href={onGitHub('docs/usage.md#updates')}>how each system installs an update</a>.
+        </p>
+      </details>
+      <details>
         <summary><h3>Is pingpong free and open source?</h3></summary>
         <p>
           Yes. Ping and Pong are free to download and use, with their source code available under the GPL-3.0
