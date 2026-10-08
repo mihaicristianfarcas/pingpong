@@ -105,8 +105,21 @@ impl ReceiverRegister {
     }
 
     /// Generates a NACK report
+    // pingpong: str0m's tests and fuzz targets still use it.
+    #[allow(dead_code)]
     pub fn nack_report(&mut self) -> Option<impl Iterator<Item = Nack>> {
         self.nack.nack_reports()
+    }
+
+    /// pingpong: a NACK report at `now`, without the packets NACKed just
+    /// before.
+    pub fn nack_report_at(&mut self, now: Instant) -> Option<impl Iterator<Item = Nack>> {
+        self.nack.nack_reports_at(Some(now))
+    }
+
+    /// pingpong: whether a packet was found missing since the last call.
+    pub fn take_fresh_gap(&mut self) -> bool {
+        self.nack.take_fresh_gap()
     }
 
     /// Create a new reception report.

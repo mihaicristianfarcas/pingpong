@@ -130,7 +130,7 @@ pingctl xbox play "Fortnite"
 | Consoles | List, power on and off | The same; a sleeping console is woken before its stream, with "Waking…" said |
 | Cloud | Library, recent, queue | Library with search, queue with its estimated wait; free-to-play for an account without Game Pass |
 | Video decode | Chromium's WebRTC pipeline and jitter buffer, then a `<video>` element or WebGPU | Each frame to the platform's hardware decoder the moment its last packet arrives, presented as Pong's are (Metal, Direct3D 11, wgpu) |
-| Loss | Chromium waits for retransmissions, the frames behind a gap held for up to seconds, then asks for a keyframe | Retransmissions waited for as long as they take on the link (20–250 ms, measured as they arrive); then Moonlight's rule: nothing decoded until a keyframe, asked for both ways (RTCP PLI and the console's keyframe request). A whole keyframe ends a wait at once |
+| Loss | Chromium waits for retransmissions, the frames behind a gap held for up to seconds, then asks for a keyframe | Retransmissions asked for the moment a packet is missing and waited for as long as they take on the link (measured as they arrive, with room for a second ask; at most 250 ms); then Moonlight's rule: nothing decoded until a keyframe, asked for both ways (RTCP PLI and the console's keyframe request). A whole keyframe ends a wait at once |
 | Resolution | 720p or 1080p, by the device it says it is | Asked for by name once connected, as Microsoft's web client asks: 1440p, 1080p or 720p, by the size Ping shows the picture at |
 | Bitrate | A limit in its settings | The bitrate in Ping's settings, as a `b=AS` limit in the offer, as Better xCloud sets it; Automatic leaves it to the console |
 | Picture size | Says 1920×1080 to the console whatever the window, and as millimetres too | Says the size Ping shows it at: in pixels, and in millimetres as the display reports them (a Mac's), as Microsoft's web client says it |
@@ -169,8 +169,9 @@ platform layer ([architecture.md](architecture.md)):
    web client's binary format; the message and control channels are JSON.
    str0m runs in RTP mode: it decrypts, asks for lost packets again (NACK)
    and unwraps their retransmissions, and Ping makes the frames
-   (`pingpong_xbox::reassembly`). str0m is vendored with its NACK window
-   widened from 100 packets to 1,000 (`vendor/str0m`): at 100, a
+   (`pingpong_xbox::reassembly`). str0m is vendored (`vendor/str0m`) with
+   a missing packet NACKed at once rather than at its next 33 ms tick, and
+   its NACK window widened from 100 packets to 1,000: at 100, a
    retransmission came after its packet had left the window, and was
    dropped.
 4. **The stream**: frames go from the connection's thread straight to the

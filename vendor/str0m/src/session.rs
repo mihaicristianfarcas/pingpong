@@ -37,7 +37,7 @@ use crate::rtp_::{SrtpContext, Ssrc};
 use crate::rtp_::{TwccRecvRegister, TwccSendRegister};
 use crate::stats::StatsSnapshot;
 use crate::streams::{RtpPacket, StreamTimeoutConfig, Streams};
-use crate::util::{Soonest, SystemTimeExt, already_happened, not_happening};
+use crate::util::{Soonest, SystemTimeExt, already_happened};
 use crate::{Reason, net};
 use crate::{RtcConfig, RtcError};
 
@@ -287,7 +287,10 @@ impl Session {
 
         let sender_ssrc = self.streams.first_ssrc_local();
 
-        let do_nack = now >= self.nack_at().unwrap_or(not_happening());
+        // pingpong: a packet found missing is NACKed at once, not at the
+        // next NACK interval; the register spaces each packet's retries.
+        let fresh_gap = self.streams.take_fresh_gaps();
+        let do_nack = self.nack_at().is_some_and(|at| now >= at || fresh_gap);
 
         self.streams.handle_timeout(
             now,

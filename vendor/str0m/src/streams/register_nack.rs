@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::time::{Duration, Instant};
 
 use crate::rtp_::{Nack, NackEntry, ReportList, SeqNo};
 
@@ -14,6 +15,13 @@ const MAX_MISORDER: u64 = 1000;
 /// The max number of NACKs we perform for a single packet
 const MAX_NACKS: u8 = 5;
 
+/// pingpong: a packet NACKed is not NACKed again for this long (str0m's
+/// own NACK interval, which was the spacing for every packet). A packet
+/// found missing is NACKed at once, where str0m waited for its next NACK
+/// interval, on average 16 ms; this keeps the retries of the packets
+/// missing already as far apart as they were.
+const NACK_RETRY: Duration = Duration::from_millis(33);
+
 /// Circular buffer size
 const BUFFER_SIZE: u64 = MAX_MISORDER + 1;
 
@@ -24,17 +32,37 @@ pub struct NackRegister {
 
     /// Range of seq numbers considered NACK reporting.
     active: Option<Range<SeqNo>>,
+
+    /// pingpong: a packet was found missing since this was last taken.
+    fresh_gap: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
 struct PacketStatus {
     received: bool,
     nack_count: u8,
+    /// pingpong: when it was last NACKed.
+    nacked_at: Option<Instant>,
 }
 
 impl PacketStatus {
     fn needs_nack(&self) -> bool {
         !self.received && self.nack_count < MAX_NACKS
+    }
+
+    /// pingpong: `needs_nack`, and not NACKed within `NACK_RETRY` of `now`
+    /// (`None`: whenever, str0m's own rule).
+    fn wants_nack(&self, now: Option<Instant>) -> bool {
+        self.needs_nack()
+            && match (now, self.nacked_at) {
+                (Some(now), Some(at)) => now >= at + NACK_RETRY,
+                _ => true,
+            }
+    }
+
+    fn nacked(&mut self, now: Option<Instant>) {
+        self.nack_count += 1;
+        self.nacked_at = now.or(self.nacked_at);
     }
 
     fn mark_received(&mut self) -> bool {
@@ -46,6 +74,7 @@ impl PacketStatus {
     fn reset(&mut self) {
         self.received = false;
         self.nack_count = 0;
+        self.nacked_at = None;
     }
 }
 
@@ -53,27 +82,29 @@ struct NackIterator<'a> {
     reg: &'a mut NackRegister,
     next: u64,
     end: u64,
+    now: Option<Instant>,
 }
 
 impl<'a> Iterator for NackIterator<'a> {
     type Item = NackEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next =
-            (self.next..=self.end).find(|s| self.reg.packet_mut((*s).into()).needs_nack())?;
+        let now = self.now;
+        self.next = (self.next..=self.end)
+            .find(|s| self.reg.packet_mut((*s).into()).wants_nack(now))?;
 
         let mut entry = NackEntry {
             pid: self.next as u16,
             blp: 0,
         };
 
-        self.reg.packet_mut(self.next.into()).nack_count += 1;
+        self.reg.packet_mut(self.next.into()).nacked(now);
         self.next += 1;
 
         for (i, s) in (self.next..self.end).take(16).enumerate() {
             let packet = self.reg.packet_mut(s.into());
-            if packet.needs_nack() {
-                self.reg.packet_mut(self.next.into()).nack_count += 1;
+            if packet.wants_nack(now) {
+                self.reg.packet_mut(self.next.into()).nacked(now);
                 entry.blp |= 1 << i
             }
             self.next += 1;
@@ -91,6 +122,7 @@ impl NackRegister {
         let mut n = NackRegister {
             packets: vec![PacketStatus::default(); BUFFER_SIZE as usize],
             active: None,
+            fresh_gap: false,
         };
 
         if let Some(seq) = max_seq_no {
@@ -127,6 +159,9 @@ impl NackRegister {
         }
 
         let new = !self.packet_mut(seq).received || seq > active.end;
+        if *seq > *active.end + 1 {
+            self.fresh_gap = true;
+        }
 
         let end = active.end.max(seq);
 
@@ -174,18 +209,32 @@ impl NackRegister {
         self.active.as_ref().map(|a| a.end)
     }
 
+    /// pingpong: whether a packet was found missing since the last call.
+    pub fn take_fresh_gap(&mut self) -> bool {
+        std::mem::take(&mut self.fresh_gap)
+    }
+
     /// Create a new nack report
     ///
     /// This modifies the state as it counts how many times packets have been nacked
+    // pingpong: str0m's tests still use it.
+    #[allow(dead_code)]
     pub fn nack_reports(&mut self) -> Option<impl Iterator<Item = Nack>> {
+        self.nack_reports_at(None)
+    }
+
+    /// pingpong: `nack_reports`, leaving out packets NACKed within
+    /// `NACK_RETRY` of `now`.
+    pub fn nack_reports_at(&mut self, now: Option<Instant>) -> Option<impl Iterator<Item = Nack>> {
         let Range { start, end } = self.active.clone()?;
-        let start = (*start..=*end).find(|s| self.packet_mut((*s).into()).needs_nack())?;
+        let start = (*start..=*end).find(|s| self.packet_mut((*s).into()).wants_nack(now))?;
 
         Some(
             ReportList::lists_from_iter(NackIterator {
                 reg: self,
                 next: start,
                 end: *end,
+                now,
             })
             .into_iter()
             .map(|reports| {

@@ -1,13 +1,19 @@
 # str0m 0.24.1 (github.com/algesten/str0m, MIT OR Apache-2.0; LICENSE-MIT
-# here, LICENSE-APACHE in vendor/), with one change: the NACK register
-# follows 1,000 packets instead of 100 (src/streams/register_nack.rs
-# `MAX_MISORDER`). At 100, a packet more than 100 behind the newest is
-# neither asked for again nor, in RTP mode, handed over when it comes:
-# a console's video at 2,000-3,000 packets a second over a link with a
-# 50 ms round trip has its retransmissions arrive after that, and they were
-# dropped (pingpong-xbox `reassembly`, docs/xbox.md). Chrome follows 1,000
-# (`kMaxNackPackets`). Only the library is here: str0m's tests, examples
-# and fuzz targets are not.
+# here, LICENSE-APACHE in vendor/), with two changes, each marked
+# "pingpong:" in the code:
+# - The NACK register follows 1,000 packets instead of 100
+#   (src/streams/register_nack.rs `MAX_MISORDER`). At 100, a packet more
+#   than 100 behind the newest is neither asked for again nor, in RTP
+#   mode, handed over when it comes: a console's video at 2,000-3,000
+#   packets a second over a link with a 50 ms round trip has its
+#   retransmissions arrive after that, and they were dropped. Chrome
+#   follows 1,000 (`kMaxNackPackets`).
+# - A packet found missing is NACKed at once, not at the next 33 ms NACK
+#   interval (16 ms later on average); each packet's retries stay 33 ms
+#   apart (`NACK_RETRY`; session.rs, streams/). A fifth less time without
+#   a new frame at 1% loss (docs/benchmarks.md, "Xbox: a lossy link").
+# Only the library is here: str0m's tests, examples and fuzz targets are
+# not.
 [package]
 edition = "2024"
 rust-version = "1.85.0"

@@ -55,8 +55,8 @@ gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "4278
 # vendor/str0m-rust-crypto/Cargo.toml.
 str0m-rust-crypto = { path = "vendor/str0m-rust-crypto" }
 # str0m with a NACK window of 1,000 packets instead of 100, without which a
-# console's retransmissions arrive too late to be used: see
-# vendor/str0m/Cargo.toml.
+# console's retransmissions arrive too late to be used, and a missing packet
+# NACKed at once: see vendor/str0m/Cargo.toml.
 str0m = { path = "vendor/str0m" }
 
 [patch."https://github.com/zed-industries/zed.git"]

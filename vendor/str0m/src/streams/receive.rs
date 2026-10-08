@@ -795,8 +795,14 @@ impl StreamRx {
         !self.suppress_nack
     }
 
+    /// pingpong: whether a packet was found missing since the last call.
+    pub(crate) fn take_fresh_gap(&mut self) -> bool {
+        self.register.as_mut().is_some_and(|r| r.take_fresh_gap())
+    }
+
     pub(crate) fn maybe_create_nack(
         &mut self,
+        now: Instant,
         sender_ssrc: Ssrc,
         feedback: &mut VecDeque<Rtcp>,
     ) -> Option<()> {
@@ -804,7 +810,7 @@ impl StreamRx {
             return None;
         }
 
-        let nacks = self.register.as_mut().and_then(|r| r.nack_report())?;
+        let nacks = self.register.as_mut().and_then(|r| r.nack_report_at(now))?;
 
         for mut nack in nacks {
             nack.sender_ssrc = sender_ssrc;

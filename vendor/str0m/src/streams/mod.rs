@@ -458,7 +458,7 @@ impl Streams {
             }
 
             if do_nack {
-                stream.maybe_create_nack(sender_ssrc, feedback);
+                stream.maybe_create_nack(now, sender_ssrc, feedback);
             }
 
             stream.handle_timeout(now);
@@ -759,6 +759,16 @@ impl Streams {
         self.streams_rx
             .values()
             .find(|s| s.ssrc() == ssrc || s.rtx() == Some(ssrc))
+    }
+
+    /// pingpong: whether any stream found a packet missing since the last
+    /// call (each is asked, so each forgets).
+    pub(crate) fn take_fresh_gaps(&mut self) -> bool {
+        let mut any = false;
+        for s in self.streams_rx.values_mut() {
+            any |= s.take_fresh_gap();
+        }
+        any
     }
 
     pub(crate) fn any_nack_enabled(&mut self) -> bool {
