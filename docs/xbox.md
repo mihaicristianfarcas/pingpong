@@ -201,8 +201,8 @@ Without an Xbox or an account, against a mock of both (below):
 - Over the mock's link, with a delay, loss, a bandwidth and Wi-Fi's
   outages ([benchmarks.md](benchmarks.md#xbox-a-lossy-link)): 25 ms each
   way and 3% loss, 59 frames a second where before not one came through;
-  a 300 ms outage every 3 s with 1% loss, the longest stop 1 s and 50
-  frames a second, where before the picture stood still for up to 2.9 s.
+  a 300 ms outage every 3 s with 1% loss, 41-50 frames a second and the
+  longest stop 1-2 s, where before it was 19-36 and 2.9-3.3 s.
 - The console is asked for the resolution the picture shows whole, and
   held to a bitrate chosen in Settings (`b=AS`).
 - In Ping's own window on macOS (VideoToolbox, Metal) and on Linux

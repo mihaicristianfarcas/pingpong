@@ -332,7 +332,11 @@ the decoder.
 | 1% loss | 54 fps; 7 keyframes asked for; stopped 24%; late at most 464 ms | 60 fps; none; 25%; 133 ms | 60 fps; none; 25%; 121 ms |
 | 3% loss | not one frame (63 keyframes asked for) | 60 fps; none; 48%; 149 ms | 59 fps; 1; 48%; 129 ms |
 | 20 Mb/s, a 300 ms outage every 3 s | 27 fps; longest stop 2.6 s; stopped 59% | 60 fps; 0.42 s; 15% | 60 fps; 0.41 s; 14% |
-| The same with 1% loss | 31 fps; longest stop 2.9 s; stopped 75%; late at most 1.5 s | 22 fps; 2.7 s; 87%; 0.65 s | 50 fps; 0.96 s; 46%; 0.42 s |
+| The same with 1% loss (4, 4 and 7 runs) | 19-36 fps; longest stop 2.9-3.3 s; stopped 75-88%; late at most 1.0-1.5 s | 22-34 fps; 2.6-3.3 s; 76-90%; 0.58-1.3 s | 41-50 fps; 1.0-2.0 s; 46-60%; 0.42-0.47 s |
+
+Single runs vary: on the link with outages and loss, where a lost
+keyframe request or a keyframe caught in an outage costs half a second
+more, a column's runs spread as the ranges show.
 
 The first column has what a tester reported over Wi-Fi between two cities
 -- stutter, and stops of up to two seconds. On this link its causes were
