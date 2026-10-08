@@ -147,6 +147,7 @@ PING_UI_DEMO=settings=video,snapshot=/tmp/video.png,quit target/debug/ping-app
 PING_UI_DEMO=agents=sample,snapshot=/tmp/session.png,quit target/debug/ping-app
 PONG_UI_DEMO=sample,devices,snapshot=/tmp/devices.png,quit target/debug/pong-app
 PONG_UI_DEMO=sample,devices,permissions=macbook,snapshot=/tmp/may.png,quit target/debug/pong-app
+PONG_UI_DEMO=sample,devices,permissions=macbook,open=permissions-preset,snapshot=/tmp/menu.png,quit target/debug/pong-app
 ```
 
 Ping's steps: `settings[=general|video|audio|input|agents]`,
@@ -154,7 +155,8 @@ Ping's steps: `settings[=general|video|audio|input|agents]`,
 session, or a new one on the first host the agent may use), `login`,
 `pair=HOST:PORT`, `add`, `alone` (hosts found on the network are left
 out: the Hosts page as it is with none), `size=WxH` (the window that size,
-in points, to see a long page whole), `menu=NAME`, `unpair=NAME`, `stream=NAME`,
+in points, to see a long page whole), `menu=NAME`, `open=ID` (the select
+with that id, open: `fps`, `codec`), `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
 `wait=SECS`, `close-login`, `vanish-login`, `step=N`, `panel-end`,
 `update` and `update-main` (the update check says there is a newer release,
@@ -167,7 +169,9 @@ Pong's steps: a page's name (`overview`, `devices`, `general`, `video`,
 devices and settings), `signin`, `setup`, `offline`,
 `signin-as=USER:PASSWORD`, `update`, `update-main`, `updates`,
 `permissions=NAME` (the permissions sheet of the paired device called
-NAME), `menus` (the menu bar and the tray icon's menu, to the log),
+NAME), `open=ID` (the select with that id, open: `permissions-preset` in
+the permissions sheet), `menus` (the menu bar and the tray icon's menu,
+to the log),
 `snapshot=PATH`, `close`
 (the window closes as its button closes it; the app stays behind its icon),
 `quit`. `PONG_DATA_DIR` points the window at a test host's data folder,

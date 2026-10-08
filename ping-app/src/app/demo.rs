@@ -13,7 +13,9 @@ use super::{Page, PingApp};
 /// comma-separated list: `pair=HOST[:PORT]` opens the pairing sheet, `add`
 /// the add-host sheet, `alone` leaves out the hosts found on the network,
 /// `size=WxH` makes the window that size (points), to see a long page
-/// whole, `unpair=NAME` its confirmation, `menu=NAME` a host's menu, `settings[=video|audio|input|agents]` a settings page,
+/// whole, `unpair=NAME` its confirmation, `menu=NAME` a host's menu,
+/// `open=ID` opens the select with that id (`fps`, `codec`),
+/// `settings[=video|audio|input|agents]` a settings page,
 /// `agents[=setup|sample|sample-live|sample-ask]` the Agents page (the setup page or a
 /// sample session), `chat=MESSAGE` a message to the agent session (a new one
 /// on the first agent host; each waits for the turn before it), `stream=NAME` streams from that host,
@@ -204,6 +206,8 @@ impl PingApp {
                     Some(item) => self.confirm_unpair(&item, cx),
                     None => self.demo.actions.push(action),
                 }
+            } else if let Some(id) = action.strip_prefix("open=") {
+                pingpong_ui::open_select(id);
             } else if let Some(name) = action.strip_prefix("menu=") {
                 match self.model.items.iter().find(|i| i.name == name).cloned() {
                     Some(item) => {

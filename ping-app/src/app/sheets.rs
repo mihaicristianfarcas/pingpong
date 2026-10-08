@@ -329,7 +329,7 @@ impl PingApp {
                             .on_mouse_down_out(close),
                     ),
             )
-            .priority(3)
+            .priority(pingpong_ui::Layer::MENU)
             .into_any_element(),
         )
     }

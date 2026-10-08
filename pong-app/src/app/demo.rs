@@ -21,7 +21,8 @@ use super::{now_ms, Page, PongApp};
 /// `setup`, `offline`, `signin-as=USER:PASSWORD`, `update` and
 /// `update-main` (a made-up newer release, or newer commits on main),
 /// `updates` (the update sheet), `permissions=NAME` (the permissions sheet
-/// of the paired device called NAME), `menus` (the menu bar and the tray
+/// of the paired device called NAME), `open=ID` (open the select with that
+/// id, as `permissions-preset`), `menus` (the menu bar and the tray
 /// icon's menu, to the log), `snapshot=PATH`, `close` (close the window, as
 /// its close button does: the app stays where it has a tray icon), `quit`.
 #[derive(Default)]
@@ -37,6 +38,8 @@ pub(super) struct Demo {
     updates: bool,
     /// Open this device's permissions sheet.
     permissions: Option<String>,
+    /// Open the select with this id.
+    open: Option<String>,
     /// Log the menu bar and the tray icon's menu.
     menus: bool,
     /// Close the window when the rest is done.
@@ -111,6 +114,8 @@ impl Demo {
                     demo.updates = true;
                 } else if let Some(name) = part.strip_prefix("permissions=") {
                     demo.permissions = Some(name.to_string());
+                } else if let Some(id) = part.strip_prefix("open=") {
+                    demo.open = Some(id.to_string());
                 } else if part == "menus" {
                     demo.menus = true;
                 } else if part == "close" {
@@ -163,6 +168,12 @@ impl PongApp {
                 None => tracing::warn!(name, "no paired device of that name"),
             }
             self.demo.at = Some(Instant::now() + Duration::from_millis(1500));
+            return;
+        }
+        if let Some(id) = self.demo.open.take() {
+            pingpong_ui::open_select(&id);
+            cx.notify();
+            self.demo.at = Some(Instant::now() + Duration::from_millis(900));
             return;
         }
         if std::mem::take(&mut self.demo.updates) {
