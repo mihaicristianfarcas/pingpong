@@ -104,7 +104,7 @@ Windows and Linux) opens them.
 | | V-Sync | Off: frames shown the moment they are decoded, tearing allowed. On a Mac, off while Low Power Mode holds the display at 60 Hz |
 | | Frame pacing | One frame per display refresh (Moonlight's pacer): smoother, about a refresh more latency. Off by default, as in Moonlight |
 | | Performance statistics | The statistics from the start of each stream |
-| | Connection warnings | The note in the corner |
+| | Connection warnings | The note in the corner when the network loses frames or lags; from an Xbox, also how far behind the picture runs ("Living room is 0.6 s behind: a lower bitrate helps") |
 | | Import from Moonlight | Copies Moonlight's own settings (its preferences on macOS, the registry on Windows, its `.conf` on Linux; never its keys) |
 | Audio | Stream audio, Channels | Play the host's sound here: stereo, 5.1 or 7.1 (a Mac host has surround only with a surround output: see [platforms/macos.md](platforms/macos.md#sound-in-surround)) |
 | | Play on the host too | Otherwise the host's speakers stay quiet during a session (Windows host with Steam Streaming Speakers) |

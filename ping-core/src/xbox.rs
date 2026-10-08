@@ -33,6 +33,7 @@ use pingpong_xbox::connection::{
     AudioFrame, End, Event as XEvent, Input, Sink, Socket, VideoFrame,
 };
 use pingpong_xbox::input::MouseFrame;
+use pingpong_xbox::lateness::LinkWarning;
 use pingpong_xbox::stream::StreamOptions;
 
 pub use pingpong_xbox::stream::Target;
@@ -133,6 +134,7 @@ impl XboxStream {
                 .spawn(move || {
                     crate::priority::latency_critical();
                     let mut sink = CoreSink {
+                        name: source.target.name().to_owned(),
                         video,
                         configured: false,
                         size: (options.width, options.height),
@@ -255,6 +257,18 @@ fn session_ack(width: u32, height: u32, audio_channels: u8) -> SessionAck {
     }
 }
 
+/// The corner note about the link, in words: Pong's for a lossy link, and
+/// for a picture running behind what to do about it.
+fn warning_text(note: LinkWarning, name: &str) -> String {
+    match note {
+        LinkWarning::Behind(late) => format!(
+            "{name} is {:.1} s behind: a lower bitrate helps",
+            late.as_secs_f64()
+        ),
+        LinkWarning::Lossy => format!("Poor connection to {name}"),
+    }
+}
+
 /// The DOM's `buttons` bit for a mouse button.
 fn button_bit(b: Button) -> u8 {
     match b {
@@ -303,6 +317,8 @@ impl InputWaits {
 
 /// Where the connection's output meets Ping's platform layer.
 struct CoreSink {
+    /// The console's or the game's name, for what is said about it.
+    name: String,
     video: Box<dyn VideoOut>,
     configured: bool,
     /// The picture's size: what was asked for, until the console says.
@@ -430,6 +446,13 @@ impl Sink for CoreSink {
                 high: motors.high,
             }),
             XEvent::Title(info) => tracing::info!(%info, "title"),
+            XEvent::Warning(note) => {
+                let text = note.map(|n| warning_text(n, &self.name));
+                if let Some(t) = &text {
+                    tracing::info!("{t}");
+                }
+                (self.events)(Event::Warning(text));
+            }
             XEvent::Stats(s) => {
                 if let Some(rtt) = s.rtt {
                     self.ctx.stats.rtt(rtt.as_micros() as u32);
@@ -529,6 +552,19 @@ mod tests {
         assert_ne!(ack.features & control::features::POINTER_IN_PICTURE, 0);
         assert_eq!(ack.codec, control::codec::H264);
         assert_eq!((ack.width, ack.height), (1920, 1080));
+    }
+
+    #[test]
+    fn the_note_says_how_far_behind_and_what_helps() {
+        let late = LinkWarning::Behind(std::time::Duration::from_millis(640));
+        assert_eq!(
+            warning_text(late, "Living room"),
+            "Living room is 0.6 s behind: a lower bitrate helps"
+        );
+        assert_eq!(
+            warning_text(LinkWarning::Lossy, "Living room"),
+            "Poor connection to Living room"
+        );
     }
 
     #[test]

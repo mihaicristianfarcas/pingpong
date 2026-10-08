@@ -47,7 +47,7 @@ pub use socket::{Doorbell, Socket};
 
 use crate::ice::IceCandidate;
 use crate::input::{parse_server_report, FrameTimes, ServerReport, MAX_REPORT_LEN};
-use crate::lateness::Lateness;
+use crate::lateness::{Lateness, LinkJudge, LinkWarning};
 use crate::messages::{self, Incoming, CHANNELS};
 use crate::reassembly::{self, Popped, Reassembler, ReassemblyStats};
 use crate::rumble::{Motors, Rumble};
@@ -56,7 +56,10 @@ use crate::virtual_pad::KeyboardMouse;
 /// How long ICE and DTLS may take before the console is called unreachable.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 /// After asking for a keyframe, ask again this long later if none came
-/// (Moonlight re-asks for its IDR on the same order).
+/// (Moonlight re-asks for its IDR on the same order). Looks worth backing
+/// off, so a congested link is not sent keyframe after keyframe: measured
+/// with the mock's link (outages and loss, 3 runs each), 0.5, 1 and then
+/// 2 s did no better than this, in frames shown or the longest stop.
 const KEYFRAME_RETRY: Duration = Duration::from_millis(500);
 /// The longest the loop sleeps, so a stop is seen promptly.
 const MAX_SLEEP: Duration = Duration::from_millis(50);
@@ -134,6 +137,8 @@ pub enum Event {
     /// What is being played, as the console says (JSON).
     Title(String),
     Stats(LinkStats),
+    /// The corner note about the link changed: a new one, or none.
+    Warning(Option<LinkWarning>),
 }
 
 /// Where the connection's output goes, on the connection's thread.
@@ -189,6 +194,9 @@ pub struct Connection {
     ssrcs: Vec<(Ssrc, Mid)>,
     frames: Reassembler,
     lateness: Lateness,
+    link: LinkJudge,
+    /// Frames given up by the last second's end.
+    given_up: u64,
     /// When the first video packet came: a keyframe is asked for if none
     /// comes within [`KEYFRAME_RETRY`] of it.
     first_video: Option<Instant>,
@@ -279,6 +287,8 @@ impl Connection {
                 ssrcs: Vec::new(),
                 frames: Reassembler::new(),
                 lateness: Lateness::new(),
+                link: LinkJudge::default(),
+                given_up: 0,
                 first_video: None,
                 channels: Vec::new(),
                 options,
@@ -622,6 +632,16 @@ impl Connection {
             }
             RtcEvent::PeerStats(p) => {
                 let video = self.frames.stats();
+                let late = self.lateness.take_worst();
+                let given_up = video.given_up - self.given_up;
+                self.given_up = video.given_up;
+                // Judged from the first frame on: before it, the console is
+                // still starting the picture.
+                if video.frames > 0 {
+                    if let Some(note) = self.link.second(late, given_up) {
+                        sink.event(Event::Warning(note));
+                    }
+                }
                 tracing::debug!(
                     packets = video.packets,
                     missing = video.missing,
@@ -634,10 +654,7 @@ impl Connection {
                     wait_ms = self.frames.wait().as_millis() as u64,
                     // How much later than its best a frame came this
                     // second: a queue on the way (see `lateness`).
-                    queue_ms = self
-                        .lateness
-                        .take_worst()
-                        .map_or(0, |d| d.as_millis() as u64),
+                    queue_ms = late.map_or(0, |d| d.as_millis() as u64),
                     "video"
                 );
                 sink.event(Event::Stats(LinkStats {

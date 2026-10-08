@@ -43,7 +43,10 @@ its bitrates; a console that cannot send 1440p sends what it can. The
 console chooses its codec (H.264), frame rate and bitrate. A bitrate set
 in *Settings > Video* (not Automatic) is the most it sends: on a slow
 connection, set one below what the connection carries (half of it is a
-safe start), and the picture stops running late when it moves. On a Mac
+safe start), and the picture stops running late when it moves. When it
+runs behind, the corner says so ("Living room is 0.6 s behind: a lower
+bitrate helps"); when frames are lost, "Poor connection to Living room".
+On a Mac
 on Wi-Fi, AWDL makes the picture stutter every 20–30 s
 ([usage.md](usage.md#when-something-does-not-work)). The statistics
 (Ctrl+Alt+Shift+S) work as for Pong.

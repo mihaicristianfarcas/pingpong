@@ -452,8 +452,9 @@ impl PingApp {
                     self.toggle(
                         "warnings",
                         "Connection warnings",
-                        "A note in the corner while the network loses frames or lags, or \
-                            a Mac's Low Power Mode slows the display.",
+                        "A note in the corner while the network loses frames or lags (from \
+                            an Xbox, how far behind), or a Mac's Low Power Mode slows the \
+                            display.",
                         |p| p.connection_warnings,
                         |p, v| p.connection_warnings = v,
                         true,

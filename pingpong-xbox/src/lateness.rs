@@ -8,7 +8,9 @@
 //! [`BASELINE`] stands for an empty queue, and how far a frame's is above
 //! it is the time it spent queued (or waiting for a retransmission). The
 //! two clocks drift by parts per million, which the window's end forgets.
-//! Said once a second as the most of the second, in the debug log.
+//! Said once a second as the most of the second, in the debug log, and
+//! judged with the frames given up into the corner note a stream shows on
+//! a poor connection ([`LinkJudge`]).
 
 use std::time::{Duration, Instant};
 
@@ -70,9 +72,129 @@ impl Lateness {
     }
 }
 
+/// A queue this long, a second at a time, says the link carries less than
+/// the console sends: on a link that keeps up, a frame is late by its time
+/// on the wire and its retransmissions' (tens of milliseconds).
+const BEHIND: Duration = Duration::from_millis(200);
+/// Under this, the queue has drained.
+const CAUGHT_UP: Duration = Duration::from_millis(100);
+
+/// What the corner note says about the link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkWarning {
+    /// The picture runs this far behind: more is sent than the link
+    /// carries.
+    Behind(Duration),
+    /// Frames are given up for keyframes, or none came in a second: the
+    /// link loses packets that retransmissions do not bring back, or
+    /// carries nothing.
+    Lossy,
+}
+
+/// The corner note, judged once a second as Pong's stream judges its own
+/// (Moonlight's rule): shown after two bad seconds in a row, gone after
+/// three good ones.
+#[derive(Debug, Default)]
+pub struct LinkJudge {
+    bad: u32,
+    good: u32,
+    shown: Option<LinkWarning>,
+}
+
+impl LinkJudge {
+    /// A second of the stream ended: the most a frame was late in it
+    /// (`None`: no frame came), and how many times frames were given up.
+    /// Returns the note when it changes: a new one, or `None` to take it
+    /// away.
+    pub fn second(&mut self, late: Option<Duration>, given_up: u64) -> Option<Option<LinkWarning>> {
+        let now = match late {
+            // A picture standing still, waiting for a keyframe that does
+            // not come, is the worst second of all, not a quiet one.
+            None => Some(LinkWarning::Lossy),
+            Some(late) if late >= BEHIND || (self.shown.is_some() && late >= CAUGHT_UP) => {
+                Some(LinkWarning::Behind(late))
+            }
+            Some(_) if given_up > 0 => Some(LinkWarning::Lossy),
+            Some(_) => None,
+        };
+        match now {
+            Some(w) => {
+                self.bad += 1;
+                self.good = 0;
+                if self.bad >= 2 && self.shown != Some(w) {
+                    self.shown = Some(w);
+                    return Some(Some(w));
+                }
+            }
+            None => {
+                self.good += 1;
+                self.bad = 0;
+                if self.good >= 3 && self.shown.is_some() {
+                    self.shown = None;
+                    return Some(None);
+                }
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ms(n: u64) -> Option<Duration> {
+        Some(Duration::from_millis(n))
+    }
+
+    #[test]
+    fn the_note_comes_after_two_bad_seconds_and_goes_after_three_good() {
+        let mut j = LinkJudge::default();
+        assert_eq!(j.second(ms(30), 0), None);
+        assert_eq!(j.second(ms(400), 0), None);
+        assert_eq!(
+            j.second(ms(600), 0),
+            Some(Some(LinkWarning::Behind(Duration::from_millis(600))))
+        );
+        // Still behind, by more: the note says so.
+        assert_eq!(
+            j.second(ms(900), 0),
+            Some(Some(LinkWarning::Behind(Duration::from_millis(900))))
+        );
+        assert_eq!(j.second(ms(20), 0), None);
+        assert_eq!(j.second(ms(20), 0), None);
+        assert_eq!(j.second(ms(20), 0), Some(None));
+        assert_eq!(j.second(ms(20), 0), None);
+    }
+
+    #[test]
+    fn frames_given_up_two_seconds_running_are_a_poor_connection() {
+        let mut j = LinkJudge::default();
+        assert_eq!(j.second(ms(30), 1), None);
+        assert_eq!(j.second(ms(30), 2), Some(Some(LinkWarning::Lossy)));
+        assert_eq!(j.second(ms(30), 1), None, "said once");
+        // One bad second among good ones says nothing.
+        let mut j = LinkJudge::default();
+        for _ in 0..5 {
+            assert_eq!(j.second(ms(30), 0), None);
+            assert_eq!(j.second(ms(30), 1), None);
+        }
+    }
+
+    #[test]
+    fn a_picture_standing_still_keeps_the_note() {
+        let mut j = LinkJudge::default();
+        j.second(ms(30), 1);
+        assert_eq!(j.second(None, 0), Some(Some(LinkWarning::Lossy)));
+        // Seconds without a frame (a keyframe asked for, not come) are not
+        // good ones: the note stays.
+        for _ in 0..5 {
+            assert_eq!(j.second(None, 0), None);
+        }
+        assert_eq!(j.second(ms(30), 0), None);
+        assert_eq!(j.second(ms(30), 0), None);
+        assert_eq!(j.second(ms(30), 0), Some(None));
+    }
 
     const FRAME: Duration = Duration::from_nanos(1_000_000_000 / 60);
 
