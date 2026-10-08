@@ -7,10 +7,13 @@
 //! picture full screen: 33-39 ms from decode to the glass with Low Power
 //! Mode on, 6 ms with it off; 3.6 ms on with V-Sync off (which tears).
 //! Nothing Ping can ask of the display shortens it: Game Mode forced on
-//! measured 34 ms, and presenting at a time or after a minimum duration
-//! (`presentDrawable:atTime:`, `afterMinimumDuration:`) 33-46 ms. So the
-//! person is told, in the corner where connection warnings go, and the log
-//! says when it changes.
+//! measured 34 ms, presenting at a time or after a minimum duration
+//! (`presentDrawable:atTime:`, `afterMinimumDuration:`) 33-46 ms, and a
+//! `CAMetalDisplayLink` at 60 fps with a frame's latency 42 ms. So while
+//! Low Power Mode lasts, V-Sync is held off (unless frame pacing was
+//! chosen, which asks for evenness tearing would undo), and the person is
+//! told in the corner where connection warnings go; the log says when it
+//! changes.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -25,7 +28,10 @@ use super::render::RenderShared;
 /// off, sees the warning go within a second.
 const LOOK_EVERY: Duration = Duration::from_secs(1);
 
-const WARNING: &str = "Low Power Mode is on: the picture is ~30 ms late";
+/// V-Sync held off.
+const VSYNC_OFF: &str = "Low Power Mode: V-Sync off, so the picture may tear";
+/// Frame pacing kept.
+const LATE: &str = "Low Power Mode is on: the picture is ~30 ms late";
 
 /// Panels faster than this are the ones Low Power Mode slows (a 60 Hz
 /// display is at its rate already).
@@ -48,7 +54,7 @@ impl PowerWatch {
             let stop = stop.clone();
             std::thread::Builder::new()
                 .name("ping-power".into())
-                .spawn(move || watch(&render, fast_panel && warn, &stop))
+                .spawn(move || watch(&render, fast_panel, warn, &stop))
                 .ok()
         };
         PowerWatch { stop, thread }
@@ -64,7 +70,7 @@ impl Drop for PowerWatch {
     }
 }
 
-fn watch(render: &RenderShared, warn: bool, stop: &AtomicBool) {
+fn watch(render: &RenderShared, fast_panel: bool, warn: bool, stop: &AtomicBool) {
     let mut was: Option<bool> = None;
     while !stop.load(Ordering::Relaxed) {
         let on = NSProcessInfo::processInfo().isLowPowerModeEnabled();
@@ -72,9 +78,17 @@ fn watch(render: &RenderShared, warn: bool, stop: &AtomicBool) {
             if on || was.is_some() {
                 tracing::info!(on, "Low Power Mode");
             }
-            // Cleared only if it was this warning that was shown.
-            if warn && (on || was == Some(true)) {
-                render.set_warning(on.then(|| WARNING.to_string()));
+            // With V-Sync off already, nothing waits for a refresh: no cost.
+            if fast_panel && render.waits_for_refresh() {
+                let note = if render.hold_vsync_off(on) {
+                    VSYNC_OFF
+                } else {
+                    LATE
+                };
+                // Cleared only if it was this note that was shown.
+                if warn && (on || was == Some(true)) {
+                    render.set_warning(on.then(|| note.to_string()));
+                }
             }
             was = Some(on);
         }

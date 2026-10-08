@@ -415,7 +415,8 @@ impl PingApp {
                         "vsync",
                         "V-Sync",
                         "Present frames on the display's refresh. Off lowers latency \
-                            slightly and may tear.",
+                            and may tear; off by itself while a Mac's Low Power Mode \
+                            slows the display.",
                         |p| p.vsync,
                         |p, v| p.vsync = v,
                         true,
@@ -451,7 +452,7 @@ impl PingApp {
                         "warnings",
                         "Connection warnings",
                         "A note in the corner while the network loses frames or lags, or \
-                            a Mac's Low Power Mode makes the picture late.",
+                            a Mac's Low Power Mode slows the display.",
                         |p| p.connection_warnings,
                         |p, v| p.connection_warnings = v,
                         true,

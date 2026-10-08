@@ -81,7 +81,8 @@ network round trip, host processing, decode and render times — and one more:
 being on your display, measured with the two machines' clocks related
 through the stream itself. A note in the corner warns while the network is
 losing frames or lagging, or while a Mac's Low Power Mode holds its display
-at 60 Hz, which makes the picture about 30 ms late (**Connection
+at 60 Hz, where V-Sync would make the picture about 30 ms late: Ping turns
+V-Sync off for as long as it lasts, and the note says so (**Connection
 warnings**).
 
 ## Ping's settings
@@ -100,7 +101,7 @@ Windows and Linux) opens them.
 | | HDR | Stream in HDR (HEVC Main10, BT.2020, PQ), as Moonlight's "HDR": offered on a Mac whose display shows HDR, from a host that can (NVIDIA on Windows, macOS 15 or later). Off by default, as in Moonlight |
 | | YUV 4:4:4 | Colour at full resolution: text without coloured fringes, for about a fifth more bitrate; offered where this computer decodes it (Apple silicon), from a host that encodes it (NVIDIA on Windows). Off by default, as in Moonlight |
 | | Bitrate | Automatic (Moonlight's table for the resolution and frame rate), or a fixed figure |
-| | V-Sync | Off: frames shown the moment they are decoded, tearing allowed |
+| | V-Sync | Off: frames shown the moment they are decoded, tearing allowed. On a Mac, off while Low Power Mode holds the display at 60 Hz |
 | | Frame pacing | One frame per display refresh (Moonlight's pacer): smoother, about a refresh more latency. Off by default, as in Moonlight |
 | | Performance statistics | The statistics from the start of each stream |
 | | Connection warnings | The note in the corner |

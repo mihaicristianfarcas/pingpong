@@ -172,13 +172,17 @@ mode. Low Power Mode holds the panel at 60 Hz while macOS still reports
 | Low Power Mode, Game Mode forced on | 60 of 60 | 34.0 / 51.7 ms |
 | Low Power Mode, frame pacing | 59 of 60 | 42.5 / 60.2 ms |
 | Low Power Mode, V-Sync off | 59 of 60 | 3.6 / 53.3 ms |
+| Low Power Mode, a stream from the mock console, V-Sync held off by Ping | 60 of 60 | 2.5–3.1 ms (a second's average) |
 
 At 60 Hz a drawable committed with V-Sync on with nothing ahead of it is on
 the glass 32.7 ms later (two refreshes); at 120 Hz, 2.8–11.3 ms. Presenting
 at a time or after a minimum duration (`presentDrawable:atTime:`,
-`afterMinimumDuration:`) measured 33–46 ms. Under Low Power Mode a 120 fps
-picture shows 241 of 480 frames. Ping says so in the stream's corner while
-Low Power Mode is on.
+`afterMinimumDuration:`) measured 33–46 ms; a `CAMetalDisplayLink` at
+60 fps (in a test of its own, from a frame's arrival to the glass) 42.1 ms
+with a frame's latency and 42.7 ms with two, against 49.5 ms presenting each
+frame as it arrives. Under Low Power Mode a 120 fps picture shows 241 of
+480 frames. While Low Power Mode is on, Ping holds V-Sync off (not with
+frame pacing) and says so in the stream's corner.
 
 ## Against Moonlight + Apollo
 
