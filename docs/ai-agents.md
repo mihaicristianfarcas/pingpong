@@ -130,7 +130,7 @@ never drives the host; it holds steps for you. Turn each check on under
 |---|---|---|---|
 | Clicks | A left click, a drag's drop, Enter | With a ring where the click lands: does it delete, spend, send or post, change settings, or install? | The step waits for your go-ahead, as a rule's catch does (with **Ask for your go-ahead** on risky steps) |
 | Typing a secret | Typing | Is the focus in a field for a password, a PIN, a key or a card number? Clef is told how many characters, never which | The step waits for your go-ahead |
-| Personal information | Every screen the model gets | Does it show passwords or keys, payment or bank details, ID numbers, health records, private messages, or people's addresses or phone numbers? | Ping asks whether the model may see it. A yes covers screens with that kind for the rest of the turn; on a no, or no answer in 15 minutes, the model gets a blank grey screen of the same size and a note saying why |
+| Personal information | Every screen the model gets | Does it show passwords or keys, payment or bank details, ID numbers, health records, private messages, or people's addresses or phone numbers? | Ping asks whether the model may see it. A yes covers screens with that kind for the rest of the turn; on a no, or no answer in 15 minutes, the model gets no picture, only a note saying why and to stop |
 
 You need a Cloudflare account ID and a Workers AI API token: on the Workers
 AI page of Cloudflare's dashboard, **Create a Workers AI API Token**. Save
@@ -145,8 +145,6 @@ the token in Agent setup or with `ping-agent set-key cloudflare`, or set
   It applies to every agent that uses your hosts from this computer,
   `Ping mcp` included; where nobody can be asked (an agent outside Ping),
   such a screen is withheld.
-- **OpenAI's computer tool carries pictures only**: with an OpenAI key, the
-  model gets the blank screen without the note.
 - **Each check sends the screen to Cloudflare**, at most 1280 pixels
   across, as a JPEG: Workers AI refuses larger pictures (a PNG of
   Windows 11's own desktop is one) before clef sees them. Clef costs $0.24 per million input tokens; clef-flash, smaller
