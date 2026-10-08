@@ -217,6 +217,12 @@ fn a_console_streams_end_to_end() {
         Some("4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E")
     );
     assert_eq!(record.sdp_configuration["input"]["maxVersion"], 8);
+    // The console says the picture's size in answer to the first input
+    // report, a round trip after the handshake: waited for too.
+    assert!(running.wait(LONG, |s| s.events.contains(&Event::VideoSize {
+        width: 640,
+        height: 360
+    })));
     {
         let seen = running.seen.lock();
         assert_eq!(
@@ -227,10 +233,6 @@ fn a_console_streams_end_to_end() {
         assert!(seen.statuses.iter().any(|s| s.contains("Waking")));
         assert!(seen.events.contains(&Event::Connected));
         assert!(seen.events.contains(&Event::Ready));
-        assert!(seen.events.contains(&Event::VideoSize {
-            width: 640,
-            height: 360
-        }));
     }
     assert!(mock.wait_for(LONG, |r| r.messages.iter().any(|(t, c)| {
         // 1280x720 at 96 dpi: 338x190 mm.
