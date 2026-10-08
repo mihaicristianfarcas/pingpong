@@ -154,6 +154,32 @@ straight to the display again, with some frames a refresh late: 105–117 of
 streams with a recording running, through CleanShot X: 39 of 60 and 40 of
 120 shown before.
 
+### Low Power Mode and 60 Hz (macOS client)
+
+Measured 2026-10-08 with `mac-present` on an M4 Pro's built-in 120 Hz
+display at 3600x2338, a 60 fps 1920x1080 picture (an Xbox stream's), full
+screen, nothing over it; `--hz 60` runs it with the display in its 60 Hz
+mode. Low Power Mode holds the panel at 60 Hz while macOS still reports
+120 Hz; Metal's HUD calls the layer's path "Direct" in both.
+
+| Case | Shown | Decode to glass (avg / max) |
+|---|---|---|
+| 120 Hz, V-Sync on (the default) | 60 of 60 | 6.0 / 11.9 ms |
+| 60 Hz mode, V-Sync on | 59 of 60 | 38.4 / 56.4 ms |
+| 60 Hz mode, frame pacing | 59 of 60 | 28.3 / 45.0 ms |
+| 60 Hz mode, V-Sync off | 60 of 60 | 7.1 / 9.4 ms |
+| Low Power Mode, V-Sync on | 60 of 60 | 33.1–39.2 / 41–57 ms |
+| Low Power Mode, Game Mode forced on | 60 of 60 | 34.0 / 51.7 ms |
+| Low Power Mode, frame pacing | 59 of 60 | 42.5 / 60.2 ms |
+| Low Power Mode, V-Sync off | 59 of 60 | 3.6 / 53.3 ms |
+
+At 60 Hz a drawable committed with V-Sync on with nothing ahead of it is on
+the glass 32.7 ms later (two refreshes); at 120 Hz, 2.8–11.3 ms. Presenting
+at a time or after a minimum duration (`presentDrawable:atTime:`,
+`afterMinimumDuration:`) measured 33–46 ms. Under Low Power Mode a 120 fps
+picture shows 241 of 480 frames. Ping says so in the stream's corner while
+Low Power Mode is on.
+
 ## Against Moonlight + Apollo
 
 Apollo streams with Sunshine's video path and adds the virtual display at

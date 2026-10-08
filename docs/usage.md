@@ -80,7 +80,9 @@ network round trip, host processing, decode and render times — and one more:
 **host capture to screen**, the time from the host capturing a frame to it
 being on your display, measured with the two machines' clocks related
 through the stream itself. A note in the corner warns while the network is
-losing frames or lagging (**Connection warnings**).
+losing frames or lagging, or while a Mac's Low Power Mode holds its display
+at 60 Hz, which makes the picture about 30 ms late (**Connection
+warnings**).
 
 ## Ping's settings
 

@@ -12,6 +12,13 @@
 //! refresh -- 40 of 60 frames a second at 120 Hz -- and only the layer's
 //! three keep up.
 //!
+//! A panel held below its fastest rate looks composited too, and is treated
+//! so, rightly for the queue: Low Power Mode holds a MacBook Pro's 120 Hz
+//! panel at 60 Hz (NSScreen still says 120), where the layer goes straight
+//! to the display (Metal's HUD says "Direct") but two refreshes away: clean
+//! trips of 32.7 ms measured, so two drawables must be out at once to show
+//! 60 frames a second (see `power`).
+//!
 //! No API says which path the layer is on, so its trips say. A trip is
 //! clean when nothing ahead held the drawable up: none was waiting when it
 //! was committed, or the refresh before its own showed nothing new. Clean
@@ -161,8 +168,9 @@ impl GlassPath {
                 self.composited = true;
                 tracing::info!(
                     trip_ms = format_args!("{:.1}", (at - trip.committed) * 1e3),
-                    "the stream is composited (in a window, recorded, or something over \
-                     it): frames may queue for the glass"
+                    "frames take long to reach the glass (composited: in a window, \
+                     recorded, or something over it; or a 120 Hz panel held at 60 Hz, \
+                     as Low Power Mode holds it): frames may queue for the glass"
                 );
             }
         } else {

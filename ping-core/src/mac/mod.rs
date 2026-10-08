@@ -4,6 +4,7 @@ pub mod cursors;
 pub mod gamepad;
 mod glass;
 mod hid;
+mod power;
 pub mod render;
 pub mod text;
 pub mod window;
@@ -107,6 +108,8 @@ pub struct Session {
     stream: Option<Stream>,
     render: Arc<RenderShared>,
     render_thread: Option<JoinHandle<()>>,
+    /// Says when Low Power Mode slows the display.
+    power: Option<power::PowerWatch>,
     /// Keeps the display awake (and the app out of App Nap) while streaming:
     /// someone playing with a controller touches neither keyboard nor mouse.
     awake: Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
@@ -138,6 +141,14 @@ impl Session {
             &format!("Ping — {}", source.name()),
         );
         let scale = window.window.backingScaleFactor();
+        let power = power::PowerWatch::start(
+            render.clone(),
+            window
+                .window
+                .screen()
+                .map_or(0.0, |s| s.minimumRefreshInterval()),
+            opts.connection_warnings,
+        );
 
         let cursors = cursors::load(mtm, scale);
         let layer = SendLayer(window.layer.clone());
@@ -264,6 +275,7 @@ impl Session {
             stream: Some(stream),
             render,
             render_thread: Some(render_thread),
+            power: Some(power),
             awake: Some(awake),
         })
     }
@@ -334,6 +346,7 @@ impl Session {
         if let Some(mut s) = self.stream.take() {
             s.stop();
         }
+        drop(self.power.take());
         self.render.stop();
         if let Some(t) = self.render_thread.take() {
             let _ = t.join();
