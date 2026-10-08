@@ -11,9 +11,10 @@
 //!   before. Every missing packet that turns up is timed, from when a later
 //!   one showed it missing to its arrival, and the wait is that time as TCP
 //!   estimates a retransmission timeout from round trips (RFC 6298: the
-//!   smoothed time plus four times its deviation), kept between
-//!   [`MIN_WAIT`] and [`MAX_WAIT`]. Packets that come after their frames
-//!   were given up are timed too, so a slow link lengthens the wait.
+//!   smoothed time plus four times its deviation), and room for a second
+//!   ask ([`SECOND_ASK`]), at most [`MAX_WAIT`]. Packets that come after
+//!   their frames were given up are timed too, so a slow link lengthens
+//!   the wait.
 //! - **When the wait runs out, the frames are given up**, and nothing is
 //!   handed on until a keyframe, which the caller asks for: Moonlight's
 //!   rule (`VideoDepacketizer.c`), where decoding past the hole smears
@@ -45,10 +46,14 @@ use std::time::{Duration, Instant};
 /// longest wait is 800 more.
 const CAPACITY: usize = 2048;
 
-/// The shortest wait for a missing packet: on a LAN a retransmission takes
-/// a few milliseconds, but str0m sends NACKs at most every 33 ms
-/// (`NACK_MIN_INTERVAL`), so one can take that long to be asked for.
-pub const MIN_WAIT: Duration = Duration::from_millis(20);
+/// Room in every wait for a missing packet to be asked for a second time:
+/// str0m asks again 33 ms after the first NACK (vendor/str0m
+/// `register_nack.rs` `NACK_RETRY`), for a retransmission lost too. Without
+/// it, once retransmissions came as evenly as a first NACK sent at once
+/// makes them, the wait shrank to one round trip and a lost retransmission
+/// cost a keyframe: at 1% loss (mock link, 25 ms each way), 1-2 keyframes
+/// asked for in 15 s and stops of 0.22 s, against none.
+pub const SECOND_ASK: Duration = Duration::from_millis(40);
 /// The longest: past this, asking for a keyframe (a round trip and the
 /// keyframe's own time on the wire) costs no more than waiting on.
 pub const MAX_WAIT: Duration = Duration::from_millis(250);
@@ -519,7 +524,7 @@ impl RetransmitTime {
     fn timeout(&self) -> Duration {
         match self.smoothed {
             None => FIRST_WAIT,
-            Some(s) => (s + self.deviation * 4).clamp(MIN_WAIT, MAX_WAIT),
+            Some(s) => (s + self.deviation * 4 + SECOND_ASK).min(MAX_WAIT),
         }
     }
 }
@@ -822,18 +827,20 @@ mod tests {
         for _ in 0..50 {
             w.sample(Duration::from_millis(30));
         }
+        // A round trip, and a second ask's.
         let steady = w.timeout();
-        assert!(steady >= Duration::from_millis(30) && steady < Duration::from_millis(40));
+        assert!(steady >= Duration::from_millis(70) && steady < Duration::from_millis(80));
         // Slow ones lengthen it, up to the limit.
         for _ in 0..50 {
             w.sample(Duration::from_millis(400));
         }
         assert_eq!(w.timeout(), MAX_WAIT);
-        // A LAN's fast ones shorten it, down to the floor.
+        // A LAN's fast ones shorten it, to a second ask's time.
         for _ in 0..200 {
             w.sample(Duration::from_millis(1));
         }
-        assert_eq!(w.timeout(), MIN_WAIT);
+        let lan = w.timeout();
+        assert!(lan >= SECOND_ASK && lan < SECOND_ASK + Duration::from_millis(3));
     }
 
     #[test]
