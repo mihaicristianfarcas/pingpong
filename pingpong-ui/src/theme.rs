@@ -1,5 +1,5 @@
 //! Colours, type and geometry: quiet neutral surfaces, one hairline weight,
-//! colour kept for status, and Ping's orange as the one accent.
+//! colour kept for status, and the landing page's blue as the one accent.
 
 use gpui::{FontWeight, Rgba, Window, WindowAppearance};
 
@@ -15,8 +15,8 @@ impl Ink {
     pub const FRESH: Rgba = rgba(0.204, 0.780, 0.349, 1.0);
     pub const ATTENTION: Rgba = rgba(0.961, 0.651, 0.137, 1.0);
     pub const DANGER: Rgba = rgba(0.961, 0.271, 0.227, 1.0);
-    /// The ball in Ping's icon.
-    pub const ACCENT: Rgba = rgba(0.976, 0.475, 0.290, 1.0);
+    /// The ball in the logo (`#4d88ff`, the icons' ball and trail).
+    pub const BALL: Rgba = rgba(0.302, 0.533, 1.0, 1.0);
     pub const IDLE: Rgba = rgba(0.557, 0.557, 0.576, 1.0);
 }
 
@@ -103,6 +103,11 @@ pub struct Theme {
     /// Text fields.
     pub field: Rgba,
     pub field_stroke: Rgba,
+    /// The one accent: the landing page's `--accent` on dark, its deeper
+    /// `--data-3` on light, where the pale blue would not read.
+    pub accent: Rgba,
+    /// Text and marks on a fill of the accent.
+    pub on_accent: Rgba,
     pub focus: Rgba,
     /// Scrim behind a sheet.
     pub scrim: Rgba,
@@ -113,13 +118,13 @@ impl Theme {
         let p = rgba(1.0, 1.0, 1.0, 1.0);
         Theme {
             dark: true,
-            primary: rgba(0.95, 0.95, 0.96, 1.0),
+            primary: rgba(0.933, 0.945, 0.969, 1.0),
             secondary: rgba(1.0, 1.0, 1.0, 0.62),
             tertiary: rgba(1.0, 1.0, 1.0, 0.42),
             quaternary: rgba(1.0, 1.0, 1.0, 0.26),
-            background: rgba(0.071, 0.075, 0.086, 1.0),
-            sidebar: rgba(0.110, 0.114, 0.129, 1.0),
-            floating: rgba(0.145, 0.149, 0.169, 1.0),
+            background: rgba(0.039, 0.051, 0.078, 1.0),
+            sidebar: rgba(0.063, 0.078, 0.114, 1.0),
+            floating: rgba(0.090, 0.110, 0.157, 1.0),
             floating_stroke: rgba(1.0, 1.0, 1.0, 0.09),
             hairline: rgba(p.r, p.g, p.b, 0.07),
             card: rgba(p.r, p.g, p.b, 0.025),
@@ -133,7 +138,9 @@ impl Theme {
             control_stroke: rgba(p.r, p.g, p.b, 0.10),
             field: rgba(0.0, 0.0, 0.0, 0.22),
             field_stroke: rgba(p.r, p.g, p.b, 0.10),
-            focus: rgba(0.976, 0.475, 0.290, 0.75),
+            accent: rgba(0.553, 0.698, 1.0, 1.0),
+            on_accent: rgba(0.012, 0.020, 0.039, 1.0),
+            focus: rgba(0.553, 0.698, 1.0, 0.75),
             scrim: rgba(0.0, 0.0, 0.0, 0.45),
         }
     }
@@ -142,13 +149,13 @@ impl Theme {
         let p = rgba(0.0, 0.0, 0.0, 1.0);
         Theme {
             dark: false,
-            primary: rgba(0.09, 0.09, 0.10, 1.0),
+            primary: rgba(0.071, 0.082, 0.125, 1.0),
             secondary: rgba(0.0, 0.0, 0.0, 0.58),
             tertiary: rgba(0.0, 0.0, 0.0, 0.42),
             quaternary: rgba(0.0, 0.0, 0.0, 0.26),
-            background: rgba(0.973, 0.969, 0.957, 1.0),
-            sidebar: rgba(0.925, 0.918, 0.902, 1.0),
-            floating: rgba(0.992, 0.988, 0.980, 1.0),
+            background: rgba(0.957, 0.965, 0.980, 1.0),
+            sidebar: rgba(0.914, 0.929, 0.957, 1.0),
+            floating: rgba(0.984, 0.988, 0.996, 1.0),
             floating_stroke: rgba(0.0, 0.0, 0.0, 0.10),
             hairline: rgba(p.r, p.g, p.b, 0.08),
             card: rgba(1.0, 1.0, 1.0, 0.62),
@@ -162,7 +169,9 @@ impl Theme {
             control_stroke: rgba(p.r, p.g, p.b, 0.12),
             field: rgba(1.0, 1.0, 1.0, 0.85),
             field_stroke: rgba(p.r, p.g, p.b, 0.12),
-            focus: rgba(0.918, 0.392, 0.200, 0.70),
+            accent: rgba(0.165, 0.471, 0.839, 1.0),
+            on_accent: rgba(1.0, 1.0, 1.0, 1.0),
+            focus: rgba(0.165, 0.471, 0.839, 0.70),
             scrim: rgba(0.0, 0.0, 0.0, 0.18),
         }
     }

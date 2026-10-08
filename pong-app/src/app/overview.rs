@@ -51,10 +51,10 @@ impl PongApp {
                         .px(px(14.0))
                         .py(px(12.0))
                         .rounded(px(Radius::CARD))
-                        .bg(Ink::ACCENT.alpha(if t.dark { 0.12 } else { 0.10 }))
+                        .bg(t.accent.alpha(if t.dark { 0.12 } else { 0.10 }))
                         .border_1()
-                        .border_color(Ink::ACCENT.alpha(0.35))
-                        .child(icon(IconName::Link, 16.0, t.ink(Ink::ACCENT)))
+                        .border_color(t.accent.alpha(0.35))
+                        .child(icon(IconName::Link, 16.0, t.accent))
                         .child(label_stack(
                             format!("{} wants to pair", p.client_name),
                             Some("Enter the PIN it shows to let it connect.".into()),
@@ -301,7 +301,7 @@ impl PongApp {
                             .items_center()
                             .gap(px(12.0))
                             .child(live_dot(if sess.agent.is_some() {
-                                Ink::ACCENT
+                                t.accent
                             } else {
                                 Ink::FRESH
                             }))
@@ -324,7 +324,7 @@ impl PongApp {
                                                     .child(sess.client.clone()),
                                             )
                                             .when(sess.agent.is_some(), |d| {
-                                                d.child(chip("AI agent", t.ink(Ink::ACCENT), t))
+                                                d.child(chip("AI agent", t.accent, t))
                                             }),
                                     )
                                     .child(

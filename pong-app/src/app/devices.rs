@@ -121,7 +121,7 @@ impl PongApp {
                                     .items_center()
                                     .gap(px(8.0))
                                     .child(div().text_size(px(Type::BODY)).font_weight(FontWeight::MEDIUM).child(p.client_name.clone()))
-                                    .when(p.agent, |d| d.child(chip("AI agent", t.ink(Ink::ACCENT), t))),
+                                    .when(p.agent, |d| d.child(chip("AI agent", t.accent, t))),
                             )
                             .child(div().text_size(px(Type::META)).text_color(t.tertiary).child(format!("From {} · waiting {}", p.peer, duration(p.waiting_secs)))),
                     )
@@ -215,9 +215,7 @@ impl PongApp {
                                     .font_weight(FontWeight::MEDIUM)
                                     .child(c.name.clone()),
                             )
-                            .when(c.agent, |d| {
-                                d.child(chip("AI agent", t.ink(Ink::ACCENT), t))
-                            })
+                            .when(c.agent, |d| d.child(chip("AI agent", t.accent, t)))
                             .when(c.online, |d| {
                                 d.child(chip("Connected", t.ink(Ink::FRESH), t))
                             }),

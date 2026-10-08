@@ -6,16 +6,16 @@
 <title>Pong</title>
 <style>
 :root {
-  --bg: #f6f6f4; --panel: #ffffff; --panel-2: #f0efec; --line: #e2e0db;
-  --text: #1c1b19; --muted: #6d6a64; --accent: #e8622c; --accent-2: #fbe3d8;
+  --bg: #f4f6fa; --panel: #ffffff; --panel-2: #edf0f6; --line: #dde1ea;
+  --text: #121620; --muted: #5d6475; --accent: #2a78d6; --accent-2: #dde8fb; --on-accent: #fff;
   --ok: #1f8a4c; --ok-bg: #dff3e6; --warn: #b7791f; --bad: #c0392b; --bad-bg: #f9e0dd;
   --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121211; --panel: #1b1b19; --panel-2: #232320; --line: #2f2e2b;
-    --text: #ecebe8; --muted: #9a978f; --accent: #ff7a45; --accent-2: #3a2419;
+    --bg: #03050a; --panel: #0e121b; --panel-2: #161b27; --line: #232938;
+    --text: #eef1f7; --muted: #adb5c8; --accent: #8db2ff; --accent-2: #172640; --on-accent: #03050a;
     --ok: #4cc47f; --ok-bg: #16301f; --warn: #e0a54a; --bad: #ff6b5b; --bad-bg: #3a1b18;
     --shadow: none;
   }
@@ -32,7 +32,7 @@ nav a { display: flex; align-items: center; justify-content: space-between; gap:
 nav a:hover { background: var(--panel-2); }
 nav a.on { background: var(--accent-2); color: var(--accent); font-weight: 600; }
 nav .spacer { flex: 1; }
-.badge { background: var(--accent); color: #fff; border-radius: 999px; font-size: 12px; padding: 0 8px; font-weight: 600; }
+.badge { background: var(--accent); color: var(--on-accent); border-radius: 999px; font-size: 12px; padding: 0 8px; font-weight: 600; }
 main { padding: 32px 40px; max-width: 1080px; width: 100%; }
 h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
 .sub { color: var(--muted); margin: 0 0 26px; }
@@ -53,7 +53,7 @@ h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.01em; }
 .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 8px 16px; border-radius: 9px; cursor: pointer; font-weight: 550; }
 .btn:hover { background: var(--panel-2); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.danger { color: var(--bad); }
 .btn:disabled { opacity: .5; cursor: default; }

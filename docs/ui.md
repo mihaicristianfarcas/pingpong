@@ -4,7 +4,7 @@ Both apps are drawn with [GPUI](https://github.com/zed-industries/zed/tree/main/
 one design language that lives in `pingpong-ui`: quiet neutral surfaces, one
 hairline weight, a sidebar whose selected row is a glass pill, settings as
 cards of rows that each say what they do, colour kept for status (green
-live, amber attention, red danger), and Ping's orange as the only accent.
+live, amber attention, red danger), and the landing page's blue as the only accent.
 Light and dark follow the system (`PINGPONG_APPEARANCE=light|dark`
 overrides it).
 
