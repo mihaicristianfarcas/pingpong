@@ -32,6 +32,9 @@ struct Seen {
     audio: u64,
     events: Vec<Event>,
     statuses: Vec<String>,
+    /// The longest the picture stood still between two frames.
+    longest_gap: Duration,
+    last_frame: Option<std::time::Instant>,
 }
 
 struct TestSink {
@@ -45,6 +48,10 @@ impl Sink for TestSink {
         s.first_was_key.get_or_insert(f.keyframe);
         assert!(f.data.starts_with(&[0, 0, 0, 1]), "Annex B");
         s.frames += 1;
+        let now = std::time::Instant::now();
+        if let Some(last) = s.last_frame.replace(now) {
+            s.longest_gap = s.longest_gap.max(now - last);
+        }
         s.keyframes += f.keyframe as u64;
         true
     }
@@ -686,6 +693,46 @@ fn the_console_hears_how_the_link_is_doing() {
         rtts.iter()
             .all(|r| *r >= Duration::from_millis(20) && *r < Duration::from_millis(500)),
         "{rtts:?}"
+    );
+    assert_eq!(running.end(), Ok(End::Stopped));
+}
+
+#[test]
+fn the_picture_keeps_coming_through_three_percent_loss() {
+    // Lost packets are asked for again and used when they come. With
+    // str0m's NACK window of 100 packets, a retransmission came too late to
+    // count, every keyframe lacked a packet, and not one frame came
+    // through this link in 15 s; with 1,000, 57 frames a second (release
+    // build, `examples/link.rs`).
+    let mock = MockConsole::start(Config {
+        link: Link {
+            delay: Duration::from_millis(10),
+            video_loss: 3,
+            rate_bps: 30_000_000,
+            queue: Duration::from_millis(200),
+            outages: None,
+        },
+        ..Config::default()
+    })
+    .unwrap();
+    let http = Http::with_mock(Some(mock.url()));
+    let dir = tempfile::tempdir().unwrap();
+    sign_in(&http, dir.path());
+    let running = start(&http, dir.path(), console());
+    assert!(running.wait(LONG, |s| s.frames >= 1), "no first frame");
+    let (frames, at) = (running.seen.lock().frames, std::time::Instant::now());
+    running.seen.lock().longest_gap = Duration::ZERO;
+    std::thread::sleep(Duration::from_secs(4));
+    let (now, longest) = {
+        let s = running.seen.lock();
+        (s.frames, s.longest_gap)
+    };
+    let fps = (now - frames) as f64 / at.elapsed().as_secs_f64();
+    // Loose, for a debug build on a loaded CI runner: 60 is sent.
+    assert!(fps >= 20.0, "{fps:.1} frames a second");
+    assert!(
+        longest < Duration::from_millis(1500),
+        "stood still {longest:?}"
     );
     assert_eq!(running.end(), Ok(End::Stopped));
 }
