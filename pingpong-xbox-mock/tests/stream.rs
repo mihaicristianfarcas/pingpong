@@ -217,7 +217,10 @@ fn a_console_streams_end_to_end() {
         }));
     }
     assert!(mock.wait_for(LONG, |r| r.messages.iter().any(|(t, c)| {
-        t == "/streaming/characteristics/dimensionschanged" && c.contains("\"horizontal\":1280")
+        // 1280x720 at 96 dpi: 338x190 mm.
+        t == "/streaming/characteristics/dimensionschanged"
+            && c.contains("\"horizontal\":338")
+            && c.contains("\"preferredWidth\":1280")
     })));
     assert!(mock.wait_for(LONG, |r| r.gamepads.contains(&(0, true))));
 

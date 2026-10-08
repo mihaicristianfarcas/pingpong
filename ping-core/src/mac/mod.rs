@@ -50,6 +50,19 @@ pub fn display_refresh_mhz() -> Option<u32> {
     (hz > 1.0).then(|| (hz * 1000.0).round() as u32)
 }
 
+/// How wide one of the main display's pixels is, in millimetres, as the
+/// display reports its size (EDID); `None` when it does not. Any thread.
+pub fn millimetres_per_pixel() -> Option<f64> {
+    use objc2_core_graphics::{
+        CGDisplayCopyDisplayMode, CGDisplayMode, CGDisplayScreenSize, CGMainDisplayID,
+    };
+    let display = CGMainDisplayID();
+    let mode = CGDisplayCopyDisplayMode(display)?;
+    let pixels = CGDisplayMode::pixel_width(Some(&mode));
+    let mm = CGDisplayScreenSize(display).width;
+    (pixels > 0 && mm > 0.0).then(|| mm / pixels as f64)
+}
+
 struct SendLayer(Retained<CAMetalLayer>);
 // SAFETY: CAMetalLayer is documented as usable from a rendering thread; the
 // render thread is the only one that draws into it.

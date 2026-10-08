@@ -111,7 +111,7 @@ pingctl xbox play "Fortnite"
 | Cloud | Library, recent, queue | Library with search, queue with its estimated wait; free-to-play for an account without Game Pass |
 | Video decode | Chromium's WebRTC pipeline and jitter buffer, then a `<video>` element or WebGPU | Each frame to the platform's hardware decoder the moment its last packet arrives, presented as Pong's are (Metal, Direct3D 11, wgpu) |
 | Loss | Chromium decodes on through the gap | Moonlight's rule: nothing decoded until a keyframe, asked for at once both ways (RTCP PLI and the console's keyframe request) |
-| Picture size | Says 1920×1080 to the console whatever the window | Says the size Ping shows it at |
+| Picture size | Says 1920×1080 to the console whatever the window, and as millimetres too | Says the size Ping shows it at: in pixels, and in millimetres as the display reports them (a Mac's), as Microsoft's web client says it |
 | Away from home | Teredo addresses turned into IPv4 candidates | The same, and Ping's own public address (STUN) offered, which Greenlight leaves to do |
 | Controllers | The browser's Gamepad API; rumble on xCloud | The platform's own (GameController, XInput, evdev), with rumble wherever the console sends it; four controllers announced as they come and go |
 | Keyboard | As a controller, or a keyboard | A keyboard for a console and a controller for a cloud game, as Microsoft's app chooses, or either anywhere; by key position; a button two keys hold stays down until both are up |

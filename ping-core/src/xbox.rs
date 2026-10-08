@@ -115,6 +115,7 @@ impl XboxStream {
         let options = StreamOptions {
             width: settings.width as u32,
             height: settings.height as u32,
+            size_mm: size_mm(settings.width as u32, settings.height as u32),
             locale: locale(),
             region: source.region.clone(),
             keyboard_mouse: source.keyboard_mouse,
@@ -191,6 +192,26 @@ impl XboxStream {
         if let Some(n) = self.net.take() {
             let _ = n.join();
         }
+    }
+}
+
+/// The picture's size on the screen, where the platform says how big its
+/// pixels are (a Mac's display reports its size); elsewhere the console is
+/// told what a browser at 100% would measure (`StreamOptions::size_mm`).
+fn size_mm(width: u32, height: u32) -> Option<(u32, u32)> {
+    #[cfg(target_os = "macos")]
+    {
+        crate::mac::millimetres_per_pixel().map(|mm| {
+            (
+                (f64::from(width) * mm) as u32,
+                (f64::from(height) * mm) as u32,
+            )
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (width, height);
+        None
     }
 }
 

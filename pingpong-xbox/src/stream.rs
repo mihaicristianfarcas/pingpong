@@ -45,6 +45,9 @@ pub struct StreamOptions {
     /// The size the picture is shown at.
     pub width: u32,
     pub height: u32,
+    /// Its size on the screen, in millimetres, when the platform knows it
+    /// (else at 96 pixels to the inch).
+    pub size_mm: Option<(u32, u32)>,
     pub locale: String,
     /// The cloud region to play in, when not the account's default.
     pub region: Option<String>,
@@ -57,6 +60,7 @@ impl Default for StreamOptions {
         StreamOptions {
             width: 1920,
             height: 1080,
+            size_mm: None,
             locale: "en-US".into(),
             region: None,
             keyboard_mouse: KeyboardMouse::default(),
@@ -187,6 +191,12 @@ fn run_session(
         Options {
             width: options.width,
             height: options.height,
+            size_mm: options.size_mm.unwrap_or_else(|| {
+                (
+                    crate::messages::millimetres_at_96_dpi(options.width),
+                    crate::messages::millimetres_at_96_dpi(options.height),
+                )
+            }),
             install_id: install_id(auth),
             keyboard_mouse: options
                 .keyboard_mouse

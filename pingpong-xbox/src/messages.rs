@@ -72,14 +72,24 @@ pub fn cancel_transaction(id: &str) -> String {
     json!({ "type": "ReceiverCancel", "content": "\"\"", "id": id, "cv": "" }).to_string()
 }
 
+/// A picture `pixels` wide at 96 pixels to the inch, in millimetres: what a
+/// browser measures at 100% scaling, for a client that knows no better.
+pub fn millimetres_at_96_dpi(pixels: u32) -> u32 {
+    (f64::from(pixels) * 25.4 / 96.0) as u32
+}
+
 /// What the client tells the console about itself once the handshake is
 /// done: no system UI of its own (the console draws its dialogs and
 /// keyboard into the picture), the install id, landscape, no touch, and the
-/// size it shows the picture at.
+/// size it shows the picture at: `width` by `height` pixels, `size_mm` on
+/// the screen. The web client says the size in millimetres in `horizontal`
+/// and `vertical` (it measures a 1 cm element: `sendDimensionsMessage`) and
+/// in pixels in the rest.
 pub fn client_configuration(
     install_id: &str,
     width: u32,
     height: u32,
+    size_mm: (u32, u32),
 ) -> [(&'static str, Value); 6] {
     [
         (
@@ -105,8 +115,8 @@ pub fn client_configuration(
         (
             "/streaming/characteristics/dimensionschanged",
             json!({
-                "horizontal": width,
-                "vertical": height,
+                "horizontal": size_mm.0,
+                "vertical": size_mm.1,
                 "preferredWidth": width,
                 "preferredHeight": height,
                 "safeAreaLeft": 0,
@@ -302,11 +312,17 @@ mod tests {
 
     #[test]
     fn the_dimensions_say_the_size_the_picture_is_shown_at() {
-        let config = client_configuration("install", 2560, 1440);
+        let config = client_configuration("install", 2560, 1440, (597, 336));
         let (target, dims) = &config[5];
         assert_eq!(*target, "/streaming/characteristics/dimensionschanged");
-        assert_eq!(dims["horizontal"], 2560);
+        // Millimetres, then pixels, as the web client says them.
+        assert_eq!(
+            (&dims["horizontal"], &dims["vertical"]),
+            (&597.into(), &336.into())
+        );
+        assert_eq!(dims["preferredWidth"], 2560);
         assert_eq!(dims["safeAreaBottom"], 1440);
+        assert_eq!(millimetres_at_96_dpi(1920), 508);
         assert_eq!(config[1].1["clientAppInstallId"], "install");
     }
 

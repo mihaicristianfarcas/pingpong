@@ -57,9 +57,11 @@ const GOODBYE_WAIT: Duration = Duration::from_millis(200);
 /// What the connection is told about the client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
-    /// The size the picture is shown at, which the console is told.
+    /// The size the picture is shown at, which the console is told: in
+    /// pixels, and on the screen in millimetres.
     pub width: u32,
     pub height: u32,
+    pub size_mm: (u32, u32),
     /// This installation's id ([`crate::store::Account::install_id`]).
     pub install_id: String,
     /// What the keyboard and mouse are to the console.
@@ -688,6 +690,7 @@ impl Connection {
             &self.options.install_id,
             self.options.width,
             self.options.height,
+            self.options.size_mm,
         ) {
             self.send_later(
                 Chan::Message,
@@ -746,6 +749,7 @@ mod tests {
             Options {
                 width: 1280,
                 height: 720,
+                size_mm: (338, 190),
                 install_id: "test".into(),
                 keyboard_mouse: KeyboardMouse::Native,
             },
