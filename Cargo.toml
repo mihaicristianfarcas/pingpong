@@ -30,7 +30,7 @@ exclude = ["spikes", "tools/rawinput-probe"]
 # (Ping, Pong, their windows and command lines), so one release tag names
 # them all and the update check has one number to compare. The libraries
 # keep versions of their own.
-version = "0.9.1"
+version = "0.9.2"
 edition = "2021"
 rust-version = "1.96"
 repository = "https://github.com/mihaicristianfarcas/pingpong"
