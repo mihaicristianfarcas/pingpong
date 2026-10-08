@@ -181,8 +181,11 @@ impl Session {
             s.width as u32,
             s.height as u32,
         )));
+        // On an Xbox, Command is the Windows key, as a keyboard plugged into
+        // the console has it: the guide, and with X the power menu.
+        let xbox = matches!(source, Source::Xbox(_));
         let forward_command = Arc::new(std::sync::atomic::AtomicBool::new(
-            opts.command_is_windows_key,
+            opts.command_is_windows_key || xbox,
         ));
         let (rumble_tx, rumble_rx) = gamepad::Gamepads::rumble_channel();
         let events: crate::stream::EventSink = {
@@ -250,6 +253,7 @@ impl Session {
             Box::new(move || quit(None)),
         );
         handler.pixels_per_point = scale;
+        handler.windows_key = xbox.then(crate::keyboard::WindowsKeyWait::default);
         if opts.mute_in_background {
             let controls = stream.controls();
             handler.on_focus = Some(Box::new(move |focused| controls.set_audio_muted(!focused)));

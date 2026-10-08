@@ -101,8 +101,9 @@ const fn key(k: Key) -> Source {
     Source::Key(k)
 }
 
-/// Greenlight's layout.
-const CONTROLLER: [(Source, PadControl); 20] = {
+/// Greenlight's layout, and the Windows key (Command on a Mac) the Xbox
+/// button, as it is on a keyboard plugged into a console.
+const CONTROLLER: [(Source, PadControl); 22] = {
     use PadControl::*;
     [
         (key(Key::Enter), Button(button::A)),
@@ -123,16 +124,20 @@ const CONTROLLER: [(Source, PadControl); 20] = {
         (key(Key::KeyM), Button(button::START)),
         (key(Key::KeyV), Button(button::BACK)),
         (key(Key::KeyN), Button(button::GUIDE)),
+        (key(Key::SuperLeft), Button(button::GUIDE)),
+        (key(Key::SuperRight), Button(button::GUIDE)),
         (key(Key::Minus), LeftTrigger),
         (key(Key::Equal), RightTrigger),
     ]
 };
 
-/// Better xCloud's "Shooter" layout.
-const SHOOTER: [(Source, PadControl); 28] = {
+/// Better xCloud's "Shooter" layout, and the Windows key the Xbox button.
+const SHOOTER: [(Source, PadControl); 30] = {
     use PadControl::*;
     [
         (key(Key::Backquote), Button(button::GUIDE)),
+        (key(Key::SuperLeft), Button(button::GUIDE)),
+        (key(Key::SuperRight), Button(button::GUIDE)),
         (key(Key::ArrowUp), Button(button::DPAD_UP)),
         (key(Key::ArrowDown), Button(button::DPAD_DOWN)),
         (key(Key::ArrowLeft), Button(button::DPAD_LEFT)),
@@ -492,6 +497,20 @@ mod tests {
 
     fn lean_of(axis: i16) -> f64 {
         f64::from(axis) / f64::from(i16::MAX)
+    }
+
+    #[test]
+    fn the_windows_key_is_the_xbox_button_in_both_layouts() {
+        for mode in [KeyboardMouse::Controller, KeyboardMouse::Shooter] {
+            for key in [Key::SuperLeft, Key::SuperRight] {
+                let mut kb = KeyboardPad::new(mode).unwrap();
+                assert!(kb.key(key, true), "{mode:?} {key:?}");
+                let m = kb.merged(&GamepadState::default());
+                assert_eq!(m.buttons, button::GUIDE, "{mode:?} {key:?}");
+                kb.key(key, false);
+                assert_eq!(kb.merged(&GamepadState::default()).buttons, 0);
+            }
+        }
     }
 
     #[test]

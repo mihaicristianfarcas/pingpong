@@ -80,7 +80,15 @@ with rumble when the console sends it. The Xbox button is the Guide button.
 | `-` `=` | Right click, left click | Left and right trigger |
 | L, R | Left Shift, F | Left and right stick click |
 | M, V | Enter, Tab | Menu, View |
-| N | `` ` `` | The Xbox button |
+| N, ⌘ | `` ` ``, ⌘ | The Xbox button |
+
+**Command (⌘) is the Windows key**, as on a keyboard plugged into the
+console: alone it opens the guide, and held with X (⌘X) the menu to turn
+the console off. It goes to the console when you let go of it or press
+another key with it, so ⌘Tab away from Ping opens nothing. (In a window
+on Windows, the Windows key stays Windows'; in full screen it goes to the
+console, as for a Pong host.) In **Controller** and **Shooter**, ⌘ is the
+Xbox button.
 
 Keys are positions: on any keyboard layout they are where the US layout has
 them. Sent as a keyboard's, they are the Windows key codes Microsoft's web

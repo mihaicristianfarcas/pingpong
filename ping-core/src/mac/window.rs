@@ -63,6 +63,9 @@ pub struct Handler {
     pub on_focus: Option<Box<dyn Fn(bool)>>,
     /// Ctrl+Option+Shift+T, watching an AI agent: take over or hand back.
     pub on_take_over: Option<Box<dyn Fn()>>,
+    /// An Xbox's: Command, its Windows key, held back until it is known
+    /// what it is for (`keyboard::WindowsKeyWait`).
+    pub windows_key: Option<crate::keyboard::WindowsKeyWait>,
     held_keys: HashSet<u16>,
     held_buttons: HashSet<u8>,
     ctrl: bool,
@@ -105,6 +108,7 @@ impl Handler {
             on_quit,
             on_focus: None,
             on_take_over: None,
+            windows_key: None,
             held_keys: HashSet::new(),
             held_buttons: HashSet::new(),
             ctrl: false,
@@ -132,6 +136,16 @@ impl Handler {
             return;
         };
         let sc = scancode(key);
+        let through = match self.windows_key.as_mut() {
+            Some(w) => w.key(sc, down),
+            None => [Some((sc, down)), None],
+        };
+        for (sc, down) in through.into_iter().flatten() {
+            self.press(sc, down);
+        }
+    }
+
+    fn press(&mut self, sc: u16, down: bool) {
         if down {
             if !self.held_keys.insert(sc) {
                 return; // already down (auto-repeat is the host's job)
@@ -145,6 +159,9 @@ impl Handler {
     /// Release everything held on the host: on focus loss, capture release and
     /// quit, so nothing stays stuck down.
     pub fn release_all(&mut self) {
+        if let Some(w) = self.windows_key.as_mut() {
+            w.forget();
+        }
         for sc in self.held_keys.drain() {
             self.input.send(InputEvent::KeyUp(sc));
         }
@@ -438,6 +455,9 @@ impl Handler {
         let n = number as u8;
         let Some(b) = button(n) else { return };
         if down {
+            if let Some(w) = self.windows_key.as_mut().and_then(|w| w.click()) {
+                self.press(w, true);
+            }
             if self.held_buttons.insert(n) {
                 self.input.mouse_button(b, true);
             }

@@ -1,7 +1,9 @@
 //! The keyboard, as the stream sees it, in protocol scancodes (set 1): which
-//! keys the host holds down, and Moonlight's Ctrl+Alt+Shift chords. The
-//! platforms turn their key events into scancodes and act on what this says.
-//! (The Mac's AppKit handler predates it and keeps its own.)
+//! keys the host holds down, Moonlight's Ctrl+Alt+Shift chords, and for an
+//! Xbox the Windows key held back until it is known what it is for
+//! ([`WindowsKeyWait`]). The platforms turn their key events into scancodes
+//! and act on what this says. (The Mac's AppKit handler predates
+//! [`Keyboard`] and keeps its own.)
 
 use std::collections::HashSet;
 
@@ -210,9 +212,139 @@ fn hotkey(sc: u16) -> Option<Hotkey> {
     })
 }
 
+/// The Windows key (Command on a Mac) held back until it is known what it
+/// is for, as an Xbox needs it: alone it opens the console's guide, with
+/// another key it is a shortcut (with X, the power menu), as on a keyboard
+/// plugged into the console. Held back, it goes with the next key or click,
+/// or as a tap when let go alone; when the stream loses the keyboard first
+/// -- ⌘Tab away from Ping, whose Tab the stream never sees -- it is
+/// forgotten, where sent it would have opened the guide.
+#[derive(Debug, Default)]
+pub struct WindowsKeyWait {
+    held: Option<u16>,
+}
+
+/// Key events to send, in order: (scancode, down).
+pub type Through = [Option<(u16, bool)>; 2];
+
+fn is_windows_key(sc: u16) -> bool {
+    use pingpong_proto::input::{scancode, Key};
+    sc == scancode(Key::SuperLeft) || sc == scancode(Key::SuperRight)
+}
+
+impl WindowsKeyWait {
+    /// A key went down or up: what to send for it now.
+    pub fn key(&mut self, sc: u16, down: bool) -> Through {
+        if is_windows_key(sc) {
+            if down {
+                // The other Windows key, held already, goes now.
+                let earlier = self.held.replace(sc).filter(|&e| e != sc);
+                return [earlier.map(|e| (e, true)), None];
+            }
+            if self.held == Some(sc) {
+                self.held = None;
+                return [Some((sc, true)), Some((sc, false))];
+            }
+            return [Some((sc, false)), None];
+        }
+        match self.held.take() {
+            Some(w) if down => [Some((w, true)), Some((sc, true))],
+            held => {
+                self.held = held;
+                [Some((sc, down)), None]
+            }
+        }
+    }
+
+    /// A mouse button went down: the Windows key held back, to send first.
+    pub fn click(&mut self) -> Option<u16> {
+        self.held.take()
+    }
+
+    /// The stream lost the keyboard: the key held back is not sent.
+    pub fn forget(&mut self) {
+        self.held = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WIN: u16 = 0x8000 | 0x5B;
+    const WIN_R: u16 = 0x8000 | 0x5C;
+    const X: u16 = 0x2D;
+    const SHIFT: u16 = 0x2A;
+
+    fn sent(w: &mut WindowsKeyWait, keys: &[(u16, bool)]) -> Vec<(u16, bool)> {
+        keys.iter()
+            .flat_map(|&(sc, down)| w.key(sc, down))
+            .flatten()
+            .collect()
+    }
+
+    #[test]
+    fn the_windows_key_alone_is_a_tap_when_let_go() {
+        let mut w = WindowsKeyWait::default();
+        assert_eq!(sent(&mut w, &[(WIN, true)]), []);
+        assert_eq!(sent(&mut w, &[(WIN, false)]), [(WIN, true), (WIN, false)]);
+    }
+
+    #[test]
+    fn the_windows_key_goes_before_the_key_it_is_held_with() {
+        let mut w = WindowsKeyWait::default();
+        assert_eq!(
+            sent(&mut w, &[(WIN, true), (X, true), (X, false), (WIN, false)]),
+            [(WIN, true), (X, true), (X, false), (WIN, false)]
+        );
+        // A modifier counts: Win+Shift is not a tap.
+        assert_eq!(
+            sent(
+                &mut w,
+                &[(WIN, true), (SHIFT, true), (WIN, false), (SHIFT, false)]
+            ),
+            [(WIN, true), (SHIFT, true), (WIN, false), (SHIFT, false)]
+        );
+    }
+
+    #[test]
+    fn the_windows_key_is_forgotten_when_the_stream_loses_the_keyboard() {
+        // Command+Tab on a Mac: the stream sees Command, then loses focus.
+        let mut w = WindowsKeyWait::default();
+        assert_eq!(sent(&mut w, &[(WIN, true)]), []);
+        w.forget();
+        assert_eq!(
+            sent(&mut w, &[(X, true), (X, false)]),
+            [(X, true), (X, false)]
+        );
+    }
+
+    #[test]
+    fn a_click_takes_the_windows_key_with_it() {
+        let mut w = WindowsKeyWait::default();
+        sent(&mut w, &[(WIN, true)]);
+        assert_eq!(w.click(), Some(WIN));
+        assert_eq!(w.click(), None);
+        assert_eq!(sent(&mut w, &[(WIN, false)]), [(WIN, false)]);
+    }
+
+    #[test]
+    fn both_windows_keys_held_send_the_first() {
+        let mut w = WindowsKeyWait::default();
+        assert_eq!(
+            sent(&mut w, &[(WIN, true), (WIN_R, true), (WIN_R, false)]),
+            [(WIN, true), (WIN_R, true), (WIN_R, false)]
+        );
+    }
+
+    #[test]
+    fn other_keys_pass_as_they_are() {
+        let mut w = WindowsKeyWait::default();
+        assert_eq!(
+            sent(&mut w, &[(X, true), (X, false)]),
+            [(X, true), (X, false)]
+        );
+    }
 
     #[test]
     fn print_screen_is_a_screenshot_with_any_modifiers() {

@@ -630,7 +630,8 @@ impl PingApp {
             first.push(self.toggle(
                 "cmd-win",
                 "Use ⌘ as the Windows key",
-                "Command reaches a Windows host as the Windows key; Control stays Control.",
+                "Command reaches a Windows host as the Windows key; Control stays Control. \
+                    An Xbox always gets it so: the guide, and with X the power menu.",
                 |p| p.cmd_is_win,
                 |p, v| p.cmd_is_win = v,
                 true,
