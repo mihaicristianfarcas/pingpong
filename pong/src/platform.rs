@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use pingpong_display::windows::WindowsDisplay;
+use pingpong_display::windows::{Reassert, WindowsDisplay};
 use pingpong_display::{DisplayControl, DisplayError, DisplayMode};
 use pingpong_encode::nvenc::CodecCaps;
 use pingpong_encode::{Codec, EncoderConfig};
@@ -33,6 +33,13 @@ pub type Sink = SendInputSink;
 /// waking its monitor, which asleep takes seconds (26 s measured), and every
 /// display call waits for that. Someone at the host ends it at once.
 const LINGER: Duration = Duration::from_secs(60);
+
+/// How often a session, and its linger, looks whether something put the
+/// host's monitors back in the desktop (`WindowsDisplay::reassert`: three
+/// QueryDisplayConfig calls). A monitor that was off takes seconds to show
+/// a picture again (a DisplayPort one asleep, 12 s and more), so one put
+/// back is usually out of the desktop again before it lights up.
+const DISPLAY_WATCH: Duration = Duration::from_millis(250);
 
 /// A session's display, while it streams.
 pub struct Display {
@@ -60,6 +67,10 @@ pub struct Platform {
     encoder: std::cell::OnceCell<(Backend, Vec<CodecCaps>)>,
     /// What Windows is asked for while a session streams.
     streaming: Option<crate::tuning::Streaming>,
+    /// When the desktop was last looked at (`DISPLAY_WATCH`), and whether
+    /// the session's display had left it then (said once, not each look).
+    watched: Instant,
+    display_lost: bool,
 }
 
 fn state_path(data_dir: &Path) -> PathBuf {
@@ -81,6 +92,8 @@ impl Platform {
             _nvidia: crate::nvprefs::apply(data_dir, cfg.nvidia_max_power, cfg.nvidia_dxgi_present),
             streaming: None,
             encoder: std::cell::OnceCell::new(),
+            watched: Instant::now(),
+            display_lost: false,
         }
     }
 
@@ -371,9 +384,34 @@ impl Platform {
         }
     }
 
-    /// Every tick while streaming: nothing more to tell the client.
-    pub fn tick(&mut self, _d: &mut Display, _now: Instant, _second: bool) -> Vec<Control> {
+    /// Every tick while streaming: the desktop stays the session's.
+    pub fn tick(&mut self, d: &mut Display, now: Instant, _second: bool) -> Vec<Control> {
+        if d.made {
+            self.watch_display(now);
+        }
         Vec::new()
+    }
+
+    /// Turn the host's monitors off again if something turned them back on
+    /// (a game: see `WindowsDisplay::reassert`).
+    fn watch_display(&mut self, now: Instant) {
+        if now.saturating_duration_since(self.watched) < DISPLAY_WATCH {
+            return;
+        }
+        self.watched = now;
+        match self.display.reassert() {
+            Reassert::Held => self.display_lost = false,
+            Reassert::Reasserted => {
+                self.display_lost = false;
+                tracing::info!("the session's desktop is its own again");
+            }
+            // The capture loses it too, and the session ends on that.
+            Reassert::DisplayLost if !self.display_lost => {
+                self.display_lost = true;
+                tracing::warn!("the session's display has left the desktop");
+            }
+            Reassert::DisplayLost => {}
+        }
     }
 
     /// The session is over (`ran`: it had started). The virtual display
@@ -408,6 +446,8 @@ impl Platform {
         let Some((since, input)) = self.linger else {
             return;
         };
+        // A game left running keeps changing the desktop it is on.
+        self.watch_display(Instant::now());
         if last_input() != input {
             tracing::info!("someone is at the host; putting its desktop back");
             self.restore_display();

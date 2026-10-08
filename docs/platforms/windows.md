@@ -55,7 +55,15 @@ one's window.
   the client or the settings keep them — the host's own monitors are turned
   off, so the virtual display is the whole desktop and windows and games
   open where the client can see them (Sunshine's "deactivate other
-  displays", Apollo's default). A keepalive thread
+  displays", Apollo's default). That arrangement is saved in Windows'
+  display database, as Sunshine saves it: Windows keeps one arrangement per
+  set of connected monitors, and the set with the virtual display in it
+  exists only during a session, so a game that makes Windows apply its
+  saved arrangement (resetting the display mode, as starting Cyberpunk 2077
+  most likely did) gets the session's, and your own arrangement is
+  untouched. Pong also looks four times a second
+  whether something put the host's monitors back, and takes them out again.
+  A keepalive thread
   pings the driver every second: SudoVDA removes a monitor ~3 s after the
   last ping. At the end the virtual display goes first, then the host's
   arrangement comes back. `pingpong-display/src/windows.rs` explains each of

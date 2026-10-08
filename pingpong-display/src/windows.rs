@@ -123,8 +123,6 @@ pub fn primary_id() -> Option<CcdId> {
     None
 }
 
-/// The GDI device name (`\\.\DISPLAY5`) for a CCD target, if it is attached.
-///
 /// Attach the calling thread to the desktop that has input.
 ///
 /// Windows changes display settings only for a thread on the input desktop:
@@ -156,6 +154,8 @@ fn follow_input_desktop() {
     }
 }
 
+/// The GDI device name (`\\.\DISPLAY5`) for a CCD target, if it is attached.
+///
 /// Identity-based lookup, deliberately. Detecting our display by diffing the
 /// attached-name list against a "before" snapshot looks simpler and is wrong:
 /// removal is asynchronous, so during a mode change the outgoing display is
@@ -320,15 +320,26 @@ fn isolate_to(keep: CcdId) -> Result<Topology, DisplayError> {
         return Err(DisplayError::NoSuchDisplay);
     }
 
-    // SDC_SAVE_TO_DATABASE is deliberately NOT set here, unlike `set_primary`.
-    // This arrangement is the session's, not the user's, and persisting it would
-    // teach Windows to reapply a single-display topology the next time these
-    // monitors are seen -- long after the session is over.
+    // Saved to Windows' database, as Sunshine saves its `ensure_only_display`
+    // topology (libdisplaydevice's `win_display_device_topology.cpp`).
+    // Windows keys an arrangement to the set of monitors connected, and the
+    // set with the virtual display in it exists only while a session (or its
+    // linger) has that display plugged in: the user's own arrangement, for
+    // their monitors alone, is untouched. Unsaved, the database still held
+    // the extended desktop `set_primary` saved a moment earlier, with the
+    // host's monitor on. The monitor came back mid-session with CS2 in
+    // exclusive fullscreen and when Cyberpunk 2077 started: most likely
+    // Windows applying that arrangement again (not measured, nor which call
+    // of the game's makes it; resetting the display mode,
+    // `ChangeDisplaySettings` with no mode, is one that does).
+    //
+    // SAFETY: `next` and `modes` are QueryDisplayConfig's own arrays, read
+    // just above; only flags were changed in them.
     let rc = unsafe {
         SetDisplayConfig(
             Some(&next),
             Some(&modes),
-            SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES,
+            SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_SAVE_TO_DATABASE,
         )
     };
     if rc != 0 {
@@ -414,6 +425,23 @@ fn apply_topology(t: &Topology) -> Result<(), DisplayError> {
     } else {
         Err(DisplayError::Os(format!(
             "SetDisplayConfig(restore topology) returned {rc}"
+        )))
+    }
+}
+
+/// Put every connected display in the desktop, extended: a session that
+/// keeps the host's monitors, after an isolated one taught Windows to show
+/// only the virtual display whenever it is plugged in (see `isolate_to`).
+/// Windows takes the arrangement from its database's extended desktop for
+/// these monitors, and the change is saved as the current one.
+fn extend_desktop() -> Result<(), DisplayError> {
+    // SAFETY: no arrays are passed; Windows supplies the arrangement.
+    let rc = unsafe { SetDisplayConfig(None, None, SDC_APPLY | SDC_TOPOLOGY_EXTEND) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(DisplayError::Os(format!(
+            "SetDisplayConfig(extend) returned {rc}"
         )))
     }
 }
@@ -856,6 +884,14 @@ impl WindowsDisplay {
 
         if let Ok(device) = Device::open() {
             let _ = device.remove();
+            // Removal is asynchronous, and while the virtual display is still
+            // plugged in, the database's arrangement for the monitors
+            // connected is the session's, with the host's own off (see
+            // `isolate_to`).
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while virtual_display_present() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(100));
+            }
         }
         // Before the primary, and before anything else: a crash that stranded
         // this left the host's monitors DARK, which is the one stranded state
@@ -877,18 +913,16 @@ impl WindowsDisplay {
     }
 
     /// Take the desktop back if something changed it under the session.
+    /// The host calls it a few times a second while the session's display
+    /// is up (`pong`'s Windows platform, `DISPLAY_WATCH`).
     ///
-    /// Observed with CS2 in exclusive fullscreen: the physical display came
-    /// back mid-session. The likely mechanism is that a
-    /// game-driven mode change makes Windows reapply its own remembered
-    /// arrangement, and `isolate_to` deliberately does NOT write ours to that
-    /// database -- a session's topology is not the user's, and persisting it
-    /// would have Windows reapplying a one-display desktop long afterwards.
-    ///
-    /// So the session re-asserts instead of persisting: the arrangement holds
-    /// for exactly as long as the session does, and nothing outlives it. The
-    /// reappearance is measured, the reason for it is not (a hypothesis), and
-    /// the log lines here are what will settle that.
+    /// Observed with CS2 in exclusive fullscreen and when starting Cyberpunk
+    /// 2077: the host's monitor came back mid-session, most likely because
+    /// Windows applied the arrangement its database held for these
+    /// monitors, which had it on. `isolate_to` saves the session's
+    /// arrangement there now, so that applies the session's own; this
+    /// catches whatever changes the desktop some other way. The log lines
+    /// here say when it happens.
     ///
     /// **Two things are re-asserted, not one.** Isolation alone is not enough:
     /// a reapply that puts the host's monitor back also puts it at (0,0) and
@@ -1119,6 +1153,12 @@ impl DisplayControl for WindowsDisplay {
                 .ok()
                 .map(|(paths, modes)| Topology { paths, modes });
         }
+        // The host's displays the user has on: the desktop a session that
+        // keeps them should have, ours besides.
+        let kept_paths = self
+            .original_topology
+            .as_ref()
+            .map_or(1, |t| t.paths.len().max(1));
 
         // The keepalive runs from before the ADD, on its own thread. The setup
         // below goes through display calls that block while Windows brings
@@ -1171,8 +1211,17 @@ impl DisplayControl for WindowsDisplay {
         let mut gdi_name = String::new();
         let added_at = Instant::now();
         let result = (|| {
-            let name = Self::wait_for_arrival(&device, id, &keepalive)?;
+            let mut name = Self::wait_for_arrival(&device, id, &keepalive)?;
             let arrived_ms = added_at.elapsed().as_millis();
+            // Keeping the host's monitors, which Windows left out as it
+            // brought ours up (an isolated session saved that): extend.
+            // Before the mode is forced: extending applies the database's
+            // mode for every display, ours too.
+            if !self.isolate && active_path_count() < kept_paths + 1 && host_has_own_display(id) {
+                tracing::info!("the host's displays stayed off as ours came up; extending");
+                extend_desktop()?;
+                name = gdi_name_for_target(id).ok_or(DisplayError::NoSuchDisplay)?;
+            }
             gdi_name = name.clone();
             force_mode(&name, mode)?;
             let moded_ms = added_at.elapsed().as_millis();
