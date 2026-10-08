@@ -20,7 +20,8 @@
 //!   reports), [`messages`] (the message and control channels),
 //!   [`keymap`] (keys as Windows key codes), [`virtual_pad`] (the keyboard
 //!   as a controller), [`rumble`] (the console's rumble patterns as motor
-//!   states), [`ice`] (candidates, Teredo).
+//!   states), [`ice`] (candidates, Teredo), [`reassembly`] (the video's
+//!   packets as frames, and waiting for the missing).
 //!
 //! Nothing here touches a window, a decoder or a speaker: the client
 //! (`ping_core::xbox`) hands frames to the platform's own decoder and
@@ -36,6 +37,7 @@ pub mod input;
 pub mod keymap;
 pub mod messages;
 pub mod people;
+pub mod reassembly;
 pub mod rumble;
 pub mod store;
 pub mod stream;

@@ -5,13 +5,18 @@
 //! What it carries (the web client's session, as Greenlight's player sets
 //! it up, `packages/player/src/client/lib/player.ts`):
 //!
-//! - **Video**, H.264, received. Frames go to the [`Sink`] the moment the
-//!   last packet of one arrives: no jitter buffer, which is where a browser
-//!   spends its tens of milliseconds. After a loss, nothing is handed over
-//!   until a keyframe, and one is asked for at once (an RTCP PLI and the
-//!   control channel's keyframe request) -- Moonlight's rule
-//!   (`VideoDepacketizer.c`), where a browser decodes on and smears.
-//! - **Audio**, Opus, stereo, received.
+//! - **Video**, H.264, received. str0m runs in RTP mode: it decrypts,
+//!   asks for retransmissions (NACK) and unwraps them, and hands over each
+//!   packet; [`crate::reassembly`] makes the frames. A frame goes to the
+//!   [`Sink`] the moment its last packet arrives: no jitter buffer, which
+//!   is where a browser spends its tens of milliseconds. A missing packet
+//!   is waited for as long as a retransmission takes on the link; then the
+//!   frames are given up, and nothing is handed over until a keyframe,
+//!   which is asked for (an RTCP PLI and the control channel's keyframe
+//!   request) -- Moonlight's rule (`VideoDepacketizer.c`), where a browser
+//!   waits seconds or decodes on and smears.
+//! - **Audio**, Opus, stereo, received: each packet straight to the
+//!   player, whose own buffer puts them in order and covers a lost one.
 //! - **Data channels**: `input` (binary reports, [`crate::input`]),
 //!   `control` and `message` (JSON, [`crate::messages`]), and `chat`, which
 //!   is opened as the console expects and left quiet (no microphone).
@@ -29,9 +34,10 @@ use std::time::{Duration, Instant};
 
 use str0m::change::{SdpAnswer, SdpPendingOffer};
 use str0m::channel::{ChannelConfig, ChannelData, ChannelId, Reliability};
-use str0m::format::{Codec, CodecExtra, FormatParams};
-use str0m::media::{Direction, Frequency, KeyframeRequestKind, MediaData, MediaKind, Mid, Pt};
+use str0m::format::{Codec, FormatParams};
+use str0m::media::{Direction, Frequency, KeyframeRequestKind, MediaKind, Mid, Pt};
 use str0m::net::{Protocol, Receive};
+use str0m::rtp::{RtpPacket, Ssrc};
 use str0m::{Candidate, Event as RtcEvent, IceConnectionState, Input as RtcInput, Output, Rtc};
 
 pub use inputs::{Input, InputState};
@@ -40,6 +46,7 @@ pub use socket::{Doorbell, Socket};
 use crate::ice::IceCandidate;
 use crate::input::{parse_server_report, FrameTimes, ServerReport, MAX_REPORT_LEN};
 use crate::messages::{self, Incoming, CHANNELS};
+use crate::reassembly::{self, Popped, Reassembler, ReassemblyStats};
 use crate::rumble::{Motors, Rumble};
 use crate::virtual_pad::KeyboardMouse;
 
@@ -93,6 +100,10 @@ pub struct LinkStats {
     pub loss: Option<f32>,
     pub received_kbps: u32,
     pub keyframe_requests: u64,
+    /// The video's packets and frames since the stream began.
+    pub video: ReassemblyStats,
+    /// How long a missing video packet is waited for now.
+    pub retransmit_wait: Duration,
 }
 
 /// What happened, for the client.
@@ -168,6 +179,12 @@ pub struct Connection {
     pending: Option<SdpPendingOffer>,
     audio: Mid,
     video: Mid,
+    /// Which media each sender's packets are, once seen.
+    ssrcs: Vec<(Ssrc, Mid)>,
+    frames: Reassembler,
+    /// When the first video packet came: a keyframe is asked for if none
+    /// comes within [`KEYFRAME_RETRY`] of it.
+    first_video: Option<Instant>,
     channels: Vec<(Chan, ChannelId)>,
     options: Options,
     inputs: InputState,
@@ -177,7 +194,6 @@ pub struct Connection {
     ready: bool,
     connected: bool,
     started: Instant,
-    awaiting_keyframe: bool,
     want_keyframe: bool,
     last_keyframe_request: Option<Instant>,
     keyframe_requests: u64,
@@ -187,8 +203,12 @@ pub struct Connection {
 impl Connection {
     /// A connection on `socket`, and the offer to send.
     pub fn offer(socket: Socket, options: Options) -> Result<(Connection, String), String> {
+        // RTP mode: the frames are made here (`crate::reassembly`), not by
+        // str0m, whose frame assembly holds every later frame for up to two
+        // seconds behind a packet that never comes.
         let mut config = Rtc::builder()
             .clear_codecs()
+            .set_rtp_mode(true)
             .set_stats_interval(Some(Duration::from_secs(1)));
         let codecs = config.codec_config();
         // Opus as stereo: the web client asks for it the same way, by
@@ -245,6 +265,9 @@ impl Connection {
                 pending: Some(pending),
                 audio,
                 video,
+                ssrcs: Vec::new(),
+                frames: Reassembler::new(),
+                first_video: None,
                 channels: Vec::new(),
                 options,
                 inputs: InputState::new(keyboard),
@@ -253,7 +276,6 @@ impl Connection {
                 ready: false,
                 connected: false,
                 started: now,
-                awaiting_keyframe: true,
                 want_keyframe: false,
                 last_keyframe_request: None,
                 keyframe_requests: 0,
@@ -343,9 +365,8 @@ impl Connection {
                 Some(timeout),
                 self.rumble.next_change(now),
                 self.inputs.next_tick().filter(|_| self.ready),
-                self.last_keyframe_request
-                    .filter(|_| self.awaiting_keyframe && self.connected)
-                    .map(|t| t + KEYFRAME_RETRY),
+                self.keyframe_retry_at(),
+                self.frames.deadline(),
                 Some(now + MAX_SLEEP),
             ]
             .into_iter()
@@ -468,13 +489,11 @@ impl Connection {
             self.write(chan, &msg);
             self.drain(sink)?;
         }
-        if self.want_keyframe
-            || (self.awaiting_keyframe
-                && self.connected
-                && self
-                    .last_keyframe_request
-                    .is_some_and(|t| now.duration_since(t) >= KEYFRAME_RETRY))
-        {
+        // A frame given up at its deadline, with nothing arriving since.
+        if self.frames.deadline().is_some_and(|d| now >= d) {
+            self.take_frames(sink, now);
+        }
+        if self.want_keyframe || self.keyframe_retry_at().is_some_and(|t| now >= t) {
             self.want_keyframe = false;
             self.request_keyframe(now);
             self.drain(sink)?;
@@ -525,11 +544,25 @@ impl Connection {
         self.outbox.push_back((chan, msg.into_bytes()));
     }
 
+    /// When to ask for a keyframe again, while one is awaited: the last
+    /// request's has not come, or none was made and the stream began
+    /// without one. A keyframe that began to arrive since is given as
+    /// long: on a slow link a big one takes half a second, and asking
+    /// again sends a second one down the link that is short already.
+    fn keyframe_retry_at(&self) -> Option<Instant> {
+        if !self.connected || !self.frames.awaiting_keyframe() {
+            return None;
+        }
+        let asked = self.last_keyframe_request.or(self.first_video)?;
+        let arriving = self.frames.keyframe_arriving_since();
+        Some(arriving.map_or(asked, |a| a.max(asked)) + KEYFRAME_RETRY)
+    }
+
     fn request_keyframe(&mut self, now: Instant) {
         self.last_keyframe_request = Some(now);
         self.keyframe_requests += 1;
-        if let Some(mut w) = self.rtc.writer(self.video) {
-            let _ = w.request_keyframe(None, KeyframeRequestKind::Pli);
+        if let Some(stream) = self.rtc.direct_api().stream_rx_by_mid(self.video, None) {
+            stream.request_keyframe(KeyframeRequestKind::Pli);
         }
         self.send_later(Chan::Control, messages::control::keyframe_request(true));
         tracing::debug!("keyframe requested");
@@ -560,76 +593,122 @@ impl Connection {
                     self.ended = Some(End::Lost("The console closed the input channel.".into()));
                 }
             }
-            RtcEvent::MediaData(m) => {
-                if m.mid == self.video {
-                    self.on_video(m, sink);
-                } else if m.mid == self.audio {
-                    sink.audio(&AudioFrame {
-                        data: &m.data,
-                        seq: **m.seq_range.start(),
-                    });
-                }
-            }
+            RtcEvent::RtpPacket(p) => self.on_rtp(p, sink),
             RtcEvent::MediaIngressStats(s) if s.mid == self.video => {
                 sink.event(Event::Stats(LinkStats {
                     rtt: s.rtt,
                     loss: s.loss,
                     received_kbps: 0,
                     keyframe_requests: self.keyframe_requests,
+                    video: self.frames.stats(),
+                    retransmit_wait: self.frames.wait(),
                 }));
             }
             RtcEvent::PeerStats(p) => {
+                let video = self.frames.stats();
+                tracing::debug!(
+                    packets = video.packets,
+                    missing = video.missing,
+                    recovered = video.recovered,
+                    too_late = video.too_late,
+                    given_up = video.given_up,
+                    frames = video.frames,
+                    keyframes = video.keyframes,
+                    keyframe_requests = self.keyframe_requests,
+                    wait_ms = self.frames.wait().as_millis() as u64,
+                    "video"
+                );
                 sink.event(Event::Stats(LinkStats {
                     rtt: p.rtt,
                     loss: p.ingress_loss_fraction,
                     received_kbps: (p.peer_bytes_rx.saturating_mul(8) / 1000) as u32,
                     keyframe_requests: self.keyframe_requests,
+                    video,
+                    retransmit_wait: self.frames.wait(),
                 }));
             }
             _ => {}
         }
     }
 
-    fn on_video(&mut self, m: MediaData, sink: &mut dyn Sink) {
-        let keyframe = match &m.codec_extra {
-            CodecExtra::H264(e) => e.is_keyframe,
-            _ => str0m::format::detect_h264_keyframe(&m.data),
-        };
-        if !m.contiguous && !keyframe && !self.awaiting_keyframe {
-            tracing::debug!("video loss; waiting for a keyframe");
-            self.awaiting_keyframe = true;
-            self.want_keyframe = true;
+    /// Which media a sender's packets are.
+    fn media_of(&mut self, ssrc: Ssrc) -> Option<Mid> {
+        if let Some(&(_, mid)) = self.ssrcs.iter().find(|(s, _)| *s == ssrc) {
+            return Some(mid);
         }
-        if self.awaiting_keyframe && !keyframe {
-            if self.last_keyframe_request.is_none() {
-                self.want_keyframe = true;
+        let mid = self.rtc.direct_api().stream_rx(&ssrc)?.mid();
+        self.ssrcs.push((ssrc, mid));
+        Some(mid)
+    }
+
+    fn on_rtp(&mut self, p: RtpPacket, sink: &mut dyn Sink) {
+        let Some(mid) = self.media_of(p.header.ssrc) else {
+            return;
+        };
+        if mid == self.audio {
+            if !p.payload.is_empty() {
+                sink.audio(&AudioFrame {
+                    data: &p.payload,
+                    seq: *p.seq_no,
+                });
             }
             return;
         }
-        self.awaiting_keyframe = false;
-        let now = Instant::now();
-        let rtp_time = m.time.numer() as u32;
-        let decoded = sink.video(&VideoFrame {
-            data: &m.data,
-            keyframe,
-            rtp_time,
-            arrived: m.network_time,
-        });
-        if !decoded {
-            self.awaiting_keyframe = true;
-            self.want_keyframe = true;
+        if mid != self.video {
             return;
         }
-        // When the frame arrived and went to the decoder. Decoding and
-        // presenting happen elsewhere, so the hand-off stands for them.
-        let handed = self.ms(now) as u32;
-        self.inputs.frame_shown(FrameTimes {
-            server_key: rtp_time,
-            first_packet_ms: self.ms(m.network_time) as u32,
-            submitted_ms: handed,
-            decoded_ms: handed,
-            rendered_ms: handed,
-        });
+        let now = Instant::now();
+        self.first_video.get_or_insert(now);
+        self.frames.push(
+            reassembly::Packet {
+                seq: *p.seq_no,
+                time: p.time.numer(),
+                marker: p.header.marker,
+                payload: p.payload,
+                arrived: p.timestamp,
+            },
+            now,
+        );
+        self.take_frames(sink, now);
+    }
+
+    /// Hand the frames that are whole to the decoder.
+    fn take_frames(&mut self, sink: &mut dyn Sink, now: Instant) {
+        loop {
+            let (decoded, rtp_time, arrived) = match self.frames.pop(now) {
+                None => return,
+                Some(Popped::Lost) => {
+                    tracing::debug!("video loss; waiting for a keyframe");
+                    self.want_keyframe = true;
+                    continue;
+                }
+                Some(Popped::Frame(f)) => {
+                    let rtp_time = f.time as u32;
+                    let decoded = sink.video(&VideoFrame {
+                        data: f.data,
+                        keyframe: f.keyframe,
+                        rtp_time,
+                        arrived: f.arrived,
+                    });
+                    (decoded, rtp_time, f.arrived)
+                }
+            };
+            if !decoded {
+                self.frames.need_keyframe();
+                self.want_keyframe = true;
+                continue;
+            }
+            // When the frame arrived and went to the decoder. Decoding and
+            // presenting happen elsewhere, so the hand-off stands for them.
+            let handed = self.ms(now) as u32;
+            self.inputs.frame_shown(FrameTimes {
+                server_key: rtp_time,
+                first_packet_ms: self.ms(arrived) as u32,
+                submitted_ms: handed,
+                decoded_ms: handed,
+                rendered_ms: handed,
+            });
+        }
     }
 
     fn on_channel_data(&mut self, d: ChannelData, sink: &mut dyn Sink) {
