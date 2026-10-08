@@ -404,9 +404,14 @@ impl Reassembler {
     fn missing_since(&self, seq: u64) -> Instant {
         let slot = &self.slots[Self::index(seq)];
         let since = (slot.seq == seq).then_some(slot.missing_since).flatten();
-        // Every packet up to the highest is either in or marked missing;
-        // the fallback only covers a slot reused meanwhile.
-        since.unwrap_or_else(Instant::now)
+        // Every packet up to the highest is either in or marked missing.
+        // A slot reused meanwhile lost its packet for good: waited for
+        // since long enough ago that the wait is over at once (a moving
+        // "now" would keep the wait from ever ending).
+        since.unwrap_or_else(|| {
+            let now = Instant::now();
+            now.checked_sub(MAX_WAIT).unwrap_or(now)
+        })
     }
 
     /// The first whole keyframe held at or after `next`.
