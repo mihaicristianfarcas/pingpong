@@ -193,6 +193,11 @@ fn a_console_streams_end_to_end() {
         running.wait(LONG, |s| s.frames >= 30 && s.audio >= 10),
         "picture and sound arrive"
     );
+    // The data channels' set-up runs beside the picture's: waited for, not
+    // read at once (a loaded runner had the picture first).
+    assert!(mock.wait_for(LONG, |r| r.channels.len() == 4
+        && r.handshake
+        && r.authorization.is_some()));
     let record = mock.record();
     assert_eq!(record.woken, 1, "the sleeping console was woken first");
     assert_eq!(record.plays.len(), 1);
