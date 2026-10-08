@@ -25,7 +25,7 @@ use gpui::{
 };
 use pingpong_ui::updates::UpdateApp;
 use pingpong_ui::{button, sheet, FieldEvent, IconName, Ink, Metrics, TextField, Theme, Type};
-use pingpong_update::{Build, Checker};
+use pingpong_update::{Build, Checker, Program};
 use serde_json::{json, Value};
 
 use crate::api::Client;
@@ -36,10 +36,9 @@ use demo::Demo;
 
 pub use demo::pretend;
 
-/// Pong, to the update check: its name and the cask that installs it.
+/// Pong, to the update check.
 pub const UPDATE_APP: UpdateApp = UpdateApp {
-    name: "Pong",
-    cask: "pong",
+    program: Program::Pong,
     build: Build::this(),
 };
 
@@ -250,9 +249,16 @@ impl PongApp {
     /// bar).
     pub fn go(&mut self, page: Page, cx: &mut Context<Self>) {
         self.confirm = None;
-        self.update_sheet = false;
+        self.close_update_sheet();
         self.editing = None;
         self.set_page(page, cx);
+    }
+
+    /// Put the update sheet away, and what it said about an installation
+    /// that did not take.
+    fn close_update_sheet(&mut self) {
+        self.update_sheet = false;
+        self.updates.dismiss_install();
     }
 
     /// Open the update sheet. With nothing newer known, that is a question:
@@ -542,15 +548,17 @@ impl PongApp {
         if !self.update_sheet {
             return None;
         }
-        let (check, close) = (self.updates.clone(), cx.weak_entity());
+        let (check, install, close) =
+            (self.updates.clone(), self.updates.clone(), cx.weak_entity());
         let body = pingpong_ui::updates::sheet_body(
             &UPDATE_APP,
             &self.updates.status(),
             t,
             move |_, _| check.check_now(),
+            move |_, _| install.install(),
             move |_, cx| {
                 let _ = close.update(cx, |this, cx| {
-                    this.update_sheet = false;
+                    this.close_update_sheet();
                     cx.notify();
                 });
             },
@@ -573,7 +581,7 @@ impl Render for PongApp {
             .track_focus(&self.focus)
             .on_action(cx.listener(|this, _: &crate::Dismiss, _, cx| {
                 this.confirm = None;
-                this.update_sheet = false;
+                this.close_update_sheet();
                 this.editing = None;
                 cx.notify();
             }))

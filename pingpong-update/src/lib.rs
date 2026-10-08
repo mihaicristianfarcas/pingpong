@@ -13,11 +13,11 @@
 //! the `User-Agent`. The user can turn it off ([`Channel::Off`]); "Check for
 //! Updates" then still asks once, because they asked.
 //!
-//! Nothing is downloaded or installed: the apps say what is there and how
-//! to get it (the release's page, or the package manager's command when one
-//! installed this copy).
+//! A newer release is installed only when the user chooses to ("Install and
+//! Restart"): see [`install`] for how, on each system.
 
 mod github;
+pub mod install;
 mod version;
 
 use std::path::{Path, PathBuf};
@@ -28,6 +28,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
+pub use install::{Install, Program};
 pub use version::Version;
 
 /// Where the project lives (the workspace's `repository`).
@@ -158,16 +159,20 @@ impl Update {
         }
     }
 
-    /// How to get it, for this copy of the app: `cask` is its Homebrew cask
-    /// (a copy Homebrew installed is updated by Homebrew).
-    pub fn how(&self, cask: &str) -> String {
+    /// How to get it, for this copy of `program`.
+    pub fn how(&self, program: Program, build: &Build) -> String {
         match self {
-            Update::Release { .. } if installed_by_homebrew(cask) => {
-                format!("Homebrew installed this copy: run brew upgrade --cask {cask} to update.")
-            }
-            Update::Release { .. } => {
-                "Download it from the release's page, or build it from source.".into()
-            }
+            Update::Release { .. } => match install::available(program, build) {
+                Ok(()) if installed_by_homebrew(program.cask()) => format!(
+                    "Homebrew installed this copy: {} has Homebrew upgrade it, then opens again.",
+                    program.name()
+                ),
+                Ok(()) => format!(
+                    "{} downloads it from GitHub, checks it, installs it and opens again.",
+                    program.name()
+                ),
+                Err(why) => why,
+            },
             Update::Commits { .. } => {
                 "It was built from a checkout: pull main and build again to update.".into()
             }
@@ -197,6 +202,8 @@ pub struct Status {
     pub checked_unix: u64,
     /// Why the last check got no answer.
     pub error: Option<String>,
+    /// An update being installed, or why the last one was not.
+    pub install: Option<Install>,
 }
 
 /// What a check found, kept between launches (`update.toml` in the app's
@@ -271,47 +278,106 @@ enum Ask {
     Pretend(Option<Update>),
 }
 
+type Wake = Arc<dyn Fn() + Send + Sync>;
+
 /// The update check, running on its thread for as long as this lives.
 pub struct Checker {
     asks: Sender<Ask>,
     status: Arc<Mutex<Status>>,
+    program: Program,
+    build: Build,
+    dir: PathBuf,
+    wake: Wake,
 }
 
 impl Checker {
-    /// Start following `channel` for `build`, keeping answers in `dir`;
-    /// `wake` is called (on the check's thread) whenever [`Checker::status`]
-    /// has changed.
+    /// Start following `channel` for this `build` of `program`, keeping
+    /// answers in `dir`; `wake` is called (on the check's thread, or the
+    /// installer's) whenever [`Checker::status`] has changed.
     pub fn start(
+        program: Program,
         build: Build,
         dir: PathBuf,
         channel: Channel,
-        wake: impl Fn() + Send + 'static,
+        wake: impl Fn() + Send + Sync + 'static,
     ) -> Checker {
         let (asks, rx) = crossbeam_channel::unbounded();
         let status = Arc::new(Mutex::new(Status::default()));
-        let shared = status.clone();
+        let wake: Wake = Arc::new(wake);
+        let (shared, thread_dir, thread_wake) = (status.clone(), dir.clone(), wake.clone());
         let spawned = std::thread::Builder::new()
             .name("update-check".into())
             .spawn(move || {
+                // An update this app started before it restarted: was it
+                // installed?
+                if let Some(failed) = install::finish(program, &build, &thread_dir) {
+                    shared.lock().install = Some(failed);
+                    thread_wake();
+                }
                 let api = github::Api::new(&build);
                 run(
                     &api,
                     build,
-                    &dir,
+                    &thread_dir,
                     channel.for_build(&build),
                     rx,
                     &shared,
-                    &wake,
+                    &*thread_wake,
                 )
             });
         if let Err(e) = spawned {
             tracing::warn!(error = %e, "no update check: its thread did not start");
         }
-        Checker { asks, status }
+        Checker {
+            asks,
+            status,
+            program,
+            build,
+            dir,
+            wake,
+        }
     }
 
     pub fn status(&self) -> Status {
         self.status.lock().clone()
+    }
+
+    /// Install the latest release, on a thread of its own: the status says
+    /// how it goes, and once it is [`Install::Restarting`] the app must
+    /// quit. Asked again while one is under way: nothing.
+    pub fn install(&self) {
+        {
+            let mut s = self.status.lock();
+            if s.install.as_ref().is_some_and(Install::busy) {
+                return;
+            }
+            s.install = Some(Install::Starting);
+        }
+        let (program, build, dir) = (self.program, self.build, self.dir.clone());
+        let (status, wake) = (self.status.clone(), self.wake.clone());
+        let spawned = std::thread::Builder::new()
+            .name("update-install".into())
+            .spawn(move || install::run(program, &build, &dir, &status, &*wake));
+        if let Err(e) = spawned {
+            self.status.lock().install =
+                Some(Install::Failed(format!("the installer did not start: {e}")));
+            (self.wake)();
+        }
+    }
+
+    /// Show `install` as if an installation were under way or had failed
+    /// (the UI demo; nothing is installed).
+    pub fn pretend_install(&self, install: Option<Install>) {
+        self.status.lock().install = install;
+        (self.wake)();
+    }
+
+    /// Put away what the last installation said (its sheet was closed).
+    pub fn dismiss_install(&self) {
+        let mut s = self.status.lock();
+        if s.install.as_ref().is_some_and(|i| !i.busy()) {
+            s.install = None;
+        }
     }
 
     /// Ask GitHub now.
@@ -529,7 +595,9 @@ mod tests {
             url: String::new(),
         };
         assert_eq!(four.headline("Pong"), "4 newer commits on main");
-        assert!(four.how("ping").contains("pull main"));
+        assert!(four
+            .how(Program::Ping, &build(MINE, false))
+            .contains("pull main"));
     }
 
     #[test]

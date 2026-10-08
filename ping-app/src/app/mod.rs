@@ -26,7 +26,7 @@ use gpui::{
 use ping_core::session::{self, NativeMode, Session};
 use pingpong_ui::updates::UpdateApp;
 use pingpong_ui::{FieldEvent, TextField, Theme, Type};
-use pingpong_update::{Build, Channel, Checker};
+use pingpong_update::{Build, Channel, Checker, Install, Program};
 
 use crate::agents::AgentsState;
 use crate::model::{Item, Model, Pairing};
@@ -34,10 +34,9 @@ use crate::prefs::Prefs;
 use crate::settings::Tab;
 use demo::Demo;
 
-/// Ping, to the update check: its name and the cask that installs it.
+/// Ping, to the update check.
 pub const UPDATE_APP: UpdateApp = UpdateApp {
-    name: "Ping",
-    cask: "ping",
+    program: Program::Ping,
     build: Build::this(),
 };
 
@@ -163,7 +162,13 @@ impl PingApp {
         };
         let updates = {
             let waker = waker.clone();
-            Checker::start(Build::this(), dir.clone(), channel, move || waker.wake())
+            Checker::start(
+                Program::Ping,
+                Build::this(),
+                dir.clone(),
+                channel,
+                move || waker.wake(),
+            )
         };
         let agents = AgentsState::new(dir.clone(), window, cx);
         let focus = cx.focus_handle();
@@ -235,6 +240,19 @@ impl PingApp {
         changed |= self.notifications(window, cx);
         let updates = self.updates.status();
         if updates != self.update_status {
+            match &updates.install {
+                // The new copy is in place, or its installer waits for this
+                // one to quit.
+                Some(Install::Restarting) => cx.quit(),
+                // An update that did not take (this start found it so):
+                // the sheet says why.
+                Some(Install::Failed(_))
+                    if !matches!(self.update_status.install, Some(Install::Failed(_))) =>
+                {
+                    self.update_sheet = true;
+                }
+                _ => {}
+            }
             self.update_status = updates;
             changed = true;
         }
@@ -665,7 +683,7 @@ impl PingApp {
             || self.add_host.take().is_some()
             || self.confirm_unpair.take().is_some()
             || self.alert.take().is_some()
-            || std::mem::take(&mut self.update_sheet);
+            || self.close_update_sheet();
         if !closed {
             if let Some(p) = self.pairing.take() {
                 p.cancel();
@@ -677,6 +695,13 @@ impl PingApp {
             }
         }
         cx.notify();
+    }
+
+    /// Put the update sheet away, and what it said about an installation
+    /// that did not take; whether it was open.
+    pub(super) fn close_update_sheet(&mut self) -> bool {
+        self.updates.dismiss_install();
+        std::mem::take(&mut self.update_sheet)
     }
 
     fn sheet_open(&self) -> bool {
