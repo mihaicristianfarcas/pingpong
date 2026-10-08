@@ -1,4 +1,6 @@
-//! Draws the apps' icons: a dark rounded square, a ball in flight and its
+//! Draws the apps' icons, the same as the landing page's
+//! (`site/src/assets/icons/*.svg`, on the `landing-page` branch): a dark
+//! rounded square, a ball in flight and its
 //! trail. Ping's ball leaves to the right (the serve); Pong's comes back on
 //! the left (the return).
 //!
@@ -184,8 +186,8 @@ fn draw(mark: Mark) -> Pixmap {
         Point::from_xy(x(210.0), 724.0),
         Point::from_xy(x(640.0), 414.0),
         vec![
-            GradientStop::new(0.0, rgba(1.0, 0.48, 0.27, 0.0)),
-            GradientStop::new(1.0, rgba(1.0, 0.48, 0.27, 0.85)),
+            GradientStop::new(0.0, rgba(0.302, 0.533, 1.0, 0.0)),
+            GradientStop::new(1.0, rgba(0.302, 0.533, 1.0, 0.85)),
         ],
         SpreadMode::Pad,
         Transform::identity(),
@@ -203,7 +205,7 @@ fn draw(mark: Mark) -> Pixmap {
     // mirrored.
     let (cx, cy, r) = (x(690.0), 404.0, 92.0);
     let ball = PathBuilder::from_circle(cx, cy, r).unwrap();
-    let glow = soft(&ball, rgba(1.0, 0.45, 0.2, 0.9), 35.0, 0.0, 0.0);
+    let glow = soft(&ball, rgba(0.239, 0.482, 1.0, 0.9), 61.0, 0.0, 0.0);
     canvas.draw_pixmap(
         0,
         0,
@@ -216,7 +218,7 @@ fn draw(mark: Mark) -> Pixmap {
         anti_alias: true,
         ..Paint::default()
     };
-    paint.set_color(rgba(1.0, 0.50, 0.27, 1.0));
+    paint.set_color(rgba(0.302, 0.533, 1.0, 1.0));
     canvas.fill_path(
         &ball,
         &paint,
