@@ -59,6 +59,17 @@ impl Metrics {
     pub const FORM: f32 = 640.0;
 }
 
+/// The order floating things paint in over the window (GPUI's `deferred`
+/// priorities: higher paints on top). A menu opened from a control inside a
+/// sheet must cover the sheet, so menus sit above sheets.
+pub struct Layer;
+
+impl Layer {
+    pub const SHEET: usize = 2;
+    /// Select menus, context menus.
+    pub const MENU: usize = 3;
+}
+
 /// Every colour a view needs, for one appearance.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {

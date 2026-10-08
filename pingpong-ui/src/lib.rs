@@ -26,7 +26,7 @@ pub use controls::*;
 pub use icon::{icon, Assets, Icon, IconName, IconSize};
 pub use markdown::markdown;
 pub use text_field::{field, Field, FieldEvent, TextField};
-pub use theme::{rgba, Ink, Metrics, Radius, Theme, Type};
+pub use theme::{rgba, Ink, Layer, Metrics, Radius, Theme, Type};
 
 static UI_FONT: OnceLock<SharedString> = OnceLock::new();
 static MONO_FONT: OnceLock<SharedString> = OnceLock::new();

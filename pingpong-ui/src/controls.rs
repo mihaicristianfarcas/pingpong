@@ -11,7 +11,7 @@ use gpui::{
 };
 
 use crate::icon::{icon, IconName, IconSize};
-use crate::theme::{rgba, Ink, Metrics, Radius, Theme, Type};
+use crate::theme::{rgba, Ink, Layer, Metrics, Radius, Theme, Type};
 
 type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 /// What a control calls with its new value.
@@ -428,6 +428,32 @@ impl<S: Into<SharedString>> From<S> for Choice {
     }
 }
 
+/// The select a UI demo opens (`open=ID` in PING_UI_DEMO and PONG_UI_DEMO),
+/// so its menu can be checked and screenshotted without a click.
+static DEMO_OPEN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Open the select with id `id` the next time it is drawn (a UI demo step).
+pub fn open_select(id: &str) {
+    if let Ok(mut open) = DEMO_OPEN.lock() {
+        *open = Some(id.to_string());
+    }
+}
+
+/// Whether a demo asked for the select `id` to open; asked once.
+fn demo_opens(id: &ElementId) -> bool {
+    let ElementId::Name(name) = id else {
+        return false;
+    };
+    let Ok(mut open) = DEMO_OPEN.lock() else {
+        return false;
+    };
+    let asked = open.as_deref() == Some(name.as_ref());
+    if asked {
+        *open = None;
+    }
+    asked
+}
+
 #[derive(IntoElement)]
 pub struct Select {
     id: ElementId,
@@ -500,6 +526,9 @@ impl RenderOnce for Select {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let t = self.theme;
         let open = window.use_keyed_state(self.id.clone(), cx, |_, _| false);
+        if demo_opens(&self.id) {
+            open.update(cx, |o, _| *o = true);
+        }
         let is_open = *open.read(cx);
         let shown = self
             .shown
@@ -631,7 +660,7 @@ impl RenderOnce for Select {
                             }),
                     ),
                 )
-                .priority(1),
+                .priority(Layer::MENU),
             );
         }
         el
@@ -802,7 +831,7 @@ pub fn sheet(
                     ),
             ),
     )
-    .priority(2)
+    .priority(Layer::SHEET)
 }
 
 /// Titled group of rows (a settings section).
