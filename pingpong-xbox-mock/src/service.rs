@@ -68,6 +68,10 @@ impl Service {
         }
     }
 
+    pub fn set_link(&mut self, link: crate::Link) {
+        self.config.link = link;
+    }
+
     /// The peers of every live session (for the controls).
     pub fn peers(&self) -> impl Iterator<Item = &Peer> {
         self.sessions.values().filter_map(|s| s.peer.as_ref())
@@ -374,7 +378,7 @@ impl Service {
                     return Response::status(400, "");
                 };
                 self.record.lock().sdp_configuration = body["configuration"].clone();
-                match Peer::answer(offer, r.local.ip(), record, view) {
+                match Peer::answer(offer, r.local.ip(), record, view, self.config.link) {
                     Ok(p) => {
                         s.peer = Some(p);
                         Response::json(json!({}))

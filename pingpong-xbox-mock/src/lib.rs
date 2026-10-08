@@ -30,6 +30,7 @@ pub use pingpong_xbox::input::{ClientReport, Vibration};
 use serde_json::Value;
 
 pub use h264::{Encoder, Picture};
+pub use peer::Link;
 pub use picture::{draw as test_picture, InputView, HEIGHT, WIDTH};
 pub use service::{CLOUD_TITLE, CONSOLE_ID, CONSOLE_NAME};
 
@@ -55,6 +56,8 @@ pub struct Config {
     pub pending_polls: u32,
     /// State polls a cloud session spends in the queue.
     pub queue_polls: u32,
+    /// The network between the console and the client.
+    pub link: Link,
 }
 
 impl Default for Config {
@@ -65,6 +68,7 @@ impl Default for Config {
             console_asleep: true,
             pending_polls: 1,
             queue_polls: 1,
+            link: Link::default(),
         }
     }
 }
@@ -113,6 +117,13 @@ pub struct Record {
     pub frames: u64,
     pub keyframes: u64,
     pub audio_packets: u64,
+    /// When frame 0 was sent: frame `n` is due `n` sixtieths of a second
+    /// later (its RTP time says which it is).
+    pub video_started: Option<Instant>,
+    /// The round trip as the console measured it, once a second, from the
+    /// client's congestion feedback (TWCC): what a console sets its bitrate
+    /// by.
+    pub feedback_rtts: Vec<Duration>,
 }
 
 pub struct MockConsole {
@@ -189,5 +200,11 @@ impl MockConsole {
     /// Drop `percent` of video packets from now on.
     pub fn set_video_loss(&self, percent: u8) {
         self.each_peer(|| peer::Command::VideoLoss(percent));
+    }
+
+    /// The network to the client, from now on and for later streams.
+    pub fn set_link(&self, link: Link) {
+        self.service.lock().set_link(link);
+        self.each_peer(|| peer::Command::Link(link));
     }
 }

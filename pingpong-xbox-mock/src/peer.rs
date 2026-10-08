@@ -32,12 +32,6 @@ use crate::picture::{self, InputView};
 use crate::Record;
 
 const FRAME: Duration = Duration::from_nanos(1_000_000_000 / 60);
-/// Sends are paced, as a console's are: a keyframe here is the whole
-/// picture uncompressed (353 KB), which sent in one burst overflows the
-/// receive buffer Linux gives a socket (about 200 KB). 200 Mbit/s spreads
-/// it over 14 ms; ordinary frames (a few kilobytes) go at once.
-const PACE_BYTES_PER_MS: usize = 200_000_000 / 8 / 1000;
-const PACE_BURST: usize = 64 * 1024;
 const AUDIO_PACKET: Duration = Duration::from_millis(20);
 const AUDIO_SAMPLES: usize = 960;
 
@@ -47,6 +41,59 @@ pub enum Command {
     Disconnect,
     /// Drop this percentage of video packets, as a lossy link would.
     VideoLoss(u8),
+    Link(Link),
+}
+
+/// The network between the console and the client.
+///
+/// Sends are paced at its rate, as a console's are: at the default rate a
+/// keyframe here, the whole picture uncompressed (353 KB), takes 14 ms,
+/// where sent in one burst it would overflow the receive buffer Linux
+/// gives a socket (about 200 KB); ordinary frames (a few kilobytes) go at
+/// once. A slower rate is a slower link: what it cannot send at once
+/// waits in its queue, up to `queue`, and what does not fit is dropped,
+/// as a router's queue does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Link {
+    /// Each way: towards the client, and the client's datagrams (its NACKs,
+    /// its input) towards the console.
+    pub delay: Duration,
+    /// Video packets lost on the way, in percent.
+    pub video_loss: u8,
+    /// Towards the client, in bits a second.
+    pub rate_bps: u64,
+    /// How much the bottleneck queues, as the time to send it.
+    pub queue: Duration,
+    /// Every so often, for so long, nothing gets through either way, as
+    /// Wi-Fi drops out: (every, for).
+    pub outages: Option<(Duration, Duration)>,
+}
+
+impl Default for Link {
+    fn default() -> Self {
+        Link {
+            delay: Duration::ZERO,
+            video_loss: 0,
+            rate_bps: 200_000_000,
+            queue: Duration::from_secs(1),
+            outages: None,
+        }
+    }
+}
+
+impl Link {
+    /// Whether the link is out at `t`, `since` its start.
+    fn out(&self, since: Instant, t: Instant) -> bool {
+        self.outages.is_some_and(|(every, length)| {
+            let every = every.as_nanos().max(1);
+            t.saturating_duration_since(since).as_nanos() % every < length.as_nanos()
+        })
+    }
+
+    /// How long `bytes` take at the link's rate.
+    fn time_for(&self, bytes: usize) -> Duration {
+        Duration::from_nanos(bytes as u64 * 8 * 1_000_000_000 / self.rate_bps.max(1))
+    }
 }
 
 /// A connection to one client, on a thread of its own until dropped.
@@ -67,9 +114,14 @@ impl Peer {
         ip: IpAddr,
         record: Arc<Mutex<Record>>,
         view: Arc<Mutex<InputView>>,
+        link: Link,
     ) -> Result<Peer, String> {
         let offer = SdpOffer::from_sdp_string(offer).map_err(|e| format!("bad offer: {e}"))?;
-        let mut config = Rtc::builder().clear_codecs();
+        // Stats once a second: the round trip measured from the client's
+        // congestion feedback says the client sends it.
+        let mut config = Rtc::builder()
+            .clear_codecs()
+            .set_stats_interval(Some(Duration::from_secs(1)));
         let codecs = config.codec_config();
         codecs.add_config(
             Pt::from(111),
@@ -104,7 +156,7 @@ impl Peer {
             std::thread::Builder::new()
                 .name("xbox-mock-peer".into())
                 .spawn(move || {
-                    Console::new(rtc, udp, local, record, view).run(rx, &stop);
+                    Console::new(rtc, udp, local, record, view, link).run(rx, &stop);
                 })
                 .map_err(|e| e.to_string())?
         };
@@ -174,12 +226,16 @@ struct Console {
     next_audio: Instant,
     /// Messages to send on (label, binary data).
     outbox: Vec<(&'static str, Vec<u8>)>,
-    video_loss: u8,
+    link: Link,
     rng: u64,
-    /// Datagrams waiting for the pacer, and what it may send now.
-    paced: std::collections::VecDeque<(SocketAddr, Vec<u8>)>,
-    budget: usize,
-    budget_at: Instant,
+    /// Datagrams on their way to the client, each with when it gets there.
+    outbound: std::collections::VecDeque<(Instant, SocketAddr, Vec<u8>)>,
+    /// When the link has sent everything queued on it.
+    link_free: Instant,
+    /// When the link came up: its outages count from here.
+    link_since: Instant,
+    /// The client's datagrams on their way here, with when they get here.
+    inbound: std::collections::VecDeque<(Instant, SocketAddr, Vec<u8>)>,
     /// The A button's last state, to rumble on its press.
     a_held: bool,
     done: bool,
@@ -192,6 +248,7 @@ impl Console {
         local: SocketAddr,
         record: Arc<Mutex<Record>>,
         view: Arc<Mutex<InputView>>,
+        link: Link,
     ) -> Console {
         let now = Instant::now();
         Console {
@@ -211,11 +268,12 @@ impl Console {
             next_video: now,
             next_audio: now,
             outbox: Vec::new(),
-            video_loss: 0,
+            link,
             rng: 0x9E37_79B9_7F4A_7C15,
-            paced: std::collections::VecDeque::new(),
-            budget: PACE_BURST,
-            budget_at: now,
+            outbound: std::collections::VecDeque::new(),
+            link_free: now,
+            link_since: now,
+            inbound: std::collections::VecDeque::new(),
             a_held: false,
             done: false,
         }
@@ -255,15 +313,20 @@ impl Console {
                     return;
                 }
             }
-            self.pace();
-            let pacing = if self.paced.is_empty() { 5 } else { 1 };
+            self.flush();
+            if self.deliver().is_none() {
+                return;
+            }
             let wake = [
-                timeout,
-                self.next_video,
-                self.next_audio,
-                now + Duration::from_millis(pacing),
+                Some(timeout),
+                Some(self.next_video),
+                Some(self.next_audio),
+                Some(now + Duration::from_millis(5)),
+                self.outbound.front().map(|d| d.0),
+                self.inbound.front().map(|d| d.0),
             ]
             .into_iter()
+            .flatten()
             .min()
             .unwrap_or(now);
             let wait = wake
@@ -277,20 +340,14 @@ impl Console {
             let mut waited = false;
             loop {
                 match self.udp.recv_from(&mut buf) {
+                    Ok(_) if self.link.out(self.link_since, Instant::now()) => {}
+                    Ok((n, from)) if !self.link.delay.is_zero() => {
+                        let at = Instant::now() + self.link.delay;
+                        self.inbound.push_back((at, from, buf[..n].to_vec()));
+                    }
                     Ok((n, from)) => {
-                        if let Ok(contents) = buf[..n].try_into() {
-                            let _ = self.rtc.handle_input(Input::Receive(
-                                Instant::now(),
-                                Receive {
-                                    proto: Protocol::Udp,
-                                    source: from,
-                                    destination: self.local,
-                                    contents,
-                                },
-                            ));
-                            if self.drain().is_none() {
-                                return;
-                            }
+                        if self.take_in(from, &buf[..n]).is_none() {
+                            return;
                         }
                     }
                     Err(_) if !waited => {
@@ -306,17 +363,55 @@ impl Console {
         }
     }
 
+    /// A datagram from the client, to str0m; `None` once the connection
+    /// is over.
+    fn take_in(&mut self, from: SocketAddr, data: &[u8]) -> Option<()> {
+        if let Ok(contents) = data.try_into() {
+            let _ = self.rtc.handle_input(Input::Receive(
+                Instant::now(),
+                Receive {
+                    proto: Protocol::Udp,
+                    source: from,
+                    destination: self.local,
+                    contents,
+                },
+            ));
+            self.drain()?;
+        }
+        Some(())
+    }
+
+    /// The client's datagrams whose way here is over.
+    fn deliver(&mut self) -> Option<()> {
+        let now = Instant::now();
+        while self.inbound.front().is_some_and(|d| d.0 <= now) {
+            let (_, from, data) = self.inbound.pop_front()?;
+            self.take_in(from, &data)?;
+        }
+        Some(())
+    }
+
     /// Drain str0m; `None` once the connection is over.
     fn drain(&mut self) -> Option<Instant> {
         loop {
             match self.rtc.poll_output() {
                 Ok(Output::Timeout(t)) => return Some(t),
                 Ok(Output::Transmit(t)) => {
-                    if self.video_loss > 0 && t.contents.len() > 900 && self.lose() {
+                    if self.link.video_loss > 0 && t.contents.len() > 900 && self.lose() {
                         continue;
                     }
-                    self.paced.push_back((t.destination, t.contents.to_vec()));
-                    self.pace();
+                    let now = Instant::now();
+                    let start = self.link_free.max(now);
+                    if start - now > self.link.queue {
+                        continue; // the link's queue is full
+                    }
+                    if self.link.out(self.link_since, start) {
+                        continue;
+                    }
+                    self.link_free = start + self.link.time_for(t.contents.len());
+                    let at = self.link_free + self.link.delay;
+                    self.outbound
+                        .push_back((at, t.destination, t.contents.to_vec()));
                 }
                 Ok(Output::Event(e)) => self.event(e),
                 Err(_) => return None,
@@ -324,22 +419,15 @@ impl Console {
         }
     }
 
-    /// Send what the pacer allows now.
-    fn pace(&mut self) {
+    /// Send what has reached the end of the link.
+    fn flush(&mut self) {
         let now = Instant::now();
-        let earned =
-            now.duration_since(self.budget_at).as_micros() as usize * PACE_BYTES_PER_MS / 1000;
-        if earned > 0 {
-            self.budget = (self.budget + earned).min(PACE_BURST);
-            self.budget_at = now;
-        }
-        while let Some((to, d)) = self.paced.front() {
-            if d.len() > self.budget {
+        while let Some((at, to, d)) = self.outbound.front() {
+            if *at > now {
                 break;
             }
-            self.budget -= d.len();
             let _ = self.udp.send_to(d, *to);
-            self.paced.pop_front();
+            self.outbound.pop_front();
         }
     }
 
@@ -349,7 +437,7 @@ impl Console {
         self.rng ^= self.rng << 13;
         self.rng ^= self.rng >> 7;
         self.rng ^= self.rng << 17;
-        (self.rng % 100) < self.video_loss as u64
+        (self.rng % 100) < self.link.video_loss as u64
     }
 
     fn command(&mut self, c: Command) {
@@ -366,7 +454,8 @@ impl Console {
                 "message",
                 messages::console::disconnect("mock-disconnect").into_bytes(),
             )),
-            Command::VideoLoss(p) => self.video_loss = p.min(100),
+            Command::VideoLoss(p) => self.link.video_loss = p.min(100),
+            Command::Link(link) => self.link = link,
         }
     }
 
@@ -384,8 +473,10 @@ impl Console {
         match e {
             Event::Connected => {
                 self.connected = true;
-                self.record.lock().connected = true;
                 let now = Instant::now();
+                let mut record = self.record.lock();
+                record.connected = true;
+                record.video_started = Some(now);
                 self.next_video = now;
                 self.next_audio = now;
             }
@@ -394,6 +485,12 @@ impl Console {
                 MediaKind::Video => self.video = Some(m.mid),
                 MediaKind::Audio => self.audio = Some(m.mid),
             },
+            Event::PeerStats(p) => {
+                if let Some(rtt) = p.rtt {
+                    let mut record = self.record.lock();
+                    record.feedback_rtts.push(rtt);
+                }
+            }
             Event::KeyframeRequest(_) => {
                 self.record.lock().plis += 1;
                 self.encoder.request_keyframe();

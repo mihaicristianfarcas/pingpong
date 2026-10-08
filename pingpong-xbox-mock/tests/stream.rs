@@ -21,7 +21,7 @@ use pingpong_xbox::http::Http;
 use pingpong_xbox::input::{xbutton, KeyFrame, MouseFrame, PadFrame};
 use pingpong_xbox::stream::{self, StreamOptions, Target};
 use pingpong_xbox::virtual_pad::KeyboardMouse;
-use pingpong_xbox_mock::{Cloud, Config, MockConsole, CLOUD_TITLE, CONSOLE_ID, CONSOLE_NAME};
+use pingpong_xbox_mock::{Cloud, Config, Link, MockConsole, CLOUD_TITLE, CONSOLE_ID, CONSOLE_NAME};
 
 /// What the client received, shared with the test.
 #[derive(Default)]
@@ -649,5 +649,43 @@ fn the_mouse_aims_and_fires_in_the_shooters_layout() {
         "the console saw a controller only"
     );
     assert_eq!(record.bad_reports, 0);
+    assert_eq!(running.end(), Ok(End::Stopped));
+}
+
+fn console() -> Target {
+    Target::Console {
+        id: CONSOLE_ID.into(),
+        name: CONSOLE_NAME.into(),
+    }
+}
+
+#[test]
+fn the_console_hears_how_the_link_is_doing() {
+    // A console sets its bitrate by the client's congestion feedback
+    // (TWCC): the console measures the round trip from it, once a second.
+    let mock = MockConsole::start(Config {
+        link: Link {
+            delay: Duration::from_millis(10),
+            ..Link::default()
+        },
+        ..Config::default()
+    })
+    .unwrap();
+    let http = Http::with_mock(Some(mock.url()));
+    let dir = tempfile::tempdir().unwrap();
+    sign_in(&http, dir.path());
+    let running = start(&http, dir.path(), console());
+    assert!(running.wait(LONG, |s| s.frames >= 1));
+    assert!(
+        mock.wait_for(LONG, |r| r.feedback_rtts.len() >= 2),
+        "no round trip from the client's feedback"
+    );
+    // Twice the link's 10 ms, and what the two loops add (loose for CI).
+    let rtts = mock.record().feedback_rtts;
+    assert!(
+        rtts.iter()
+            .all(|r| *r >= Duration::from_millis(20) && *r < Duration::from_millis(500)),
+        "{rtts:?}"
+    );
     assert_eq!(running.end(), Ok(End::Stopped));
 }
