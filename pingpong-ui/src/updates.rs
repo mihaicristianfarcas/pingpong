@@ -1,26 +1,48 @@
 //! The update check's face, the same in Ping's window and Pong's: a quiet
 //! row at the sidebar's foot when something newer exists, the sheet that
-//! says what and how to get it (also what "Check for Updates" opens), and
-//! the setting that chooses what to be told about. The check itself is
-//! `pingpong-update`'s.
+//! says what and installs it (also what "Check for Updates" opens), and the
+//! setting that chooses what to be told about. The check and the installer
+//! are `pingpong-update`'s.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui::{
     div, prelude::*, px, App, ClipboardItem, ElementId, FontWeight, SharedString, Stateful, Window,
 };
-use pingpong_update::{Build, Channel, Status, Update};
+use pingpong_update::{Build, Channel, Install, Program, Status, Update};
 
 use crate::controls::{button, select, setting, spinner, Choice};
 use crate::icon::{icon, IconName};
 use crate::theme::{Ink, Radius, Theme, Type};
 
-/// Which app asks: its name, and the Homebrew cask that installs it.
+/// Which app asks, and which build of it this is.
 #[derive(Debug, Clone, Copy)]
 pub struct UpdateApp {
-    pub name: &'static str,
-    pub cask: &'static str,
+    pub program: Program,
     pub build: Build,
+}
+
+impl UpdateApp {
+    fn name(&self) -> &'static str {
+        self.program.name()
+    }
+
+    /// Whether this copy installs updates itself.
+    fn installs(&self) -> bool {
+        pingpong_update::install::available(self.program, &self.build).is_ok()
+    }
+}
+
+/// What installing an update interrupts, said before it starts.
+fn interrupts(program: Program) -> &'static str {
+    match program {
+        Program::Ping => "A stream that is open ends.",
+        Program::Pong if cfg!(windows) => {
+            "Windows asks for an administrator's permission, and streams to this PC stop \
+                while Pong restarts."
+        }
+        Program::Pong => "Streams to this computer stop while the host restarts.",
+    }
 }
 
 /// The row at the sidebar's foot: "Ping 0.7.0 is available". `None` while
@@ -53,7 +75,7 @@ pub fn notice(app: &UpdateApp, status: &Status, t: Theme) -> Option<Stateful<gpu
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .child(update.headline(app.name)),
+                    .child(update.headline(app.name())),
             ),
     )
 }
@@ -74,6 +96,19 @@ fn ago(unix: u64) -> String {
     }
 }
 
+/// An error as a sentence: a capital first, a full stop last.
+fn sentence(text: &str) -> String {
+    let mut chars = text.trim().chars();
+    let mut out: String = match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => return String::new(),
+    };
+    if !out.ends_with(['.', '!', '?']) {
+        out.push('.');
+    }
+    out
+}
+
 /// What the sheet says: a title, a line or two under it.
 struct Said {
     title: String,
@@ -81,15 +116,35 @@ struct Said {
 }
 
 fn said(app: &UpdateApp, status: &Status) -> Said {
+    if let Some(Install::Failed(why)) = &status.install {
+        return Said {
+            title: match &status.update {
+                Some(Update::Release { version, .. }) => {
+                    format!("{} {version} was not installed", app.name())
+                }
+                _ => "The update was not installed".into(),
+            },
+            text: sentence(why),
+        };
+    }
     match (&status.update, &status.error) {
         (Some(update), _) => Said {
-            title: update.headline(app.name),
-            text: format!(
-                "This is {} {}. {}",
-                app.name,
-                app.build.describe(),
-                update.how(app.cask)
-            ),
+            title: update.headline(app.name()),
+            text: match update {
+                Update::Release { .. } if app.installs() => format!(
+                    "This is {} {}. {} {}",
+                    app.name(),
+                    app.build.describe(),
+                    update.how(app.program, &app.build),
+                    interrupts(app.program)
+                ),
+                _ => format!(
+                    "This is {} {}. {}",
+                    app.name(),
+                    app.build.describe(),
+                    update.how(app.program, &app.build)
+                ),
+            },
         },
         (None, Some(error)) => Said {
             title: "Couldn't check for updates".into(),
@@ -99,15 +154,15 @@ fn said(app: &UpdateApp, status: &Status) -> Said {
             title: "Not checked yet".into(),
             text: format!(
                 "This is {} {}. GitHub has not been asked whether there is a newer one.",
-                app.name,
+                app.name(),
                 app.build.describe()
             ),
         },
         (None, None) => Said {
-            title: format!("{} is up to date", app.name),
+            title: format!("{} is up to date", app.name()),
             text: format!(
                 "{} {} is the newest there is. Checked {}.",
-                app.name,
+                app.name(),
                 app.build.describe(),
                 ago(status.checked_unix)
             ),
@@ -124,15 +179,82 @@ fn sheet_title(text: impl Into<SharedString>, t: Theme) -> gpui::Div {
         .child(text.into())
 }
 
+/// "12.3 MB".
+fn megabytes(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+}
+
+/// An installation under way: what it is doing, and how far the download
+/// is.
+fn installing(app: &UpdateApp, status: &Status, install: &Install, t: Theme) -> gpui::Div {
+    let version = match &status.update {
+        Some(Update::Release { version, .. }) => format!(" {version}"),
+        _ => String::new(),
+    };
+    let line = |text: String| {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(7.0))
+            .text_size(px(Type::BODY))
+            .text_color(t.secondary)
+            .child(spinner("update-installing", 12.0, t.tertiary))
+            .child(text)
+    };
+    let body = div()
+        .flex()
+        .flex_col()
+        .gap(px(10.0))
+        .child(sheet_title(format!("Updating {}{version}", app.name()), t));
+    match install {
+        Install::Starting => body.child(line("Asking GitHub for it…".into())),
+        Install::Downloading { done, total } => {
+            let fraction = if *total == 0 {
+                0.0
+            } else {
+                (*done as f32 / *total as f32).clamp(0.0, 1.0)
+            };
+            body.child(line(format!(
+                "Downloading… {} of {}",
+                megabytes(*done),
+                megabytes(*total)
+            )))
+            .child(
+                div()
+                    .w_full()
+                    .h(px(4.0))
+                    .rounded(px(2.0))
+                    .bg(t.primary.alpha(0.08))
+                    .child(
+                        div()
+                            .h_full()
+                            .w(gpui::relative(fraction))
+                            .rounded(px(2.0))
+                            .bg(t.ink(Ink::ACCENT)),
+                    ),
+            )
+        }
+        Install::Installing => body.child(line("Checking it and installing…".into())),
+        Install::Restarting | Install::Failed(_) => {
+            body.child(line(format!("{} is restarting…", app.name())))
+        }
+    }
+}
+
 /// The sheet's content: what the check found and what to do about it.
-/// `on_check` asks GitHub again, `on_close` puts the sheet away.
+/// `on_check` asks GitHub again, `on_install` installs the release,
+/// `on_close` puts the sheet away.
 pub fn sheet_body(
     app: &UpdateApp,
     status: &Status,
     t: Theme,
     on_check: impl Fn(&mut Window, &mut App) + 'static,
+    on_install: impl Fn(&mut Window, &mut App) + 'static,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> gpui::Div {
+    if let Some(install) = status.install.as_ref().filter(|i| i.busy()) {
+        return installing(app, status, install, t);
+    }
     let body = div().flex().flex_col().gap(px(10.0));
     if status.checking {
         return body.child(sheet_title("Checking for updates", t)).child(
@@ -148,16 +270,47 @@ pub fn sheet_body(
     }
     let said = said(app, status);
     let update = status.update.clone();
-    // A copy Homebrew installed is updated with a command: it is shown to
-    // copy, since the app does not run a package manager for the user.
+    let failed = matches!(status.install, Some(Install::Failed(_)));
+    let installs = failed || app.installs() && matches!(update, Some(Update::Release { .. }));
+    // A copy Homebrew installed that cannot install itself here: the
+    // command, to copy.
     let command = update
         .as_ref()
         .filter(|u| {
-            matches!(u, Update::Release { .. }) && pingpong_update::installed_by_homebrew(app.cask)
+            !installs
+                && matches!(u, Update::Release { .. })
+                && pingpong_update::installed_by_homebrew(app.program.cask())
         })
-        .map(|_| format!("brew upgrade --cask {}", app.cask));
+        .map(|_| format!("brew upgrade --cask {}", app.program.cask()));
     let mut actions = div().pt(px(8.0)).flex().justify_end().gap(px(8.0));
     match &update {
+        Some(update) if installs => {
+            let url = update.url().to_string();
+            actions = actions
+                .child(
+                    button("update-close", if failed { "OK" } else { "Later" }, t)
+                        .on_click(move |_, window, cx| on_close(window, cx)),
+                )
+                .child(
+                    button("update-open", update.link_label(), t)
+                        .icon(IconName::ExternalLink)
+                        .on_click(move |_, _, cx| cx.open_url(&url)),
+                )
+                .child(
+                    button(
+                        "update-install",
+                        if failed {
+                            "Try Again"
+                        } else {
+                            "Install and Restart"
+                        },
+                        t,
+                    )
+                    .icon(IconName::Download)
+                    .solid()
+                    .on_click(move |_, window, cx| on_install(window, cx)),
+                );
+        }
         Some(update) => {
             let url = update.url().to_string();
             actions = actions
@@ -261,8 +414,8 @@ pub fn channel_setting(
         .position(|c| *c == channel.for_build(&app.build));
     let detail: SharedString = format!(
         "{} asks GitHub once a day whether there is a newer one, and says so at the \
-            foot of the sidebar. Nothing is downloaded or installed.",
-        app.name
+            foot of the sidebar. An update is installed only when you choose to.",
+        app.name()
     )
     .into();
     setting(
@@ -283,10 +436,12 @@ pub fn version_setting(
     t: Theme,
     on_check: impl Fn(&mut Window, &mut App) + 'static,
 ) -> gpui::Div {
-    let detail: SharedString = if status.checking {
+    let detail: SharedString = if status.install.as_ref().is_some_and(Install::busy) {
+        "Installing an update…".into()
+    } else if status.checking {
         "Asking GitHub…".into()
     } else if let Some(update) = &status.update {
-        update.headline(app.name).into()
+        update.headline(app.name()).into()
     } else if let Some(error) = &status.error {
         format!("The last check failed: {error}.").into()
     } else if status.checked_unix == 0 {
@@ -295,7 +450,7 @@ pub fn version_setting(
         format!("Up to date. Checked {}.", ago(status.checked_unix)).into()
     };
     setting(
-        format!("{} {}", app.name, app.build.describe()),
+        format!("{} {}", app.name(), app.build.describe()),
         Some(detail),
         button("update-check-now", "Check for Updates…", t)
             .disabled(status.checking)
@@ -329,8 +484,7 @@ mod tests {
     #[test]
     fn the_sheet_says_what_was_found_or_why_nothing_was() {
         let app = UpdateApp {
-            name: "Ping",
-            cask: "ping",
+            program: Program::Ping,
             build: Build {
                 version: "0.6.0",
                 commit: "",
@@ -351,5 +505,12 @@ mod tests {
             url: String::new(),
         });
         assert_eq!(said(&app, &status).title, "Ping 0.7.0 is available");
+        // An installation that did not take says so first, and why.
+        status.install = Some(Install::Failed(
+            "the download broke off: connection reset".into(),
+        ));
+        let failed = said(&app, &status);
+        assert_eq!(failed.title, "Ping 0.7.0 was not installed");
+        assert_eq!(failed.text, "The download broke off: connection reset.");
     }
 }

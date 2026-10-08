@@ -6055,13 +6055,16 @@ name = "pingpong-update"
 version = "0.9.0"
 dependencies = [
  "crossbeam-channel",
+ "libc",
  "parking_lot",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "toml 0.8.23",
  "tracing",
  "ureq",
+ "windows 0.61.3",
 ]
 
 [[package]]

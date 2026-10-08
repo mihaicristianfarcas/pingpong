@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use gpui::{Context, Window};
 use pingpong_proto::permission::{self, Permissions};
-use pingpong_update::Update;
+use pingpong_update::{Install, Update};
 
 use crate::api::{Client, LogEntry, Pending, Session, Status};
 use crate::background::Background;
@@ -20,7 +20,9 @@ use super::{now_ms, Page, PongApp};
 /// (a made-up session, request and devices, for screenshots), `signin`,
 /// `setup`, `offline`, `signin-as=USER:PASSWORD`, `update` and
 /// `update-main` (a made-up newer release, or newer commits on main),
-/// `updates` (the update sheet), `permissions=NAME` (the permissions sheet
+/// `installs` (this copy installs updates, as a release does), `installing`
+/// and `install-failed` (an installation under way, or one that did not
+/// take), `updates` (the update sheet), `permissions=NAME` (the permissions sheet
 /// of the paired device called NAME), `open=ID` (open the select with that
 /// id, as `permissions-preset`), `menus` (the menu bar and the tray
 /// icon's menu, to the log), `snapshot=PATH`, `close` (close the window, as
@@ -34,6 +36,8 @@ pub(super) struct Demo {
     sign_in_as: Option<(String, String)>,
     /// What the update check is made to say.
     update: Option<Update>,
+    /// What the installer is made to say.
+    install: Option<Install>,
     /// Open the update sheet.
     updates: bool,
     /// Open this device's permissions sheet.
@@ -112,6 +116,21 @@ impl Demo {
                     });
                 } else if part == "updates" {
                     demo.updates = true;
+                } else if part == "installs" {
+                    pingpong_update::install::pretend_available();
+                } else if part == "installing" {
+                    pingpong_update::install::pretend_available();
+                    demo.install = Some(Install::Downloading {
+                        done: 4_200_000,
+                        total: 10_100_000,
+                    });
+                } else if part == "install-failed" {
+                    pingpong_update::install::pretend_available();
+                    demo.install = Some(Install::Failed(
+                        "Windows did not run the installer: The operation was canceled \
+                            by the user."
+                            .into(),
+                    ));
                 } else if let Some(name) = part.strip_prefix("permissions=") {
                     demo.permissions = Some(name.to_string());
                 } else if let Some(id) = part.strip_prefix("open=") {
@@ -144,6 +163,9 @@ impl PongApp {
         }
         if let Some(update) = self.demo.update.take() {
             self.updates.pretend(Some(update));
+        }
+        if let Some(install) = self.demo.install.take() {
+            self.updates.pretend_install(Some(install));
         }
         if std::mem::take(&mut self.demo.menus) {
             for line in pingpong_ui::desktop::menu_bar() {

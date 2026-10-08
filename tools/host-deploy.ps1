@@ -3,19 +3,26 @@
 # and its icon in the notification area from the next sign-in on (for the
 # user running this; "Show Pong's icon at login" in the window turns it off).
 #
-#   powershell -File host-deploy.ps1 [-Source <path to pong.exe>] [-NoStart]
+#   powershell -File host-deploy.ps1 [-Source <path to pong.exe>] [-NoStart] [-Log <file>]
 #
 # In a release archive (tools/package-windows.ps1) this script is
 # install.ps1, beside pong.exe and Pong Control.exe, and takes them from
-# there; in a checkout, from target\release.
+# there; in a checkout, from target\release. Pong's window runs the new
+# archive's install.ps1 to install an update (pingpong-update), with -Log:
+# why it failed, if it does, goes there for the window to show.
 param(
     [string]$Source = $(if (Test-Path (Join-Path $PSScriptRoot 'pong.exe')) { Join-Path $PSScriptRoot 'pong.exe' }
         else { Join-Path $PSScriptRoot '..\target\release\pong.exe' }),
     [string]$Window = $(if (Test-Path (Join-Path $PSScriptRoot 'Pong Control.exe')) { Join-Path $PSScriptRoot 'Pong Control.exe' }
         else { Join-Path $PSScriptRoot '..\target\release\pong-app.exe' }),
-    [switch]$NoStart
+    [switch]$NoStart,
+    [string]$Log
 )
 $ErrorActionPreference = 'Stop'
+trap {
+    if ($Log) { $_.Exception.Message | Out-File -Append -Encoding utf8 -FilePath $Log }
+    break
+}
 # A service is installed by an administrator. From a PowerShell that is not
 # one (the release archive's "Install Pong.cmd"), start again as one, which
 # Windows asks the user to allow, in a window that stays open to show how it
@@ -24,6 +31,7 @@ $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIde
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $again = '-NoProfile -ExecutionPolicy Bypass -NoExit -File "{0}" -Source "{1}" -Window "{2}"' -f $PSCommandPath, $Source, $Window
     if ($NoStart) { $again += ' -NoStart' }
+    if ($Log) { $again += ' -Log "{0}"' -f $Log }
     Start-Process powershell -Verb RunAs -ArgumentList $again
     return
 }
@@ -86,5 +94,6 @@ if (Test-Path $Window) {
 }
 
 & (Join-Path $dest 'pong.exe') install
+if ($LASTEXITCODE -ne 0) { throw "pong install failed (exit code $LASTEXITCODE)" }
 if ($NoStart) { Stop-Service PongService -Force }
 Get-Service PongService | Format-Table Name, Status, StartType

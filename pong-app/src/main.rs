@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 use gpui::{actions, App, KeyBinding, Menu, MenuItem};
 use pingpong_ui::menus;
-use pingpong_update::{Build, Channel, Checker};
+use pingpong_update::{Build, Channel, Checker, Program};
 
 actions!(
     pong,
@@ -137,6 +137,8 @@ fn bind_keys_and_menus(cx: &mut App) {
 }
 
 fn main() {
+    // Started by an update: the old copy quits first.
+    pingpong_update::install::after_update();
     // One copy of the app: a second start shows the first one's window. A
     // check (PONG_UI_DEMO) is not the app started again, and runs beside it.
     // Before the log is opened: opening it moves the last runs' logs aside,
@@ -178,9 +180,15 @@ fn main() {
         } else {
             prefs.update_channel()
         };
-        let updates = Rc::new(Checker::start(build, dir, channel, move || {
-            let _ = news.unbounded_send(());
-        }));
+        let updates = Rc::new(Checker::start(
+            Program::Pong,
+            build,
+            dir,
+            channel,
+            move || {
+                let _ = news.unbounded_send(());
+            },
+        ));
         let link = link::Link::start(cx);
         background::start(link, updates, update_news, shows, background, cx);
     });

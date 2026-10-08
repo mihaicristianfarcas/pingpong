@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use pingpong_update::{Build, Channel, Checker};
+use pingpong_update::{Build, Channel, Checker, Program};
 
 fn main() {
     let build = Build::this();
@@ -28,7 +28,7 @@ fn main() {
     );
     let dir = std::env::temp_dir().join(format!("pingpong-update-check-{}", std::process::id()));
     let (done, wait) = std::sync::mpsc::channel();
-    let checker = Checker::start(build, dir.clone(), channel, move || {
+    let checker = Checker::start(Program::Ping, build, dir.clone(), channel, move || {
         let _ = done.send(());
     });
     checker.check_now();
@@ -45,7 +45,12 @@ fn main() {
         match (&status.update, &status.error) {
             (_, Some(e)) => println!("failed: {e}"),
             (Some(u), None) => {
-                println!("{}\n{}\n{}", u.headline("pingpong"), u.url(), u.how("ping"))
+                println!(
+                    "{}\n{}\n{}",
+                    u.headline("pingpong"),
+                    u.url(),
+                    u.how(Program::Ping, &build)
+                )
             }
             (None, None) => println!("up to date"),
         }

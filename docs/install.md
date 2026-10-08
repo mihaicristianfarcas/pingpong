@@ -52,7 +52,9 @@ each one, and names its publisher as unknown.
   **Install Pong.cmd**. Windows asks whether to run it, then whether
   Windows PowerShell may make changes as an administrator. It does what
   `host-deploy.ps1` does there (PongService, the Start menu entry, the
-  icon at sign-in). Run it from a newer download to update.
+  icon at sign-in). Pong's window installs updates itself
+  ([usage.md](usage.md#updates)); running **Install Pong.cmd** from a
+  newer download does the same.
 
 SmartScreen judges an unsigned program by the file itself, so it may ask
 again after an update: each build is a new file. On a PC where **Smart
@@ -94,8 +96,9 @@ then runs whenever you are logged in, and Pong's icon is in the menu bar.
 macOS asks for Screen Recording and Accessibility the first time (see
 [Pong on macOS](#pong-on-macos)).
 
-`brew upgrade --cask ping pong` updates them; the apps say when there is an
-update ([usage.md](usage.md#updates)). The apps are signed with a
+`brew upgrade --cask ping pong` updates them, and so does **Install and
+Restart** in the apps when they say there is an update (they run that
+command; [usage.md](usage.md#updates)). The apps are signed with a
 Developer ID and notarized by Apple.
 
 ## Building from source

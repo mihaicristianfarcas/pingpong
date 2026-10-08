@@ -21,7 +21,11 @@ use super::{Page, PingApp};
 /// on the first agent host; each waits for the turn before it), `stream=NAME` streams from that host,
 /// `stop-after=SECS` ends a stream after that long as the user would,
 /// `update` and `update-main` make the update check say there is a newer
-/// release, or newer commits on main, `updates` opens its sheet, `menus`
+/// release, or newer commits on main, `installs` makes this copy install
+/// updates (as a release does), `installing` and `install-failed` show an
+/// installation under way or one that did not take, `install` installs the
+/// latest release as Install and Restart does, `updates` opens its
+/// sheet, `menus`
 /// writes the menu bar to the log, `snapshot=PATH` saves the window as a
 /// PNG, `quit` quits after it.
 #[derive(Default)]
@@ -180,6 +184,27 @@ impl PingApp {
                     ahead: 4,
                     url: format!("{}/commits/main", pingpong_update::REPOSITORY),
                 }));
+            } else if action == "installs" {
+                pingpong_update::install::pretend_available();
+            } else if action == "installing" {
+                pingpong_update::install::pretend_available();
+                self.updates
+                    .pretend_install(Some(pingpong_update::Install::Downloading {
+                        done: 21_400_000,
+                        total: 49_400_000,
+                    }));
+            } else if action == "install-failed" {
+                pingpong_update::install::pretend_available();
+                self.updates
+                    .pretend_install(Some(pingpong_update::Install::Failed(
+                        "the download is not the file the release lists (its SHA-256 \
+                            differs)"
+                            .into(),
+                    )));
+            } else if action == "install" {
+                // As Install and Restart: the latest release, for real.
+                self.update_sheet = true;
+                self.updates.install();
             } else if action == "updates" {
                 // The sheet as it is, without asking GitHub.
                 self.update_sheet = true;

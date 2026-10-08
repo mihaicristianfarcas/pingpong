@@ -51,7 +51,7 @@ it is, and what was measured on the way, is in the
 | `pingpong-input` | Input injection on the host: `SendInput`, CoreGraphics events, XTest |
 | `pingpong-clipboard` | Sharing the clipboard both ways during a session |
 | `pingpong-ui` | The design system both windows use (GPUI): theme, icons, controls, Markdown; and what they need of the desktop: menus, the tray icon, one running copy, starting at login |
-| `pingpong-update` | Whether a newer release, or newer commits on `main`, exist: GitHub's public API, once a day |
+| `pingpong-update` | Whether a newer release, or newer commits on `main`, exist (GitHub's public API, once a day), and installing a release from the app: the archive checked against GitHub's SHA-256, then each system's way of putting it in place |
 | `ping-core` | The client: session, stream, input, statistics, the host store; per-platform window, decoder and renderer; the `ping` CLI |
 | `ping-app` | Ping's window (GPUI), and `Ping mcp` |
 | `ping-agent` | Computer use: a headless session, the actions, the MCP server, the agent runners; the `ping-agent` CLI |

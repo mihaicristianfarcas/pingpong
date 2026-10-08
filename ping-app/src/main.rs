@@ -53,6 +53,8 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--ping-stream") {
         ping_core::linux::child_main();
     }
+    // Started by an update: the old copy quits first.
+    pingpong_update::install::after_update();
     // One copy of the app: a second start shows the first one's window. A
     // check (PING_UI_DEMO) is not the app started again, and runs beside it.
     // Before the log is opened: opening it moves the last runs' logs aside,

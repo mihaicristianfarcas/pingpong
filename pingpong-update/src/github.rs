@@ -28,6 +28,10 @@ pub(crate) struct Api {
     user_agent: String,
 }
 
+/// How long a release's archive may take to download: 50 MB (Ping for
+/// Windows) in that time is 28 KB/s.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
 /// The longest answer read. A comparison lists up to 300 changed files with
 /// their patches; only its counts are used.
 const MAX_BODY: u64 = 16 * 1024 * 1024;
@@ -51,6 +55,37 @@ impl Api {
             // GitHub refuses requests without one.
             user_agent: format!("pingpong/{}", build.version),
         }
+    }
+}
+
+impl Api {
+    /// A release's file, read as it arrives: `url` is one of the
+    /// repository's release downloads (see `assets_of`), which GitHub
+    /// redirects to its storage. Nothing past `size` is read.
+    pub(crate) fn download(&self, url: &str, size: u64) -> Result<impl std::io::Read, String> {
+        let http: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(DOWNLOAD_TIMEOUT))
+            .timeout_connect(Some(Duration::from_secs(8)))
+            .timeout_recv_response(Some(Duration::from_secs(30)))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let response = http
+            .get(url)
+            .header("User-Agent", &self.user_agent)
+            .header("Accept", "application/octet-stream")
+            .call()
+            .map_err(|e| format!("the download did not start: {e}"))?;
+        let status = response.status().as_u16();
+        if status != 200 {
+            return Err(failed("the release's archive", status));
+        }
+        // One byte over is how a longer file is noticed.
+        Ok(response
+            .into_body()
+            .into_with_config()
+            .limit(size.saturating_add(1))
+            .reader())
     }
 }
 
@@ -95,6 +130,91 @@ struct Release {
     tag_name: String,
     #[serde(default)]
     html_url: String,
+    #[serde(default)]
+    assets: Vec<ReleaseAsset>,
+}
+
+#[derive(Deserialize)]
+struct ReleaseAsset {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    browser_download_url: String,
+    #[serde(default)]
+    size: u64,
+    /// "sha256:…", which GitHub works out for every file it is given.
+    #[serde(default)]
+    digest: Option<String>,
+}
+
+/// A release's file, as the installer takes it: from the repository's own
+/// downloads, with its checksum.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Asset {
+    pub name: String,
+    pub url: String,
+    pub size: u64,
+    /// SHA-256, lowercase hexadecimal.
+    pub sha256: String,
+}
+
+/// The newest release, with the files it offers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Latest {
+    pub version: Version,
+    pub assets: Vec<Asset>,
+}
+
+/// A release lists a file per program and system: a few dozen at most.
+const MAX_ASSETS: usize = 64;
+
+/// The files of a release that can be installed: named plainly, served
+/// from the repository's releases, with a SHA-256. Anything else is left
+/// out.
+fn assets_of(release: &[ReleaseAsset], slug: &str) -> Vec<Asset> {
+    let downloads = format!("{SITE}{slug}/releases/download/");
+    release
+        .iter()
+        .take(MAX_ASSETS)
+        .filter_map(|a| {
+            let plain = !a.name.is_empty()
+                && a.name.len() <= 128
+                && !a.name.starts_with('.')
+                && a.name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+            let sha256 = a.digest.as_deref()?.strip_prefix("sha256:")?;
+            let hex = sha256.len() == 64 && sha256.bytes().all(|b| b.is_ascii_hexdigit());
+            (plain && hex && a.browser_download_url.starts_with(&downloads)).then(|| Asset {
+                name: a.name.clone(),
+                url: a.browser_download_url.clone(),
+                size: a.size,
+                sha256: sha256.to_ascii_lowercase(),
+            })
+        })
+        .collect()
+}
+
+/// The latest release, if there is one whose tag is a version.
+pub(crate) fn latest(fetch: &dyn Fetch, slug: &str) -> Result<Option<(Latest, String)>, String> {
+    let (status, body) = fetch.get(
+        &format!("/repos/{slug}/releases/latest"),
+        "application/vnd.github+json",
+    )?;
+    match status {
+        200 => {}
+        // No release has been published yet.
+        404 => return Ok(None),
+        other => return Err(failed("the latest release", other)),
+    }
+    let release: Release =
+        serde_json::from_str(&body).map_err(|e| format!("the latest release: {e}"))?;
+    // A tag that is not a version is not a release of this program.
+    let Some(version) = Version::parse(&release.tag_name) else {
+        return Ok(None);
+    };
+    let assets = assets_of(&release.assets, slug);
+    Ok(Some((Latest { version, assets }, release.html_url)))
 }
 
 #[derive(Deserialize)]
@@ -118,35 +238,22 @@ fn failed(what: &str, status: u16) -> String {
 
 /// The latest release, if it is newer than this build.
 fn newer_release(fetch: &dyn Fetch, slug: &str, build: &Build) -> Result<Option<Update>, String> {
-    let (status, body) = fetch.get(
-        &format!("/repos/{slug}/releases/latest"),
-        "application/vnd.github+json",
-    )?;
-    match status {
-        200 => {}
-        // No release has been published yet.
-        404 => return Ok(None),
-        other => return Err(failed("the latest release", other)),
-    }
-    let release: Release =
-        serde_json::from_str(&body).map_err(|e| format!("the latest release: {e}"))?;
-    let (Some(latest), Some(mine)) = (
-        Version::parse(&release.tag_name),
-        Version::parse(build.version),
-    ) else {
-        // A tag that is not a version is not a release of this program.
+    let Some((latest, html_url)) = latest(fetch, slug)? else {
         return Ok(None);
     };
-    if latest <= mine {
+    let Some(mine) = Version::parse(build.version) else {
+        return Ok(None);
+    };
+    if latest.version <= mine {
         return Ok(None);
     }
-    let url = if release.html_url.starts_with(&format!("{SITE}{slug}/")) {
-        release.html_url
+    let url = if html_url.starts_with(&format!("{SITE}{slug}/")) {
+        html_url
     } else {
         format!("{SITE}{slug}/releases/latest")
     };
     Ok(Some(Update::Release {
-        version: latest.to_string(),
+        version: latest.version.to_string(),
         url,
     }))
 }
@@ -433,6 +540,42 @@ mod tests {
         assert_eq!(
             look(&fake, REPO, &build("0.6.0", ""), Channel::Releases),
             Ok(None)
+        );
+    }
+
+    #[test]
+    fn a_releases_files_are_taken_only_from_its_own_downloads_with_a_checksum() {
+        let sum = "AB".repeat(32);
+        let body = format!(
+            r#"{{"tag_name": "v0.10.0", "assets": [
+                {{"name": "Ping-0.10.0-windows-x86_64.zip", "size": 7,
+                  "browser_download_url": "https://github.com/example/pingpong/releases/download/v0.10.0/Ping-0.10.0-windows-x86_64.zip",
+                  "digest": "sha256:{sum}"}},
+                {{"name": "Pong-0.10.0-windows-x86_64.zip", "size": 7,
+                  "browser_download_url": "https://example.com/Pong-0.10.0-windows-x86_64.zip",
+                  "digest": "sha256:{sum}"}},
+                {{"name": "Pong-0.10.0-linux-x86_64.tar.gz", "size": 7,
+                  "browser_download_url": "https://github.com/example/pingpong/releases/download/v0.10.0/Pong-0.10.0-linux-x86_64.tar.gz",
+                  "digest": null}},
+                {{"name": "../Ping.zip", "size": 7,
+                  "browser_download_url": "https://github.com/example/pingpong/releases/download/v0.10.0/x.zip",
+                  "digest": "sha256:{sum}"}},
+                {{"name": "Ping-0.10.0-macos-arm64.zip", "size": 7,
+                  "browser_download_url": "https://github.com/example/pingpong/releases/download/v0.10.0/Ping-0.10.0-macos-arm64.zip",
+                  "digest": "md5:0123"}}
+            ]}}"#
+        );
+        let fake = Fake::new(&[("releases/latest", 200, &body)]);
+        let (latest, _) = latest(&fake, "example/pingpong").unwrap().unwrap();
+        assert_eq!(latest.version.to_string(), "0.10.0");
+        assert_eq!(
+            latest.assets,
+            vec![Asset {
+                name: "Ping-0.10.0-windows-x86_64.zip".into(),
+                url: "https://github.com/example/pingpong/releases/download/v0.10.0/Ping-0.10.0-windows-x86_64.zip".into(),
+                size: 7,
+                sha256: "ab".repeat(32),
+            }]
         );
     }
 

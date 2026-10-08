@@ -160,14 +160,18 @@ with that id, open: `fps`, `codec`), `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
 `wait=SECS`, `close-login`, `vanish-login`, `step=N`, `panel-end`,
 `update` and `update-main` (the update check says there is a newer release,
-or newer commits on main), `updates` (its sheet), `menus` (the menu bar, to
-the log), `snapshot=PATH`, `quit`. `PING_UI_DEMO_SCREEN=PATH` gives the
+or newer commits on main), `installs` (this copy installs updates, as a
+release does), `installing` and `install-failed` (an installation under
+way, or one that did not take), `install` (installs the latest release,
+for real, as **Install and Restart** does), `updates` (its sheet), `menus`
+(the menu bar, to the log), `snapshot=PATH`, `quit`. `PING_UI_DEMO_SCREEN=PATH` gives the
 sample sessions a screenshot to show.
 
 Pong's steps: a page's name (`overview`, `devices`, `general`, `video`,
 `network`, `agents`, `logs`), `sample` (a made-up session, request,
 devices and settings), `signin`, `setup`, `offline`,
-`signin-as=USER:PASSWORD`, `update`, `update-main`, `updates`,
+`signin-as=USER:PASSWORD`, `update`, `update-main`, `installs`,
+`installing`, `install-failed`, `updates`,
 `permissions=NAME` (the permissions sheet of the paired device called
 NAME), `open=ID` (the select with that id, open: `permissions-preset` in
 the permissions sheet), `menus` (the menu bar and the tray icon's menu,

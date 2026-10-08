@@ -236,7 +236,7 @@ impl PingApp {
             return Some(pingpong_ui::sheet("alert", 360.0, t, body).into_any_element());
         }
         if self.update_sheet {
-            let (check, close) = (cx.weak_entity(), cx.weak_entity());
+            let (check, install, close) = (cx.weak_entity(), cx.weak_entity(), cx.weak_entity());
             let body = pingpong_ui::updates::sheet_body(
                 &super::UPDATE_APP,
                 &self.update_status,
@@ -245,8 +245,11 @@ impl PingApp {
                     let _ = check.update(cx, |this, _| this.updates.check_now());
                 },
                 move |_, cx| {
+                    let _ = install.update(cx, |this, _| this.updates.install());
+                },
+                move |_, cx| {
                     let _ = close.update(cx, |this, cx| {
-                        this.update_sheet = false;
+                        this.close_update_sheet();
                         cx.notify();
                     });
                 },

@@ -18,7 +18,7 @@ use std::rc::Rc;
 use futures::StreamExt;
 use gpui::{App, AppContext, Entity, Global, SystemNotification, WindowHandle};
 use pingpong_ui::tray::{Tray, TrayEvent, TrayImage, TrayItem};
-use pingpong_update::{Checker, Status as UpdateStatus};
+use pingpong_update::{Checker, Install, Status as UpdateStatus};
 
 use crate::app::{Page, PongApp};
 use crate::link::Link;
@@ -54,6 +54,8 @@ pub struct Background {
     tray: Option<Tray>,
     /// The pairing requests a notification has gone out for.
     announced: HashSet<u32>,
+    /// The window has been opened at an update that did not take.
+    failure_shown: bool,
 }
 
 impl Global for Background {}
@@ -158,6 +160,22 @@ impl Background {
                 TrayItem::Action { title, .. } => title,
             })
             .collect()
+    }
+
+    /// An update being installed: once it is in place (or its installer
+    /// waits for this app), the app quits; one that did not take opens the
+    /// window at the sheet that says why, once.
+    fn follow_install(cx: &mut App) {
+        let install = cx.global::<Background>().updates.status().install;
+        match install {
+            Some(Install::Restarting) => cx.quit(),
+            Some(Install::Failed(_)) => {
+                if !std::mem::replace(&mut cx.global_mut::<Background>().failure_shown, true) {
+                    open(Show::Updates, cx);
+                }
+            }
+            _ => cx.global_mut::<Background>().failure_shown = false,
+        }
     }
 
     /// The host said something new, or the update check did: the icon and
@@ -265,6 +283,7 @@ pub fn start(
         window: None,
         tray,
         announced: HashSet::new(),
+        failure_shown: false,
     });
     cx.observe(&link, |_, cx| Background::refresh(cx)).detach();
     cx.on_window_closed(|cx, _| {
@@ -296,6 +315,7 @@ pub fn start(
             cx.update(|cx| {
                 Background::refresh(cx);
                 cx.refresh_windows();
+                Background::follow_install(cx);
             });
         }
     })
