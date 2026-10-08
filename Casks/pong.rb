@@ -3,9 +3,9 @@
 cask "pong" do
   arch arm: "arm64", intel: "x86_64"
 
-  version "0.9.2"
-  sha256 arm:   "f2a91c15ed8633efbf915863cd1bba3c04e37e428a2bd02dfea74768568f3092",
-         intel: "6d93d2384284f03081f7ea349f34702a369dd886d33c10c5446b5c3d0bb9fb01"
+  version "0.9.3"
+  sha256 arm:   "1267905cb3494c42991db8d47fbb3dfcd7be722e003d0704efad0b15a114858e",
+         intel: "0792a032a9cc7507731cda5874044341f48158c2ab4355f43067d896dcf2b7cc"
 
   url "https://github.com/mihaicristianfarcas/pingpong/releases/download/v#{version}/Pong-#{version}-macos-#{arch}.zip"
   name "Pong"
