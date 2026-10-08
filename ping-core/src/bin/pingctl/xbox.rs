@@ -164,21 +164,48 @@ fn friends() -> ExitCode {
     }
 }
 
+/// What `pingctl xbox stream` and `play` take beyond `pingctl stream`'s
+/// flags.
+struct XboxFlags {
+    keyboard: KeyboardMouse,
+    region: Option<String>,
+    /// `--mbps N`: the most the console may send.
+    max_kbps: Option<u32>,
+    /// The rest, `pingctl stream`'s (`--mbps` among them).
+    rest: Vec<String>,
+}
+
 /// `--controller`, `--shooter`, `--keyboard` and `--region NAME` are ours;
-/// the rest are `pingctl stream`'s.
-fn split_flags(flags: &[String]) -> (KeyboardMouse, Option<String>, Vec<String>) {
-    let (mut keyboard, mut region, mut rest) = (KeyboardMouse::Auto, None, Vec::new());
+/// `--mbps N` is `pingctl stream`'s, and here also the most the console
+/// may send; the rest are `pingctl stream`'s.
+fn split_flags(flags: &[String]) -> XboxFlags {
+    let mut x = XboxFlags {
+        keyboard: KeyboardMouse::Auto,
+        region: None,
+        max_kbps: None,
+        rest: Vec::new(),
+    };
     let mut it = flags.iter();
     while let Some(f) = it.next() {
         match f.as_str() {
-            "--controller" => keyboard = KeyboardMouse::Controller,
-            "--shooter" => keyboard = KeyboardMouse::Shooter,
-            "--keyboard" => keyboard = KeyboardMouse::Native,
-            "--region" => region = it.next().cloned(),
-            _ => rest.push(f.clone()),
+            "--controller" => x.keyboard = KeyboardMouse::Controller,
+            "--shooter" => x.keyboard = KeyboardMouse::Shooter,
+            "--keyboard" => x.keyboard = KeyboardMouse::Native,
+            "--region" => x.region = it.next().cloned(),
+            "--mbps" => {
+                let v = it.next().cloned();
+                x.max_kbps = v
+                    .as_deref()
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .filter(|m| *m > 0.0)
+                    .map(|m| (m * 1000.0) as u32);
+                x.rest.push(f.clone());
+                x.rest.extend(v);
+            }
+            _ => x.rest.push(f.clone()),
         }
     }
-    (keyboard, region, rest)
+    x
 }
 
 fn stream_console(name: &str, flags: &[String]) -> ExitCode {
@@ -186,17 +213,18 @@ fn stream_console(name: &str, flags: &[String]) -> ExitCode {
         Ok(c) => c,
         Err(code) => return code,
     };
-    let (keyboard, region, rest) = split_flags(flags);
+    let x = split_flags(flags);
     stream::run(
         What::Xbox(XboxSource {
             target: Target::Console {
                 id: console.id,
                 name: console.name,
             },
-            keyboard_mouse: keyboard,
-            region,
+            keyboard_mouse: x.keyboard,
+            region: x.region,
+            max_kbps: x.max_kbps,
         }),
-        stream::request(&rest),
+        stream::request(&x.rest),
     )
 }
 
@@ -222,16 +250,17 @@ fn play(name: &str, flags: &[String]) -> ExitCode {
             "No cloud game named {name}; see `pingctl xbox games`."
         ));
     };
-    let (keyboard, region, rest) = split_flags(flags);
+    let x = split_flags(flags);
     stream::run(
         What::Xbox(XboxSource {
             target: Target::Cloud {
                 title_id: game.title_id.clone(),
                 name: game.name.clone(),
             },
-            keyboard_mouse: keyboard,
-            region,
+            keyboard_mouse: x.keyboard,
+            region: x.region,
+            max_kbps: x.max_kbps,
         }),
-        stream::request(&rest),
+        stream::request(&x.rest),
     )
 }

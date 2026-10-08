@@ -35,9 +35,16 @@ Microsoft's own web client speaks, as
 3. Ctrl+Alt+Shift+Q (⌃⌥⇧Q) ends the stream, as for a Pong host. The console
    is free again at once.
 
-The stream takes the size and display settings from Ping's settings; the
-console chooses its own codec (H.264), frame rate and bitrate, and sends up
-to 1080p. The statistics (Ctrl+Alt+Shift+S) work as for Pong.
+The stream takes the size and display settings from Ping's settings. The
+console is asked for the largest resolution the picture shows whole, as
+Microsoft's web client asks: 1440p for a picture at least 1440 pixels tall
+(a MacBook Pro's screen), else 1080p, else 720p, each at the higher of
+its bitrates; a console that cannot send 1440p sends what it can. The
+console chooses its codec (H.264), frame rate and bitrate. A bitrate set
+in *Settings > Video* (not Automatic) is the most it sends: on a slow
+connection, set one below what the connection carries (half of it is a
+safe start), and the picture stops running late when it moves. The
+statistics (Ctrl+Alt+Shift+S) work as for Pong.
 
 **Controllers**: up to four, as the console's first to fourth controllers,
 with rumble when the console sends it. The Xbox button is the Guide button.

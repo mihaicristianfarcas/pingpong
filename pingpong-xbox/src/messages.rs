@@ -209,6 +209,27 @@ pub mod control {
     pub fn keyframe_request(idr: bool) -> String {
         json!({ "message": "videoKeyframeRequested", "ifrRequested": idr }).to_string()
     }
+
+    /// Ask for a resolution, by the names Microsoft's web client gives
+    /// them ([`super::resolution_alias`]).
+    pub fn resolution(alias: &str) -> String {
+        json!({ "message": "userRequestedResolutionUpdate", "resolutionAlias": alias }).to_string()
+    }
+}
+
+/// The resolution to ask a console for, for a picture shown `height`
+/// pixels tall: the largest that is not taller, at the higher of its two
+/// bitrates where there are two. Microsoft's web client says these names
+/// on the control channel once connected
+/// (`sendUserRequestedResolutionUpdate`): "1440" on a computer unless its
+/// settings say otherwise (its choices: 720, 720HQ, 1080, 1080HQ, 1440).
+/// A client that says nothing is sent the console's default.
+pub fn resolution_alias(height: u32) -> &'static str {
+    match height {
+        1440.. => "1440",
+        1080.. => "1080HQ",
+        _ => "720HQ",
+    }
 }
 
 /// What the mock console reads on the control channel.
@@ -217,6 +238,7 @@ pub enum ControlMessage {
     Authorization { key: String },
     GamepadChanged { index: u8, added: bool },
     KeyframeRequest { idr: bool },
+    Resolution { alias: String },
     Other(String),
 }
 
@@ -233,6 +255,9 @@ pub fn parse_control(d: &[u8]) -> Option<ControlMessage> {
         },
         "videoKeyframeRequested" => ControlMessage::KeyframeRequest {
             idr: v.get("ifrRequested")?.as_bool()?,
+        },
+        "userRequestedResolutionUpdate" => ControlMessage::Resolution {
+            alias: v.get("resolutionAlias")?.as_str()?.to_owned(),
         },
         other => ControlMessage::Other(other.to_owned()),
     })
@@ -327,6 +352,18 @@ mod tests {
     }
 
     #[test]
+    fn the_resolution_asked_for_is_the_largest_the_screen_shows_whole() {
+        // A MacBook Pro 16" (3456 x 2160), a 1440p display, a 1080p one.
+        assert_eq!(resolution_alias(2160), "1440");
+        assert_eq!(resolution_alias(1440), "1440");
+        assert_eq!(resolution_alias(1200), "1080HQ");
+        assert_eq!(resolution_alias(1080), "1080HQ");
+        assert_eq!(resolution_alias(900), "720HQ");
+        assert_eq!(resolution_alias(720), "720HQ");
+        assert_eq!(resolution_alias(480), "720HQ");
+    }
+
+    #[test]
     fn control_messages_round_trip() {
         assert_eq!(
             parse_control(control::gamepad_changed(2, false).as_bytes()),
@@ -343,6 +380,12 @@ mod tests {
             parse_control(control::authorization().as_bytes()),
             Some(ControlMessage::Authorization { .. })
         ));
+        assert_eq!(
+            parse_control(control::resolution("1440").as_bytes()),
+            Some(ControlMessage::Resolution {
+                alias: "1440".into()
+            })
+        );
         assert_eq!(
             parse_control(br#"{"message":"gamepadChanged","gamepadIndex":300,"wasAdded":true}"#),
             None

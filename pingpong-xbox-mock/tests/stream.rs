@@ -113,6 +113,16 @@ fn start(http: &Http, dir: &Path, target: Target) -> Running {
 }
 
 fn start_with(http: &Http, dir: &Path, target: Target, keyboard_mouse: KeyboardMouse) -> Running {
+    let options = StreamOptions {
+        width: 1280,
+        height: 720,
+        keyboard_mouse,
+        ..StreamOptions::default()
+    };
+    start_options(http, dir, target, options)
+}
+
+fn start_options(http: &Http, dir: &Path, target: Target, options: StreamOptions) -> Running {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let input = Arc::new(Mutex::new(Vec::new()));
     let socket = Socket::bind(stream::route_towards(http)).unwrap();
@@ -128,12 +138,6 @@ fn start_with(http: &Http, dir: &Path, target: Target, keyboard_mouse: KeyboardM
         );
         std::thread::spawn(move || {
             let mut sink = TestSink { seen, input };
-            let options = StreamOptions {
-                width: 1280,
-                height: 720,
-                keyboard_mouse,
-                ..StreamOptions::default()
-            };
             stream::run(&dir, http, &target, &options, socket, &mut sink, &stop)
         })
     };
@@ -734,5 +738,36 @@ fn the_picture_keeps_coming_through_three_percent_loss() {
         longest < Duration::from_millis(1500),
         "stood still {longest:?}"
     );
+    assert_eq!(running.end(), Ok(End::Stopped));
+}
+
+#[test]
+fn the_console_is_asked_for_the_screens_resolution_and_a_chosen_bitrate() {
+    let mock = MockConsole::start(Config::default()).unwrap();
+    let http = Http::with_mock(Some(mock.url()));
+    let dir = tempfile::tempdir().unwrap();
+    sign_in(&http, dir.path());
+    // A MacBook Pro 16"'s screen, and a bitrate chosen in Settings.
+    let running = start_options(
+        &http,
+        dir.path(),
+        console(),
+        StreamOptions {
+            width: 3456,
+            height: 2160,
+            max_kbps: Some(8000),
+            ..StreamOptions::default()
+        },
+    );
+    assert!(mock.wait_for(LONG, |r| r.resolution.is_some()));
+    let record = mock.record();
+    assert_eq!(record.resolution.as_deref(), Some("1440"));
+    assert_eq!(record.video_max_kbps, Some(8000));
+    assert_eq!(running.end(), Ok(End::Stopped));
+
+    // Automatic: the console chooses; a 720p window asks for 720p.
+    let running = start(&http, dir.path(), console());
+    assert!(mock.wait_for(LONG, |r| r.resolution.as_deref() == Some("720HQ")));
+    assert_eq!(mock.record().video_max_kbps, None);
     assert_eq!(running.end(), Ok(End::Stopped));
 }

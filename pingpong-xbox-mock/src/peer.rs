@@ -545,6 +545,9 @@ impl Console {
                 Some(ControlMessage::GamepadChanged { index, added }) => {
                     self.record.lock().gamepads.push((index, added));
                 }
+                Some(ControlMessage::Resolution { alias }) => {
+                    self.record.lock().resolution = Some(alias);
+                }
                 Some(ControlMessage::KeyframeRequest { .. }) => {
                     self.record.lock().keyframe_requests += 1;
                     self.encoder.request_keyframe();

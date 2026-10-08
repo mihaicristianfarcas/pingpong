@@ -32,6 +32,8 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+use str0m::change::SdpOffer;
 use str0m::change::{SdpAnswer, SdpPendingOffer};
 use str0m::channel::{ChannelConfig, ChannelData, ChannelId, Reliability};
 use str0m::format::{Codec, FormatParams};
@@ -73,6 +75,9 @@ pub struct Options {
     pub install_id: String,
     /// What the keyboard and mouse are to the console.
     pub keyboard_mouse: KeyboardMouse,
+    /// The most video the console may send, in kb/s; `None` leaves it to
+    /// the console.
+    pub max_kbps: Option<u32>,
 }
 
 /// A complete video frame: H.264, Annex B.
@@ -257,6 +262,10 @@ impl Connection {
         let (offer, pending) = api
             .apply()
             .ok_or("the connection could not make an offer")?;
+        let mut sdp = offer.to_sdp_string();
+        if let Some(kbps) = options.max_kbps {
+            sdp = with_max_video_kbps(&sdp, kbps);
+        }
         let keyboard = options.keyboard_mouse;
         Ok((
             Connection {
@@ -281,7 +290,7 @@ impl Connection {
                 keyframe_requests: 0,
                 ended: None,
             },
-            offer.to_sdp_string(),
+            sdp,
         ))
     }
 
@@ -760,6 +769,9 @@ impl Connection {
             "the console took the handshake"
         );
         self.send_later(Chan::Control, messages::control::authorization());
+        // The web client asks for its resolution here too, once connected.
+        let alias = messages::resolution_alias(self.options.height);
+        self.send_later(Chan::Control, messages::control::resolution(alias));
         let mut opening = [0u8; MAX_REPORT_LEN];
         let n = self
             .inputs
@@ -780,6 +792,35 @@ impl Connection {
         self.ready = true;
         sink.event(Event::Ready);
     }
+}
+
+/// `sdp` with the most the video may take, `kbps`: a `b=AS` line in its
+/// video section, which a sender keeps under (RFC 4566 §5.8). Better
+/// xCloud's bitrate limit is this line in the offer (`sdp.ts`
+/// `patchSdpBitrate`); a line already there is replaced.
+fn with_max_video_kbps(sdp: &str, kbps: u32) -> String {
+    let line = format!("b=AS:{kbps}");
+    let mut out = Vec::new();
+    let mut video = false;
+    let mut placed = false;
+    for l in sdp.split("\r\n") {
+        if l.starts_with("m=") {
+            video = l.starts_with("m=video");
+        } else if video && !placed {
+            if l.starts_with("b=AS:") {
+                out.push(line.as_str());
+                placed = true;
+                continue;
+            }
+            // b= comes after i= and c=, before the attributes.
+            if !(l.starts_with("i=") || l.starts_with("c=") || l.starts_with("b=")) {
+                out.push(line.as_str());
+                placed = true;
+            }
+        }
+        out.push(l);
+    }
+    out.join("\r\n")
 }
 
 #[cfg(test)]
@@ -831,6 +872,7 @@ mod tests {
                 size_mm: (338, 190),
                 install_id: "test".into(),
                 keyboard_mouse: KeyboardMouse::Native,
+                max_kbps: None,
             },
         )
         .unwrap();
@@ -839,5 +881,43 @@ mod tests {
             .receive(&mut buf, Duration::from_millis(5), &mut sink)
             .unwrap();
         assert!(sink.0.is_empty(), "the input was taken");
+    }
+
+    #[test]
+    fn a_maximum_bitrate_goes_in_the_video_section_only() {
+        let sdp = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\n\
+                   m=video 9 UDP/TLS/RTP/SAVPF 102\r\nc=IN IP4 0.0.0.0\r\na=mid:1\r\n\
+                   m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\na=mid:2\r\n";
+        let out = with_max_video_kbps(sdp, 8000);
+        assert_eq!(out.matches("b=AS:").count(), 1);
+        assert!(out.contains(
+            "m=video 9 UDP/TLS/RTP/SAVPF 102\r\nc=IN IP4 0.0.0.0\r\nb=AS:8000\r\na=mid:1"
+        ));
+        // Said twice, the second replaces the first.
+        let again = with_max_video_kbps(&out, 5000);
+        assert_eq!(again.matches("b=AS:").count(), 1);
+        assert!(again.contains("b=AS:5000"));
+    }
+
+    #[test]
+    fn the_offer_says_the_maximum_when_there_is_one() {
+        let offer = |max_kbps| {
+            let socket = Socket::bind(IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+            let options = Options {
+                width: 1920,
+                height: 1080,
+                size_mm: (508, 286),
+                install_id: "test".into(),
+                keyboard_mouse: KeyboardMouse::Native,
+                max_kbps,
+            };
+            Connection::offer(socket, options).unwrap().1
+        };
+        assert!(!offer(None).contains("b=AS"));
+        let sdp = offer(Some(12_000));
+        let video = &sdp[sdp.find("m=video").unwrap()..];
+        assert!(video.contains("\r\nb=AS:12000\r\n"), "{sdp}");
+        // str0m's own reading of it is unchanged.
+        assert!(SdpOffer::from_sdp_string(&sdp).is_ok());
     }
 }

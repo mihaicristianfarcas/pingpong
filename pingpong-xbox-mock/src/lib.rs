@@ -111,6 +111,10 @@ pub struct Record {
     /// When each of `reports` arrived.
     pub reports_at: Vec<Instant>,
     pub bad_reports: u32,
+    /// The resolution asked for on the control channel.
+    pub resolution: Option<String>,
+    /// The offer's `b=AS` for the video: the most it may take, in kb/s.
+    pub video_max_kbps: Option<u32>,
     /// Keyframes asked for on the control channel, and by RTCP.
     pub keyframe_requests: u32,
     pub plis: u32,

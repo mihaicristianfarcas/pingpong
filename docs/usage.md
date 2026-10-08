@@ -100,7 +100,7 @@ Windows and Linux) opens them.
 | | Display mode | Full screen or a window |
 | | HDR | Stream in HDR (HEVC Main10, BT.2020, PQ), as Moonlight's "HDR": offered on a Mac whose display shows HDR, from a host that can (NVIDIA on Windows, macOS 15 or later). Off by default, as in Moonlight |
 | | YUV 4:4:4 | Colour at full resolution: text without coloured fringes, for about a fifth more bitrate; offered where this computer decodes it (Apple silicon), from a host that encodes it (NVIDIA on Windows). Off by default, as in Moonlight |
-| | Bitrate | Automatic (Moonlight's table for the resolution and frame rate), or a fixed figure |
+| | Bitrate | Automatic (Moonlight's table for the resolution and frame rate), or a fixed figure. From an Xbox, a fixed figure is the most the console sends; Automatic lets it choose |
 | | V-Sync | Off: frames shown the moment they are decoded, tearing allowed. On a Mac, off while Low Power Mode holds the display at 60 Hz |
 | | Frame pacing | One frame per display refresh (Moonlight's pacer): smoother, about a refresh more latency. Off by default, as in Moonlight |
 | | Performance statistics | The statistics from the start of each stream |

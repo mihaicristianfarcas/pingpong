@@ -53,6 +53,9 @@ pub struct StreamOptions {
     pub region: Option<String>,
     /// What the keyboard and mouse are to the console.
     pub keyboard_mouse: KeyboardMouse,
+    /// The most video the console may send, in kb/s (the bitrate the
+    /// person chose); `None` leaves it to the console.
+    pub max_kbps: Option<u32>,
 }
 
 impl Default for StreamOptions {
@@ -64,6 +67,7 @@ impl Default for StreamOptions {
             locale: "en-US".into(),
             region: None,
             keyboard_mouse: KeyboardMouse::default(),
+            max_kbps: None,
         }
     }
 }
@@ -201,6 +205,7 @@ fn run_session(
             keyboard_mouse: options
                 .keyboard_mouse
                 .resolve(matches!(target, Target::Console { .. })),
+            max_kbps: options.max_kbps,
         },
     )?;
     let stopped = || stop.load(Ordering::Relaxed);

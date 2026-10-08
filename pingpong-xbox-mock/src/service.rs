@@ -377,7 +377,11 @@ impl Service {
                 let Some(offer) = body["sdp"].as_str() else {
                     return Response::status(400, "");
                 };
-                self.record.lock().sdp_configuration = body["configuration"].clone();
+                {
+                    let mut record = self.record.lock();
+                    record.sdp_configuration = body["configuration"].clone();
+                    record.video_max_kbps = video_max_kbps(offer);
+                }
                 match Peer::answer(offer, r.local.ip(), record, view, self.config.link) {
                     Ok(p) => {
                         s.peer = Some(p);
@@ -458,6 +462,17 @@ impl Service {
             _ => Response::status(404, format!("{{\"message\":\"no mock for {path}\"}}")),
         }
     }
+}
+
+/// The `b=AS` of an SDP's video section.
+fn video_max_kbps(sdp: &str) -> Option<u32> {
+    let video = &sdp[sdp.find("m=video")?..];
+    let video = video[1..]
+        .find("\nm=")
+        .map_or(video, |end| &video[..end + 1]);
+    video
+        .lines()
+        .find_map(|l| l.trim_end().strip_prefix("b=AS:")?.parse().ok())
 }
 
 fn field<'a>(form: &'a [(String, String)], name: &str) -> Option<&'a str> {

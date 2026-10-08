@@ -397,7 +397,8 @@ impl PingApp {
                             "Bitrate",
                             Some(
                                 "More is sharper in motion, if the network \
-                                    carries it."
+                                    carries it. An Xbox sends at most this; \
+                                    with Automatic it chooses."
                                     .into(),
                             ),
                             bitrate,

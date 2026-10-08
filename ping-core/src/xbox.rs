@@ -52,6 +52,10 @@ pub struct XboxSource {
     /// The cloud region, when not the account's default.
     #[serde(default)]
     pub region: Option<String>,
+    /// The most video the console may send, in kb/s: the bitrate the
+    /// person chose. `None` (Automatic) leaves it to the console.
+    #[serde(default)]
+    pub max_kbps: Option<u32>,
 }
 
 struct Ctx {
@@ -119,6 +123,7 @@ impl XboxStream {
             locale: locale(),
             region: source.region.clone(),
             keyboard_mouse: source.keyboard_mouse,
+            max_kbps: source.max_kbps,
         };
         let dir = crate::store::data_dir();
         let net = {

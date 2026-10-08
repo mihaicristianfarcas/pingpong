@@ -90,6 +90,11 @@ window, the statistics, the sound), and:
 | `--shooter` | The keys and the mouse are the first controller: WASD moves, the mouse aims, its buttons fire ([xbox.md](xbox.md#using-it)) |
 | `--keyboard` | A keyboard and a mouse, as for a console, in a cloud game too |
 | `--region NAME` | Play in this cloud region rather than the account's default |
+| `--mbps N` | The most the console or cloud server sends, in Mb/s; without it, it chooses |
+
+The size (`--size`, else the display's) chooses the resolution the console
+is asked for: 1440p for a picture at least 1440 pixels tall, else 1080p,
+else 720p.
 
 Without `--controller`, `--shooter` or `--keyboard`, a console gets a keyboard
 and a mouse and a cloud game the keys as a controller, as the app's

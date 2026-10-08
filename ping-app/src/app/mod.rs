@@ -652,6 +652,9 @@ impl PingApp {
             target,
             keyboard_mouse: self.prefs.xbox_input,
             region: None,
+            // A bitrate chosen in Settings is the most the console sends;
+            // Automatic leaves it to the console.
+            max_kbps: (!self.prefs.auto_bitrate).then_some(request.bitrate_kbps),
         };
         let id = self.next_stream;
         self.next_stream += 1;
