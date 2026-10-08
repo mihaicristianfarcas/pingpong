@@ -126,11 +126,32 @@ impl Peer {
     }
 }
 
+/// How long a deleted session's console still reads its connection, as a
+/// console's end of a stream outlives the service's session: a client's
+/// last message, sent just before it deletes the session, is still read
+/// and written down.
+const CLOSING_GRACE: Duration = Duration::from_secs(1);
+
 impl Drop for Peer {
+    /// The console stops once it has its goodbye, or after the grace; not
+    /// waited for here, where the service is locked.
     fn drop(&mut self) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(t) = self.thread.take() {
-            let _ = t.join();
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
+        let stop = self.stop.clone();
+        let closing = std::thread::Builder::new()
+            .name("xbox-mock-closing".into())
+            .spawn(move || {
+                let deadline = Instant::now() + CLOSING_GRACE;
+                while !thread.is_finished() && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                let _ = thread.join();
+            });
+        if closing.is_err() {
+            self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }
@@ -248,25 +269,40 @@ impl Console {
             let wait = wake
                 .saturating_duration_since(now)
                 .max(Duration::from_millis(1));
+            // Every datagram waiting, not one a pass: a console behind on
+            // its picture (a debug build on a loaded CI runner) would
+            // otherwise read the client's messages ever later.
+            let _ = self.udp.set_nonblocking(false);
             let _ = self.udp.set_read_timeout(Some(wait));
-            let input = match self.udp.recv_from(&mut buf) {
-                Ok((n, from)) => {
-                    let Ok(contents) = buf[..n].try_into() else {
-                        continue;
-                    };
-                    Input::Receive(
-                        Instant::now(),
-                        Receive {
-                            proto: Protocol::Udp,
-                            source: from,
-                            destination: self.local,
-                            contents,
-                        },
-                    )
+            let mut waited = false;
+            loop {
+                match self.udp.recv_from(&mut buf) {
+                    Ok((n, from)) => {
+                        if let Ok(contents) = buf[..n].try_into() {
+                            let _ = self.rtc.handle_input(Input::Receive(
+                                Instant::now(),
+                                Receive {
+                                    proto: Protocol::Udp,
+                                    source: from,
+                                    destination: self.local,
+                                    contents,
+                                },
+                            ));
+                            if self.drain().is_none() {
+                                return;
+                            }
+                        }
+                    }
+                    Err(_) if !waited => {
+                        let _ = self.rtc.handle_input(Input::Timeout(Instant::now()));
+                    }
+                    Err(_) => break,
                 }
-                Err(_) => Input::Timeout(Instant::now()),
-            };
-            let _ = self.rtc.handle_input(input);
+                if !waited {
+                    waited = true;
+                    let _ = self.udp.set_nonblocking(true);
+                }
+            }
         }
     }
 
