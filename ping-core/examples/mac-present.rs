@@ -15,7 +15,10 @@
 //! `--jitter-ms N` (each frame handed over up to N ms late, as a network
 //! delivers them), `--overlay` (the statistics overlay), `--cover AT,FOR` (a
 //! small window over the stream from AT seconds for FOR, as a recorder's
-//! controls or a dialog would be). Prints a line a second, the renderer's
+//! controls or a dialog would be), `--hz N` (the main display in a mode of
+//! its size at N Hz for this run; macOS puts it back when the run ends, as
+//! a ProMotion panel capped at 60 Hz in Low Power Mode would run). Prints a
+//! line a second, the renderer's
 //! changes of path (`RUST_LOG=ping_core::mac::glass=trace` for every
 //! drawable's trip to the glass), and a summary of the seconds after the
 //! first two (the window going full screen).
@@ -73,6 +76,7 @@ mod mac {
         jitter_ms: u64,
         overlay: bool,
         cover: Option<(f64, f64)>,
+        hz: Option<f64>,
     }
 
     fn options() -> Options {
@@ -86,6 +90,7 @@ mod mac {
             jitter_ms: 0,
             overlay: false,
             cover: None,
+            hz: None,
         };
         let mut args = std::env::args().skip(1);
         while let Some(a) = args.next() {
@@ -103,6 +108,7 @@ mod mac {
                 "--no-vsync" => o.vsync = false,
                 "--jitter-ms" => o.jitter_ms = value().parse().expect("--jitter-ms N"),
                 "--overlay" => o.overlay = true,
+                "--hz" => o.hz = Some(value().parse().expect("--hz N")),
                 "--cover" => {
                     let v = value();
                     let (at, secs) = v.split_once(',').expect("--cover AT,FOR");
@@ -293,6 +299,59 @@ mod mac {
         });
     }
 
+    /// Switch the main display to a mode of its size at `hz`, for this
+    /// process only (`kCGConfigureForAppOnly`: macOS restores the mode when
+    /// it exits).
+    fn set_refresh_for_this_run(hz: f64) {
+        use objc2_core_graphics::{
+            CGBeginDisplayConfiguration, CGCompleteDisplayConfiguration,
+            CGConfigureDisplayWithDisplayMode, CGConfigureOption, CGDisplayCopyAllDisplayModes,
+            CGDisplayCopyDisplayMode, CGDisplayMode, CGMainDisplayID,
+        };
+        let display = CGMainDisplayID();
+        let current = CGDisplayCopyDisplayMode(display).expect("the display's mode");
+        let (w, h) = (
+            CGDisplayMode::pixel_width(Some(&current)),
+            CGDisplayMode::pixel_height(Some(&current)),
+        );
+        // Every mode, the low-resolution duplicates of scaled ones too.
+        let all = CFDictionary::<CFString, CFType>::from_slices(
+            // SAFETY: CoreGraphics' constant key.
+            &[unsafe { objc2_core_graphics::kCGDisplayShowDuplicateLowResolutionModes }],
+            &[CFBoolean::new(true) as &CFType],
+        );
+        // SAFETY: a dictionary of CFString keys to CFType values.
+        let modes = unsafe { CGDisplayCopyAllDisplayModes(display, Some(all.as_opaque())) }
+            .expect("the modes");
+        let n = modes.count();
+        let mode = (0..n)
+            .filter_map(|i| {
+                // SAFETY: the array holds CGDisplayModes, in bounds.
+                let m = unsafe { modes.value_at_index(i) } as *const CGDisplayMode;
+                // SAFETY: a live element of `modes`, which outlives this use.
+                unsafe { m.as_ref() }
+            })
+            .find(|m| {
+                CGDisplayMode::pixel_width(Some(m)) == w
+                    && CGDisplayMode::pixel_height(Some(m)) == h
+                    && CGDisplayMode::width(Some(m)) == CGDisplayMode::width(Some(&current))
+                    && (CGDisplayMode::refresh_rate(Some(m)) - hz).abs() < 0.5
+            })
+            .unwrap_or_else(|| panic!("no {w}x{h} mode at {hz} Hz"));
+        let mut config = std::ptr::null_mut();
+        // SAFETY: an out pointer for the configuration, then that
+        // configuration, the main display and one of its own modes.
+        unsafe {
+            assert_eq!(
+                CGBeginDisplayConfiguration(&mut config),
+                objc2_core_graphics::CGError::Success
+            );
+            CGConfigureDisplayWithDisplayMode(config, display, Some(mode), None);
+            CGCompleteDisplayConfiguration(config, CGConfigureOption::ForAppOnly);
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+
     pub fn main() {
         tracing_subscriber::fmt()
             .with_env_filter(
@@ -301,11 +360,27 @@ mod mac {
             )
             .init();
         let o = options();
+        if let Some(hz) = o.hz {
+            set_refresh_for_this_run(hz);
+        }
         let mtm = MainThreadMarker::new().expect("the main thread");
         let app = NSApplication::sharedApplication(mtm);
         app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
 
         let info = ScreenInfo::main(mtm).expect("a display");
+        if let Some(screen) = objc2_app_kit::NSScreen::mainScreen(mtm) {
+            println!(
+                "the display: {:.2} Hz at its fastest (minimumRefreshInterval), \
+                 {} Hz in its mode, Low Power Mode {}",
+                1.0 / screen.minimumRefreshInterval(),
+                ping_core::mac::display_refresh_mhz().map_or(0.0, |m| m as f64 / 1000.0),
+                if objc2_foundation::NSProcessInfo::processInfo().isLowPowerModeEnabled() {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+        }
         let size = o.size.unwrap_or((
             (info.frame.size.width * info.scale) as usize,
             (info.frame.size.height * info.scale) as usize,
