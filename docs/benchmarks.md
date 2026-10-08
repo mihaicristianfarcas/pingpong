@@ -315,6 +315,34 @@ run). AWDL (AirDrop, Continuity) was up on that Mac and is a common cause of
 exactly this pattern; not yet confirmed here by turning it off
 (`sudo ifconfig awdl0 down`, until the next reboot).
 
+## Xbox: a lossy link
+
+How a console's stream holds up on a poor link, before and after the
+loss handling of 2026-10-09: Ping's Xbox client against the mock console,
+both on an Apple silicon Mac (release builds), through the mock's link
+(`pingpong-xbox-mock` `examples/link.rs`) at 25 ms each way; 15 s a run,
+counted from the first frame. The mock sends 60 frames a second of a
+640×360 test picture, about 10 Mb/s, its keyframes uncompressed (353 KB,
+some 300 packets). "Stopped" is the time with no new frame for more than
+50 ms; "late" is from the console sending a frame to Ping handing it to
+the decoder.
+
+| Link | Before: str0m's frame assembly, NACK window 100 | NACK window 1,000 | And Ping's frame assembly |
+|---|---|---|---|
+| 1% loss | 54 fps; 7 keyframes asked for; stopped 24%; late at most 464 ms | 60 fps; none; 25%; 133 ms | 60 fps; none; 25%; 121 ms |
+| 3% loss | not one frame (63 keyframes asked for) | 60 fps; none; 48%; 149 ms | 59 fps; 1; 48%; 129 ms |
+| 20 Mb/s, a 300 ms outage every 3 s | 27 fps; longest stop 2.6 s; stopped 59% | 60 fps; 0.42 s; 15% | 60 fps; 0.41 s; 14% |
+| The same with 1% loss | 31 fps; longest stop 2.9 s; stopped 75%; late at most 1.5 s | 22 fps; 2.7 s; 87%; 0.65 s | 50 fps; 0.96 s; 46%; 0.42 s |
+
+The first column has what a tester reported over Wi-Fi between two cities
+-- stutter, and stops of up to two seconds. On this link its causes were
+two: a retransmission that came once its packet was 100 packets behind
+the newest was dropped (str0m's NACK window), and str0m's frame assembly
+held every later frame for up to two seconds behind a packet that never
+came. The rest of the time
+stopped at 1% and 3% loss is a round trip for each lost packet: the
+console sends no FEC, so a lost packet is only had back by asking for it.
+
 ## Starting a stream
 
 From launching the client to the first frame, host monitor asleep, Mac on

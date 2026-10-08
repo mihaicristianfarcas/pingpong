@@ -108,6 +108,11 @@ tools/linux-dev tools/linux/loopback-test        # a Linux host streaming to a L
 - `tools/linux/xbox-test` runs Linux Ping against the mock Xbox: it signs
   in, lists the console, streams it with a scripted controller, and saves a
   picture in `target/linux-out/xbox` that shows the input the mock received.
+- The mock Xbox's link can be made poor (`xbox-mock --delay MS --loss PCT
+  --rate MBPS --queue MS --outage-every MS --outage MS`), and
+  `cargo run --release -p pingpong-xbox-mock --example link -- [the same]`
+  streams over it and says how often and how long the picture stopped
+  ([benchmarks.md](benchmarks.md#xbox-a-lossy-link)).
 - `tools/linux/agent-desktop` is a small desktop (openbox, a terminal, an
   editor, a calculator, a file manager) with a Linux Pong, for AI agents to
   work on; `tools/linux/agent-tests/` has scripted clients for it.

@@ -2,10 +2,14 @@
 //! streaming without a console (see the crate's documentation).
 //!
 //!   xbox-mock [--listen ADDR:PORT] [--awake] [--cloud gamepass|free|none]
-//!             [--sign-in-polls N]
+//!             [--sign-in-polls N] [--delay MS] [--loss PCT] [--rate MBPS]
+//!             [--queue MS] [--outage-every MS --outage MS]
 //!
 //! `--sign-in-polls N` answers the first N polls of a sign-in "not yet"
-//! (the sign-in sheet stays up that long: one poll a second).
+//! (the sign-in sheet stays up that long: one poll a second). The rest are
+//! the link to the client (`Link`): a delay each way, video packets lost,
+//! a rate with its queue, and outages when nothing gets through, as a
+//! slow or Wi-Fi link has them.
 //!
 //! It prints the `PING_XBOX_MOCK=…` line to give Ping; then sign in, list
 //! the consoles and stream as with a real account:
@@ -16,6 +20,8 @@
 //! Listening on a LAN address lets a Ping on another computer use it.
 
 use std::net::SocketAddr;
+
+use std::time::Duration;
 
 use pingpong_xbox_mock::{Cloud, Config, MockConsole};
 
@@ -52,6 +58,24 @@ fn main() {
                     _ => return usage(),
                 }
             }
+            link
+            @ ("--delay" | "--loss" | "--rate" | "--queue" | "--outage-every" | "--outage") => {
+                let Some(v) = args.next().and_then(|v| v.parse::<f64>().ok()) else {
+                    return usage();
+                };
+                let ms = Duration::from_secs_f64(v / 1000.0);
+                let l = &mut config.link;
+                match link {
+                    "--delay" => l.delay = ms,
+                    "--loss" => l.video_loss = v.clamp(0.0, 100.0) as u8,
+                    "--rate" => l.rate_bps = (v * 1e6) as u64,
+                    "--queue" => l.queue = ms,
+                    "--outage-every" => {
+                        l.outages = Some((ms, l.outages.map_or(Duration::ZERO, |o| o.1)))
+                    }
+                    _ => l.outages = Some((l.outages.map_or(Duration::from_secs(2), |o| o.0), ms)),
+                }
+            }
             _ => return usage(),
         }
     }
@@ -84,7 +108,8 @@ fn main() {
 fn usage() {
     eprintln!(
         "usage: xbox-mock [--listen ADDR:PORT] [--awake] [--cloud gamepass|free|none] \
-         [--sign-in-polls N]"
+         [--sign-in-polls N] [--delay MS] [--loss PCT] [--rate MBPS] [--queue MS] \
+         [--outage-every MS --outage MS]"
     );
     std::process::exit(2);
 }

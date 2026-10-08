@@ -43,8 +43,10 @@ its bitrates; a console that cannot send 1440p sends what it can. The
 console chooses its codec (H.264), frame rate and bitrate. A bitrate set
 in *Settings > Video* (not Automatic) is the most it sends: on a slow
 connection, set one below what the connection carries (half of it is a
-safe start), and the picture stops running late when it moves. The
-statistics (Ctrl+Alt+Shift+S) work as for Pong.
+safe start), and the picture stops running late when it moves. On a Mac
+on Wi-Fi, AWDL makes the picture stutter every 20–30 s
+([usage.md](usage.md#when-something-does-not-work)). The statistics
+(Ctrl+Alt+Shift+S) work as for Pong.
 
 **Controllers**: up to four, as the console's first to fourth controllers,
 with rumble when the console sends it. The Xbox button is the Guide button.
@@ -125,7 +127,9 @@ pingctl xbox play "Fortnite"
 | Consoles | List, power on and off | The same; a sleeping console is woken before its stream, with "Waking…" said |
 | Cloud | Library, recent, queue | Library with search, queue with its estimated wait; free-to-play for an account without Game Pass |
 | Video decode | Chromium's WebRTC pipeline and jitter buffer, then a `<video>` element or WebGPU | Each frame to the platform's hardware decoder the moment its last packet arrives, presented as Pong's are (Metal, Direct3D 11, wgpu) |
-| Loss | Chromium decodes on through the gap | Moonlight's rule: nothing decoded until a keyframe, asked for at once both ways (RTCP PLI and the console's keyframe request) |
+| Loss | Chromium waits for retransmissions, the frames behind a gap held for up to seconds, then asks for a keyframe | Retransmissions waited for as long as they take on the link (20–250 ms, measured as they arrive); then Moonlight's rule: nothing decoded until a keyframe, asked for both ways (RTCP PLI and the console's keyframe request). A whole keyframe ends a wait at once |
+| Resolution | 720p or 1080p, by the device it says it is | Asked for by name once connected, as Microsoft's web client asks: 1440p, 1080p or 720p, by the size Ping shows the picture at |
+| Bitrate | A limit in its settings | The bitrate in Ping's settings, as a `b=AS` limit in the offer, as Better xCloud sets it; Automatic leaves it to the console |
 | Picture size | Says 1920×1080 to the console whatever the window, and as millimetres too | Says the size Ping shows it at: in pixels, and in millimetres as the display reports them (a Mac's), as Microsoft's web client says it |
 | Away from home | Teredo addresses turned into IPv4 candidates | The same, and Ping's own public address (STUN) offered, which Greenlight leaves to do |
 | Controllers | The browser's Gamepad API; rumble on xCloud | The platform's own (GameController, XInput, evdev), with rumble wherever the console sends it; four controllers announced as they come and go |
@@ -160,6 +164,12 @@ platform layer ([architecture.md](architecture.md)):
    pure Rust, on one UDP socket and one thread: H.264 and Opus in, and four
    data channels (input, control, message, chat). Input reports are the
    web client's binary format; the message and control channels are JSON.
+   str0m runs in RTP mode: it decrypts, asks for lost packets again (NACK)
+   and unwraps their retransmissions, and Ping makes the frames
+   (`pingpong_xbox::reassembly`). str0m is vendored with its NACK window
+   widened from 100 packets to 1,000 (`vendor/str0m`): at 100, a
+   retransmission came after its packet had left the window, and was
+   dropped.
 4. **The stream**: frames go from the connection's thread straight to the
    decoder, Opus to the player, and the window's keys, mouse and the
    controllers' states back the other way. The session is kept alive every
@@ -185,6 +195,13 @@ Without an Xbox or an account, against a mock of both (below):
   mouse's stick, its buttons the triggers), rumble back, a second
   controller, the console ending the stream, Ping ending it.
 - 40% video loss: the keyframe asked for both ways, the picture recovering.
+- Over the mock's link, with a delay, loss, a bandwidth and Wi-Fi's
+  outages ([benchmarks.md](benchmarks.md#xbox-a-lossy-link)): 25 ms each
+  way and 3% loss, 59 frames a second where before not one came through;
+  a 300 ms outage every 3 s with 1% loss, the longest stop 1 s and 50
+  frames a second, where before the picture stood still for up to 2.9 s.
+- The console is asked for the resolution the picture shows whole, and
+  held to a bitrate chosen in Settings (`b=AS`).
 - In Ping's own window on macOS (VideoToolbox, Metal) and on Linux
   (FFmpeg, wgpu), at 60 frames a second, with the input drawn by the mock
   in the picture. Windows: type-checked.
@@ -201,7 +218,9 @@ found two faults, since fixed: input pressed while a stream started could
 leave the stream without input to its end, and the keys were a controller
 by default. Keys sent as a keyboard's, Automatic's choice for a console
 and what Microsoft's web client sends, are not yet seen working on a
-console. What Greenlight does today is the reference, and the services
+console; nor are Command as the Windows key, the resolution asked for, the
+bitrate limit, or the handling of loss above on a real link (the log has
+what the console agreed to: "the console's answer"). What Greenlight does today is the reference, and the services
 change without notice. Anyone with a Microsoft account can check the sign-in, the
 console list and, where it is offered, a free-to-play cloud game, without
 a console.
@@ -219,6 +238,17 @@ with a tone. It rumbles when A is pressed.
 cargo run -p pingpong-xbox-mock --bin xbox-mock     # prints PING_XBOX_MOCK=http://127.0.0.1:47920
 PING_XBOX_MOCK=http://127.0.0.1:47920 PING_DATA_DIR=/tmp/ping-test pingctl xbox sign-in
 PING_XBOX_MOCK=http://127.0.0.1:47920 PING_DATA_DIR=/tmp/ping-test pingctl xbox stream "Mock Xbox" --stats
+```
+
+A poor link between the mock and Ping: `--delay MS` (each way), `--loss
+PCT` (video packets), `--rate MBPS` with `--queue MS`, and `--outage-every
+MS --outage MS` (nothing gets through, as Wi-Fi drops out). The `link`
+example streams over such a link and says how often and how long the
+picture stopped:
+
+```sh
+cargo run --release -p pingpong-xbox-mock --example link -- \
+    --secs 15 --delay 25 --rate 20 --loss 1 --outage-every 3000 --outage 300
 ```
 
 `PING_XBOX_MOCK` sends every request Ping makes for Xbox to the mock
