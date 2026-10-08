@@ -998,9 +998,8 @@ impl Computer {
 
     /// `out` as the model may have it: a screen clef finds personal
     /// information on goes to the model only if the person allows it this
-    /// turn; otherwise a blank screen of the same size takes its place (each
-    /// provider's loop wants a picture after every step).
-    fn screened(&mut self, mut out: Outcome) -> Result<Outcome, String> {
+    /// turn; otherwise the picture is not sent and the model is told to stop.
+    fn screened(&mut self, out: Outcome) -> Result<Outcome, String> {
         let Some(judge) = self.config.judge.clone() else {
             return Ok(out);
         };
@@ -1027,30 +1026,18 @@ impl Computer {
         };
         let what = crate::judge::describe_all(&kinds);
         tracing::info!(what, "the screen is withheld from the model");
-        let blank = Rgb {
-            width: shot.width,
-            height: shot.height,
-            data: vec![128; (shot.width * shot.height * 3) as usize],
-        };
-        out.shot = Some(Shot {
-            png: blank.png(),
-            width: shot.width,
-            height: shot.height,
-        });
         let why = if asked {
-            "and the person chose not to let you see it"
+            "the person chose not to let you see it"
         } else {
-            "and nobody is here to let you see it"
+            "nobody is here to let you see it"
         };
-        out.text = format!(
-            "{} The screen is withheld from you (the picture is blank): it shows {what}, {why}. \
-                Don't try to see it another way. Carry on if you can without it, or stop and \
-                say what you need.",
-            out.text
-        )
-        .trim_start()
-        .to_string();
-        Ok(out)
+        // An error, not a picture: a stand-in image would invite the model to
+        // carry on blind, and each provider's loop takes a tool error as text.
+        Err(format!(
+            "Stop here. The screen is withheld from you: it shows {what}, and {why}. Do not \
+                try to see it another way, and do not do anything more on this host. Tell \
+                the person what you were doing and what you need."
+        ))
     }
 
     /// Ask the person whether the model may see a screen showing `kinds`:
@@ -1640,7 +1627,7 @@ mod tests {
     }
 
     #[test]
-    fn a_screen_clef_cannot_clear_reaches_the_model_only_with_a_yes() {
+    fn a_screen_clef_cannot_clear_stops_the_model_unless_the_person_says_yes() {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::new(dir.path().to_path_buf());
         // No token: every check fails at once, as when Cloudflare is down.
@@ -1668,17 +1655,10 @@ mod tests {
                 height: 3,
             }),
         };
-        // Nobody to ask: a blank screen of the same size, and why.
-        let out = c.screened(outcome()).unwrap();
-        let shot = out.shot.unwrap();
-        assert_eq!((shot.width, shot.height), (4, 3));
-        assert_ne!(shot.png, screen.png());
-        assert!(
-            out.text.starts_with("OK The screen is withheld"),
-            "{}",
-            out.text
-        );
-        assert!(out.text.contains("nobody is here"), "{}", out.text);
+        // Nobody to ask: no picture at all, and an order to stop.
+        let e = c.screened(outcome()).err().unwrap();
+        assert!(e.starts_with("Stop here."), "{e}");
+        assert!(e.contains("nobody is here"), "{e}");
         // A person who says yes is asked once a turn.
         let control = dir.path().join("control");
         c.begin_turn(
