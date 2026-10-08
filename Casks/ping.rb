@@ -3,9 +3,9 @@
 cask "ping" do
   arch arm: "arm64", intel: "x86_64"
 
-  version "0.9.1"
-  sha256 arm:   "a26cdff2186ee115ba807990aa7d0b77399a00bc005bf8486424786fbd5c7563",
-         intel: "9bd8bd60b35b193c1890c75ed0665d2e97b806183305ebedd7718239a1fe5c7c"
+  version "0.9.2"
+  sha256 arm:   "10ff9b213f7561ac50a8520f29c65ae156011ba1d87053205d077202f63333fb",
+         intel: "71832af1f6089f87421c6e0a21c10fbee0072555dc6f2927af5fa08f0aede893"
 
   url "https://github.com/mihaicristianfarcas/pingpong/releases/download/v#{version}/Ping-#{version}-macos-#{arch}.zip"
   name "Ping"
