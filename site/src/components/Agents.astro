@@ -1,6 +1,6 @@
 ---
 // AI agents on your hosts (docs/ai-agents.md): the real windows, what you
-// keep control of, and the host's own rules.
+// keep control of, clef's screen checks, and the host's own rules.
 import { Image } from 'astro:assets';
 import { onGitHub } from '../lib/repo';
 import ask from '../assets/shots/ping-ask.webp';
@@ -10,6 +10,7 @@ const rules = [
   ['A person always wins', 'Starting a stream takes over from an agent.'],
   ['Secure screens are a person’s', 'At a sign-in or lock screen, or a UAC prompt, its input is held.'],
   ['Someone at the host comes first', 'Input at the host holds the agent until 10 s after it stops.'],
+  ['Only what it may do', 'Each agent has its own permissions; one not allowed to act unwatched waits for someone to watch.'],
 ];
 ---
 
@@ -55,6 +56,15 @@ const rules = [
         </p>
       </li>
       <li>
+        <h3>Cloudflare’s clef checks the screen</h3>
+        <p>
+          Turn on <a href={onGitHub('docs/ai-agents.md#screen-checks-cloudflare-clef')}>screen checks</a> and clef
+          looks first: a click that deletes, spends, sends or installs waits for your go-ahead, and so does typing into
+          a password field. A screen showing personal information reaches the model only if you agree; say no, and it
+          gets no picture and is told to stop.
+        </p>
+      </li>
+      <li>
         <h3>Your model, or your agent</h3>
         <p>
           Claude Code or Codex on your plan, an Anthropic, OpenAI or OpenRouter key, or a local model. Or give any MCP
@@ -89,7 +99,7 @@ const rules = [
 
   .points {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 40px;
     margin: clamp(48px, 6vw, 72px) 0 0;
     padding: 0;
@@ -124,7 +134,7 @@ const rules = [
 
   ol {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 24px;
     margin: 24px 0;
     padding: 0;
