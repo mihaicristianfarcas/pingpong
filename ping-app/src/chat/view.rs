@@ -671,8 +671,8 @@ impl PingApp {
                     .gap(px(5.0))
                     .rounded(px(Radius::CONTROL))
                     .text_size(px(12.0))
-                    .text_color(if ask { t.ink(Ink::ACCENT) } else { t.tertiary })
-                    .when(ask, |d| d.bg(Ink::ACCENT.alpha(0.12)))
+                    .text_color(if ask { t.accent } else { t.tertiary })
+                    .when(ask, |d| d.bg(t.accent.alpha(0.12)))
                     .when(!busy, |d| {
                         d.cursor_pointer()
                             .hover(|s| s.bg(t.hover))
@@ -702,7 +702,7 @@ impl PingApp {
                     .child(icon(
                         IconName::Hand,
                         13.0,
-                        if ask { t.ink(Ink::ACCENT) } else { t.tertiary },
+                        if ask { t.accent } else { t.tertiary },
                     ))
                     .when(approvals != Approvals::Risky, |d| {
                         d.child(if ask { "Every step" } else { "Off" })

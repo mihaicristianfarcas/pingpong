@@ -22,7 +22,7 @@ pub(super) fn marker(
     ok: bool,
     t: Theme,
 ) -> impl IntoElement {
-    let c = t.ink(if ok { Ink::ACCENT } else { Ink::ATTENTION });
+    let c = t.ink(if ok { t.accent } else { Ink::ATTENTION });
     let (x, y) = (
         p.0.clamp(0.0, 1.0) * w - size / 2.0,
         p.1.clamp(0.0, 1.0) * h - size / 2.0,
@@ -69,7 +69,7 @@ pub(super) fn plan_card(plan: &[PlanStep], t: Theme) -> impl IntoElement {
                     PlanStatus::Done => {
                         icon(IconName::CheckCircle, 14.0, t.ink(Ink::FRESH)).into_any_element()
                     }
-                    PlanStatus::InProgress => pingpong_ui::live_dot(Ink::ACCENT).into_any_element(),
+                    PlanStatus::InProgress => pingpong_ui::live_dot(t.accent).into_any_element(),
                     PlanStatus::Pending => div()
                         .size(px(10.0))
                         .rounded_full()
@@ -351,8 +351,8 @@ impl PingApp {
                         .rounded(px(Radius::CHIP))
                         .text_size(px(Type::META))
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(t.ink(Ink::ACCENT))
-                        .bg(t.ink(Ink::ACCENT).alpha(0.12))
+                        .text_color(t.accent)
+                        .bg(t.accent.alpha(0.12))
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(c) = this.chat_mut(id) {
@@ -386,11 +386,7 @@ impl PingApp {
                     .rounded(px(Radius::CONTROL))
                     .overflow_hidden()
                     .border_2()
-                    .border_color(if on {
-                        t.ink(Ink::ACCENT)
-                    } else {
-                        t.card_stroke
-                    })
+                    .border_color(if on { t.accent } else { t.card_stroke })
                     .bg(t.primary.alpha(0.04))
                     .cursor_pointer()
                     .when(!on, |d| d.hover(|st| st.border_color(t.primary.alpha(0.3))))

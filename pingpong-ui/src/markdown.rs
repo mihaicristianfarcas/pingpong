@@ -465,10 +465,10 @@ fn render_inline(
                 h.background_color = Some(t.primary.alpha(if t.dark { 0.07 } else { 0.06 }).into());
             }
             if m.link {
-                h.color = Some(t.ink(crate::Ink::ACCENT).into());
+                h.color = Some(t.accent.into());
                 h.underline = Some(UnderlineStyle {
                     thickness: px(1.0),
-                    color: Some(t.ink(crate::Ink::ACCENT).alpha(0.45).into()),
+                    color: Some(t.accent.alpha(0.45).into()),
                     wavy: false,
                 });
             }

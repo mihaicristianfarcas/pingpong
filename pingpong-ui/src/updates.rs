@@ -13,7 +13,7 @@ use pingpong_update::{Build, Channel, Install, Program, Status, Update};
 
 use crate::controls::{button, select, setting, spinner, Choice};
 use crate::icon::{icon, IconName};
-use crate::theme::{Ink, Radius, Theme, Type};
+use crate::theme::{Radius, Theme, Type};
 
 /// Which app asks, and which build of it this is.
 #[derive(Debug, Clone, Copy)]
@@ -59,15 +59,15 @@ pub fn notice(app: &UpdateApp, status: &Status, t: Theme) -> Option<Stateful<gpu
             .items_center()
             .gap(px(7.0))
             .rounded(px(Radius::ROW))
-            .bg(Ink::ACCENT.alpha(if t.dark { 0.12 } else { 0.10 }))
+            .bg(t.accent.alpha(if t.dark { 0.12 } else { 0.10 }))
             .border_1()
-            .border_color(Ink::ACCENT.alpha(0.30))
+            .border_color(t.accent.alpha(0.30))
             .text_size(px(Type::META + 0.5))
             .font_weight(FontWeight::MEDIUM)
             .text_color(t.primary.alpha(0.9))
             .cursor_pointer()
-            .hover(|s| s.bg(Ink::ACCENT.alpha(0.18)))
-            .child(icon(IconName::Download, 13.0, t.ink(Ink::ACCENT)))
+            .hover(|s| s.bg(t.accent.alpha(0.18)))
+            .child(icon(IconName::Download, 13.0, t.accent))
             .child(
                 div()
                     .flex_1()
@@ -230,7 +230,7 @@ fn installing(app: &UpdateApp, status: &Status, install: &Install, t: Theme) -> 
                             .h_full()
                             .w(gpui::relative(fraction))
                             .rounded(px(2.0))
-                            .bg(t.ink(Ink::ACCENT)),
+                            .bg(t.accent),
                     ),
             )
         }

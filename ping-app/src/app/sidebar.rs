@@ -13,9 +13,9 @@ pub fn brand_mark(size: f32) -> impl IntoElement {
         .flex_none()
         .size(px(size))
         .rounded(px(size / 2.0))
-        .bg(Ink::ACCENT)
+        .bg(Ink::BALL)
         .shadow(vec![gpui::BoxShadow {
-            color: Ink::ACCENT.alpha(0.45).into(),
+            color: Ink::BALL.alpha(0.45).into(),
             offset: gpui::point(px(0.0), px(0.0)),
             blur_radius: px(size * 0.6),
             spread_radius: px(0.0),

@@ -62,10 +62,10 @@ impl PongApp {
             div()
                 .px(px(6.0))
                 .rounded(px(8.0))
-                .bg(Ink::ACCENT)
+                .bg(t.accent)
                 .text_size(px(Type::META))
                 .font_weight(FontWeight::SEMIBOLD)
-                .text_color(pingpong_ui::rgba(1.0, 1.0, 1.0, 1.0))
+                .text_color(t.on_accent)
                 .child(pending.to_string())
                 .into_any_element()
         });
