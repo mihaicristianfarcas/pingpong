@@ -119,7 +119,7 @@ Each program writes its own, and never a PIN, password, key or token:
 | Ping | `~/Library/Logs/Ping/ping.log` (macOS), `%LOCALAPPDATA%\Ping\Logs\ping.log` (Windows), `~/.local/state/ping/ping.log` (Linux); the previous two launches' beside it |
 | Pong's window | the same places, `Pong/pong-app.log` |
 | Pong (the host) | `logs/pong.log.DATE` in its data folder (`C:\ProgramData\Pong\logs` for the service) |
-| `ping`, `ping-agent`, `Ping mcp` | stderr |
+| `pingctl`, `ping-agent`, `Ping mcp` | stderr |
 
 `RUST_LOG` narrows or widens any of them (for example
 `RUST_LOG=info,ping_core::input=trace` logs each input event sent).
@@ -159,6 +159,8 @@ in points, to see a long page whole), `menu=NAME`, `open=ID` (the select
 with that id, open: `fps`, `codec`), `unpair=NAME`, `stream=NAME`,
 `desktop` (that stream's page, while it runs), `stop-after=SECS`,
 `wait=SECS`, `close-login`, `vanish-login`, `step=N`, `panel-end`,
+`xbox` (the Xbox page), `xbox-sign-in` (its sign-in sheet), `xbox=NAME`
+(stream that console; with `PING_XBOX_MOCK`, the mock's account),
 `update` and `update-main` (the update check says there is a newer release,
 or newer commits on main), `installs` (this copy installs updates, as a
 release does), `installing` and `install-failed` (an installation under

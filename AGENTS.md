@@ -31,7 +31,9 @@ own.
   and write the reason down. Apollo is a fork of Sunshine: for what it adds
   (the virtual display and SudoVDA, client permissions, clipboard sync),
   read Apollo; for everything else, Sunshine's current source, which is the
-  one that is maintained.
+  one that is maintained. For streaming from an Xbox, Greenlight
+  (`unknownskl/greenlight`, MIT) is the reference in the same way: what
+  Microsoft's services and the console expect, named by its source file.
 - **Measure, then change.** Claims about performance or platform behaviour
   come with numbers and the conditions they were taken under (in the
   comment, the commit and, for user-visible results,

@@ -4,6 +4,7 @@ pub mod cursors;
 pub mod gamepad;
 mod glass;
 mod hid;
+mod power;
 pub mod render;
 pub mod text;
 pub mod window;
@@ -19,12 +20,11 @@ use objc2_quartz_core::CAMetalLayer;
 use parking_lot::Mutex;
 use pingpong_decode::videotoolbox::{PictureFormat, VtDecoder};
 use pingpong_decode::VideoDecoder;
-use pingpong_transport::Identity;
 
 use crate::pointer::PointerState;
 pub use crate::session::{EndCallback, SessionOptions};
 use crate::stats::StatsCollector;
-use crate::stream::{Codec, Event, FrameTiming, HostTarget, Stream, VideoOut};
+use crate::stream::{Codec, Event, FrameTiming, Source, Stream, VideoOut};
 use render::RenderShared;
 use window::{Handler, Window};
 
@@ -48,6 +48,19 @@ pub fn display_refresh_mhz() -> Option<u32> {
     let mode = CGDisplayCopyDisplayMode(CGMainDisplayID())?;
     let hz = CGDisplayMode::refresh_rate(Some(&mode));
     (hz > 1.0).then(|| (hz * 1000.0).round() as u32)
+}
+
+/// How wide one of the main display's pixels is, in millimetres, as the
+/// display reports its size (EDID); `None` when it does not. Any thread.
+pub fn millimetres_per_pixel() -> Option<f64> {
+    use objc2_core_graphics::{
+        CGDisplayCopyDisplayMode, CGDisplayMode, CGDisplayScreenSize, CGMainDisplayID,
+    };
+    let display = CGMainDisplayID();
+    let mode = CGDisplayCopyDisplayMode(display)?;
+    let pixels = CGDisplayMode::pixel_width(Some(&mode));
+    let mm = CGDisplayScreenSize(display).width;
+    (pixels > 0 && mm > 0.0).then(|| mm / pixels as f64)
 }
 
 struct SendLayer(Retained<CAMetalLayer>);
@@ -108,6 +121,8 @@ pub struct Session {
     stream: Option<Stream>,
     render: Arc<RenderShared>,
     render_thread: Option<JoinHandle<()>>,
+    /// Says when Low Power Mode slows the display.
+    power: Option<power::PowerWatch>,
     /// Keeps the display awake (and the app out of App Nap) while streaming:
     /// someone playing with a controller touches neither keyboard nor mouse.
     awake: Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
@@ -116,8 +131,7 @@ pub struct Session {
 impl Session {
     /// Main thread.
     pub fn open(
-        identity: Arc<Identity>,
-        host: HostTarget,
+        source: Source,
         opts: SessionOptions,
         on_end: EndCallback,
     ) -> Result<Session, String> {
@@ -131,15 +145,23 @@ impl Session {
         let stats = Arc::new(StatsCollector::default());
         let render = RenderShared::new(stats.clone(), s.vsync, s.frame_pacing);
         render.set_overlay(opts.show_stats);
-        render.set_status(Some(format!("Connecting to {}…", host.name)));
+        render.set_status(Some(format!("Connecting to {}…", source.name())));
         let window = Window::open(
             mtm,
             render.clone(),
             opts.fullscreen,
             (s.width as u32, s.height as u32),
-            &format!("Ping — {}", host.name),
+            &format!("Ping — {}", source.name()),
         );
         let scale = window.window.backingScaleFactor();
+        let power = power::PowerWatch::start(
+            render.clone(),
+            window
+                .window
+                .screen()
+                .map_or(0.0, |s| s.minimumRefreshInterval()),
+            opts.connection_warnings,
+        );
 
         let cursors = cursors::load(mtm, scale);
         let layer = SendLayer(window.layer.clone());
@@ -159,8 +181,11 @@ impl Session {
             s.width as u32,
             s.height as u32,
         )));
+        // On an Xbox, Command is the Windows key, as a keyboard plugged into
+        // the console has it: the guide, and with X the power menu.
+        let xbox = matches!(source, Source::Xbox(_));
         let forward_command = Arc::new(std::sync::atomic::AtomicBool::new(
-            opts.command_is_windows_key,
+            opts.command_is_windows_key || xbox,
         ));
         let (rumble_tx, rumble_rx) = gamepad::Gamepads::rumble_channel();
         let events: crate::stream::EventSink = {
@@ -217,7 +242,7 @@ impl Session {
             decoder: None,
             render: render.clone(),
         });
-        let stream = Stream::start(identity, host, s, video, events, stats)?;
+        let stream = Stream::open(source, s, video, events, stats)?;
 
         let quit = on_end.clone();
         let mut handler = Handler::new(
@@ -228,6 +253,7 @@ impl Session {
             Box::new(move || quit(None)),
         );
         handler.pixels_per_point = scale;
+        handler.windows_key = xbox.then(crate::keyboard::WindowsKeyWait::default);
         if opts.mute_in_background {
             let controls = stream.controls();
             handler.on_focus = Some(Box::new(move |focused| controls.set_audio_muted(!focused)));
@@ -266,6 +292,7 @@ impl Session {
             stream: Some(stream),
             render,
             render_thread: Some(render_thread),
+            power: Some(power),
             awake: Some(awake),
         })
     }
@@ -277,7 +304,7 @@ impl Session {
 
     /// For adding paths to the host while connecting (discovery).
     pub fn candidates(&self) -> Option<crate::stream::Candidates> {
-        self.stream.as_ref().map(|s| s.candidates())
+        self.stream.as_ref().and_then(|s| s.candidates())
     }
 
     /// The input channel, for scripted input (tests) and the app's own
@@ -336,6 +363,7 @@ impl Session {
         if let Some(mut s) = self.stream.take() {
             s.stop();
         }
+        drop(self.power.take());
         self.render.stop();
         if let Some(t) = self.render_thread.take() {
             let _ = t.join();

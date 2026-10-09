@@ -20,6 +20,9 @@ use super::{Page, PingApp};
 /// sample session), `chat=MESSAGE` a message to the agent session (a new one
 /// on the first agent host; each waits for the turn before it), `stream=NAME` streams from that host,
 /// `stop-after=SECS` ends a stream after that long as the user would,
+/// `xbox` the Xbox page and `xbox-sign-in` its sign-in sheet (with
+/// `PING_XBOX_MOCK`, a mock console's account: `xbox-mock`), `xbox=NAME`
+/// streams from that console,
 /// `update` and `update-main` make the update check say there is a newer
 /// release, or newer commits on main, `installs` makes this copy install
 /// updates (as a release does), `installing` and `install-failed` show an
@@ -79,7 +82,11 @@ impl PingApp {
             return;
         }
         if !self.demo.actions.is_empty()
-            && !self.demo.actions.iter().any(|a| a.starts_with("stream="))
+            && !self
+                .demo
+                .actions
+                .iter()
+                .any(|a| a.starts_with("stream=") || a.starts_with("xbox="))
         {
             // An occluded window is not redrawn: bring it forward.
             window.activate_window();
@@ -171,6 +178,39 @@ impl PingApp {
             if action == "login" {
                 if let Some(id) = self.agents.chats.first().map(|c| c.id) {
                     self.chat_log_in(id, cx);
+                }
+                continue;
+            }
+            if action == "xbox" {
+                self.page = Page::Xbox;
+                continue;
+            }
+            if action == "xbox-sign-in" {
+                self.page = Page::Xbox;
+                self.xbox.start_sign_in();
+                continue;
+            }
+            if let Some(name) = action.strip_prefix("xbox=") {
+                let console = match &self.xbox.consoles {
+                    crate::xbox::Fetch::Done(list) => list.iter().find(|c| c.name == name).cloned(),
+                    _ => None,
+                };
+                match console {
+                    Some(c) => self.stream_xbox(
+                        ping_core::xbox::Target::Console {
+                            id: c.id,
+                            name: c.name,
+                        },
+                        window,
+                        cx,
+                    ),
+                    None => {
+                        // Not listed yet: open the page (which lists them)
+                        // and try again next tick.
+                        self.page = Page::Xbox;
+                        self.xbox.opened();
+                        self.demo.actions.push(action);
+                    }
                 }
                 continue;
             }
@@ -273,7 +313,11 @@ impl PingApp {
             return;
         }
         if self.demo.stop_after.is_some()
-            && self.demo.actions.iter().any(|a| a.starts_with("stream="))
+            && self
+                .demo
+                .actions
+                .iter()
+                .any(|a| a.starts_with("stream=") || a.starts_with("xbox="))
         {
             return;
         }

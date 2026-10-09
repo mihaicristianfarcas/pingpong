@@ -1,0 +1,266 @@
+//! `pingctl xbox`: a console of the account's, or a game in Xbox Cloud Gaming.
+//!
+//!   pingctl xbox                       who is signed in
+//!   pingctl xbox sign-in               sign in with a Microsoft account (a code to type)
+//!   pingctl xbox sign-out
+//!   pingctl xbox consoles              the account's consoles
+//!   pingctl xbox wake NAME | off NAME  turn a console on, or off
+//!   pingctl xbox games                 the cloud games the account may play
+//!   pingctl xbox friends               the account's friends, and what they play
+//!   pingctl xbox stream CONSOLE [--controller | --shooter | --keyboard] [stream flags]
+//!   pingctl xbox play GAME [--controller | --shooter | --keyboard] [--region NAME] [stream flags]
+//!
+//! A console or game is named by its name (any case) or its id. A console
+//! gets a keyboard and a mouse, and a cloud game the keys as its first
+//! controller (`KeyboardMouse::Auto`). `--controller` makes the keys the
+//! first controller anywhere, `--shooter` the keys and the mouse (WASD
+//! moves, the mouse aims, its buttons fire), and `--keyboard` sends a
+//! keyboard and a mouse anywhere, for games that take them. The
+//! stream flags are `pingctl stream`'s; the console chooses its own codec, rate
+//! and bitrate. `PING_XBOX_MOCK=URL` uses a mock console (`xbox-mock`).
+
+use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
+
+use ping_core::xbox::account::{self, AuthError, Command, Console};
+use ping_core::xbox::{KeyboardMouse, Target, XboxSource};
+
+use crate::stream::{self, What};
+use crate::{fail, usage};
+
+pub fn run(args: &[String]) -> ExitCode {
+    match args.first().map(String::as_str) {
+        None => status(),
+        Some("sign-in") => sign_in(),
+        Some("sign-out") => match account::sign_out() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => fail(e),
+        },
+        Some("consoles") => consoles(),
+        Some("wake") | Some("off") => match args.get(1) {
+            Some(name) => power(name, args[0] == "wake"),
+            None => usage(),
+        },
+        Some("games") => games(),
+        Some("friends") => friends(),
+        Some("stream") => match args.get(1) {
+            Some(name) => stream_console(name, &args[2..]),
+            None => usage(),
+        },
+        Some("play") => match args.get(1) {
+            Some(name) => play(name, &args[2..]),
+            None => usage(),
+        },
+        _ => usage(),
+    }
+}
+
+fn auth_fail(e: AuthError) -> ExitCode {
+    match e {
+        AuthError::SignedOut => fail("Not signed in to Xbox: run `pingctl xbox sign-in`."),
+        e => fail(e),
+    }
+}
+
+fn status() -> ExitCode {
+    match account::signed_in() {
+        Some(gamertag) => println!("Signed in to Xbox as {gamertag}."),
+        None => println!("Not signed in to Xbox: run `pingctl xbox sign-in`."),
+    }
+    ExitCode::SUCCESS
+}
+
+fn sign_in() -> ExitCode {
+    let code = match account::start_sign_in() {
+        Ok(c) => c,
+        Err(e) => return auth_fail(e),
+    };
+    eprintln!(
+        "\nOn any device, open {} and enter this code:\n\n    {}\n\nWaiting…",
+        code.verification_uri, code.user_code
+    );
+    match account::finish_sign_in(&code, &AtomicBool::new(false)) {
+        Ok(gamertag) => {
+            println!("Signed in to Xbox as {gamertag}.");
+            ExitCode::SUCCESS
+        }
+        Err(e) => auth_fail(e),
+    }
+}
+
+fn consoles() -> ExitCode {
+    match account::consoles() {
+        Ok(list) if list.is_empty() => {
+            println!("This account has no consoles.");
+            ExitCode::SUCCESS
+        }
+        Ok(list) => {
+            for c in list {
+                let note = c
+                    .cannot_stream()
+                    .map(|n| format!("\t{n}"))
+                    .unwrap_or_default();
+                println!("{}\t{}\t{}\t{}{note}", c.name, c.model(), c.state(), c.id);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => auth_fail(e),
+    }
+}
+
+fn find_console(name: &str) -> Result<Console, ExitCode> {
+    let list = account::consoles().map_err(auth_fail)?;
+    list.into_iter()
+        .find(|c| c.name.eq_ignore_ascii_case(name) || c.id.eq_ignore_ascii_case(name))
+        .ok_or_else(|| {
+            fail(format!(
+                "No console named {name}; see `pingctl xbox consoles`."
+            ))
+        })
+}
+
+fn power(name: &str, on: bool) -> ExitCode {
+    let console = match find_console(name) {
+        Ok(c) => c,
+        Err(code) => return code,
+    };
+    let command = if on {
+        Command::WakeUp
+    } else {
+        Command::TurnOff
+    };
+    match account::command(&console.id, command) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => auth_fail(e),
+    }
+}
+
+fn games() -> ExitCode {
+    match account::cloud_library(true) {
+        Ok(None) => fail("Xbox Cloud Gaming is not offered to this account here."),
+        Ok(Some(library)) => {
+            if !library.game_pass {
+                eprintln!("Without Game Pass Ultimate: free-to-play games only.");
+            }
+            for g in library.games {
+                println!("{}\t{}\t{}", g.name, g.publisher, g.title_id);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => auth_fail(e),
+    }
+}
+
+fn friends() -> ExitCode {
+    match account::friends() {
+        Ok(list) => {
+            for f in list {
+                let state = if f.online { "online" } else { "offline" };
+                println!("{}\t{state}\t{}", f.name, f.activity);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => auth_fail(e),
+    }
+}
+
+/// What `pingctl xbox stream` and `play` take beyond `pingctl stream`'s
+/// flags.
+struct XboxFlags {
+    keyboard: KeyboardMouse,
+    region: Option<String>,
+    /// `--mbps N`: the most the console may send.
+    max_kbps: Option<u32>,
+    /// The rest, `pingctl stream`'s (`--mbps` among them).
+    rest: Vec<String>,
+}
+
+/// `--controller`, `--shooter`, `--keyboard` and `--region NAME` are ours;
+/// `--mbps N` is `pingctl stream`'s, and here also the most the console
+/// may send; the rest are `pingctl stream`'s.
+fn split_flags(flags: &[String]) -> XboxFlags {
+    let mut x = XboxFlags {
+        keyboard: KeyboardMouse::Auto,
+        region: None,
+        max_kbps: None,
+        rest: Vec::new(),
+    };
+    let mut it = flags.iter();
+    while let Some(f) = it.next() {
+        match f.as_str() {
+            "--controller" => x.keyboard = KeyboardMouse::Controller,
+            "--shooter" => x.keyboard = KeyboardMouse::Shooter,
+            "--keyboard" => x.keyboard = KeyboardMouse::Native,
+            "--region" => x.region = it.next().cloned(),
+            "--mbps" => {
+                let v = it.next().cloned();
+                x.max_kbps = v
+                    .as_deref()
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .filter(|m| *m > 0.0)
+                    .map(|m| (m * 1000.0) as u32);
+                x.rest.push(f.clone());
+                x.rest.extend(v);
+            }
+            _ => x.rest.push(f.clone()),
+        }
+    }
+    x
+}
+
+fn stream_console(name: &str, flags: &[String]) -> ExitCode {
+    let console = match find_console(name) {
+        Ok(c) => c,
+        Err(code) => return code,
+    };
+    let x = split_flags(flags);
+    stream::run(
+        What::Xbox(XboxSource {
+            target: Target::Console {
+                id: console.id,
+                name: console.name,
+            },
+            keyboard_mouse: x.keyboard,
+            region: x.region,
+            max_kbps: x.max_kbps,
+        }),
+        stream::request(&x.rest),
+    )
+}
+
+fn play(name: &str, flags: &[String]) -> ExitCode {
+    let library = match account::cloud_library(false) {
+        Ok(Some(l)) => l,
+        Ok(None) => return fail("Xbox Cloud Gaming is not offered to this account here."),
+        Err(e) => return auth_fail(e),
+    };
+    let wanted = name.to_lowercase();
+    let game = library
+        .games
+        .iter()
+        .find(|g| g.name.to_lowercase() == wanted || g.title_id.eq_ignore_ascii_case(name))
+        .or_else(|| {
+            library
+                .games
+                .iter()
+                .find(|g| g.name.to_lowercase().contains(&wanted))
+        });
+    let Some(game) = game else {
+        return fail(format!(
+            "No cloud game named {name}; see `pingctl xbox games`."
+        ));
+    };
+    let x = split_flags(flags);
+    stream::run(
+        What::Xbox(XboxSource {
+            target: Target::Cloud {
+                title_id: game.title_id.clone(),
+                name: game.name.clone(),
+            },
+            keyboard_mouse: x.keyboard,
+            region: x.region,
+            max_kbps: x.max_kbps,
+        }),
+        stream::request(&x.rest),
+    )
+}

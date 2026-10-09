@@ -8,6 +8,7 @@ use pingpong_ui::{button, rows, section, select, setting, slider, switch, Choice
 
 use crate::app::{page_body, toolbar, PingApp};
 use crate::prefs::{parse_size, Prefs, FRAME_RATES, RESOLUTIONS};
+use ping_core::xbox::KeyboardMouse;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -396,7 +397,8 @@ impl PingApp {
                             "Bitrate",
                             Some(
                                 "More is sharper in motion, if the network \
-                                    carries it."
+                                    carries it. An Xbox sends at most this; \
+                                    with Automatic it chooses."
                                     .into(),
                             ),
                             bitrate,
@@ -414,7 +416,8 @@ impl PingApp {
                         "vsync",
                         "V-Sync",
                         "Present frames on the display's refresh. Off lowers latency \
-                            slightly and may tear.",
+                            and may tear; off by itself while a Mac's Low Power Mode \
+                            slows the display.",
                         |p| p.vsync,
                         |p, v| p.vsync = v,
                         true,
@@ -449,7 +452,9 @@ impl PingApp {
                     self.toggle(
                         "warnings",
                         "Connection warnings",
-                        "A note in the corner while the network loses frames or lags.",
+                        "A note in the corner while the network loses frames or lags (from \
+                            an Xbox, how far behind), or a Mac's Low Power Mode slows the \
+                            display.",
                         |p| p.connection_warnings,
                         |p, v| p.connection_warnings = v,
                         true,
@@ -569,13 +574,65 @@ impl PingApp {
             .into_any_element()
     }
 
+    /// What the keyboard and mouse are in an Xbox stream; the line under it
+    /// says what the chosen one does.
+    fn xbox_keyboard_mouse(&self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
+        const MODES: [KeyboardMouse; 4] = [
+            KeyboardMouse::Auto,
+            KeyboardMouse::Controller,
+            KeyboardMouse::Shooter,
+            KeyboardMouse::Native,
+        ];
+        let mode = self.prefs.xbox_input;
+        let detail = match mode {
+            KeyboardMouse::Auto => {
+                "In an Xbox stream, a console gets a keyboard and a mouse, as from Microsoft's \
+                    own app; a cloud game, which mostly takes neither, gets the keys as a \
+                    controller (as Controller does)."
+            }
+            KeyboardMouse::Controller => {
+                "In an Xbox stream, keys are a controller: Enter or Space A, Backspace or Esc \
+                    B, the arrows the D-pad, [ ] the bumpers, - = the triggers, M Menu, V \
+                    View, N the Xbox button."
+            }
+            KeyboardMouse::Shooter => {
+                "In an Xbox stream, keys and mouse are a controller: WASD moves, the mouse \
+                    aims, left click is RT, right click LT, Space A, R X, Ctrl B, V Y, C and Q \
+                    the bumpers, Shift and F the stick clicks, Enter Menu, Tab View, ` the \
+                    Xbox button."
+            }
+            KeyboardMouse::Native => {
+                "In an Xbox stream, a console and a cloud game alike get a keyboard and a \
+                    mouse, for games that take them."
+            }
+        };
+        let control = select(
+            "xbox-keyboard-mouse",
+            vec!["Automatic", "Controller", "Shooter", "Keyboard and mouse"],
+            MODES.iter().position(|&m| m == mode),
+            t,
+        )
+        .width(190.0)
+        .on_select(self.prefs_setter(cx, |p, i: usize| {
+            p.xbox_input = MODES[i];
+        }));
+        setting(
+            "Keyboard and mouse on an Xbox".to_string(),
+            Some(detail.into()),
+            control,
+            t,
+        )
+        .into_any_element()
+    }
+
     fn input(&mut self, t: Theme, cx: &mut Context<Self>) -> AnyElement {
         let mut first = Vec::new();
         if cfg!(target_os = "macos") {
             first.push(self.toggle(
                 "cmd-win",
                 "Use ⌘ as the Windows key",
-                "Command reaches a Windows host as the Windows key; Control stays Control.",
+                "Command reaches a Windows host as the Windows key; Control stays Control. \
+                    An Xbox always gets it so: the guide, and with X the power menu.",
                 |p| p.cmd_is_win,
                 |p, v| p.cmd_is_win = v,
                 true,
@@ -625,6 +682,7 @@ impl PingApp {
             t,
             cx,
         ));
+        first.push(self.xbox_keyboard_mouse(t, cx));
         let shortcuts = [
             ("Q", "Stop streaming"),
             ("S", "Show or hide statistics"),

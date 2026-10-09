@@ -305,6 +305,33 @@ pub fn host_target(dir: &Path, known: &KnownHost, wan_only: bool) -> Result<Host
     })
 }
 
+/// Stream from an Xbox, in the same window and pipeline as a Pong host's
+/// stream; as [`start`]. Only the size, audio, mouse and display options of
+/// `request` apply: the console chooses its codec, rate and bitrate.
+pub fn start_xbox(
+    source: crate::xbox::XboxSource,
+    request: &StreamRequest,
+    on_end: EndCallback,
+) -> Result<Session, String> {
+    let request = StreamRequest {
+        // The console's sound is stereo.
+        audio_channels: request.audio_channels.min(2),
+        ..request.clone()
+    };
+    #[cfg(target_os = "linux")]
+    {
+        crate::linux::spawn_xbox(&source, &request, on_end)
+    }
+    #[cfg(any(target_os = "macos", windows))]
+    {
+        Session::open(
+            crate::stream::Source::Xbox(source),
+            request.options(),
+            on_end,
+        )
+    }
+}
+
 /// Stream from the paired host `key_or_name` (its X25519 key or its name).
 /// On a Mac, call on the main thread. `on_end` fires once when the stream
 /// ends (see [`EndCallback`]); the caller then closes the session.
@@ -342,7 +369,11 @@ pub fn start(
     }
     let identity = Arc::new(crate::store::identity(&dir)?);
     let host_id = host.public.short_id();
-    let session = Session::open(identity, host, request.options(), on_end)?;
+    let session = Session::open(
+        crate::stream::Source::Pong { identity, host },
+        request.options(),
+        on_end,
+    )?;
     // Look for the host on the local network meanwhile, as Moonlight's host
     // list does, and race that path too.
     if let Some(candidates) = session

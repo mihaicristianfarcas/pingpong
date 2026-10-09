@@ -141,6 +141,7 @@ fn ours(name: &str) -> bool {
             .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
     };
     lower == "ping.exe"
+        || lower == "pingctl.exe"
         || lower == "ffmpeg license.txt"
         || dll("avcodec-")
         || dll("avutil-")
@@ -396,6 +397,7 @@ mod tests {
     fn only_pings_own_files_are_renamed_or_deleted() {
         for name in [
             "Ping.exe",
+            "pingctl.exe",
             "avcodec-62.dll",
             "AVUTIL-60.dll",
             "swresample-6.dll",

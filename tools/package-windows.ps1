@@ -30,7 +30,7 @@ try {
     # cargo's progress on stderr is not an error (Windows PowerShell makes
     # it one under 'Stop').
     $ErrorActionPreference = 'Continue'
-    cargo build --release -p ping-app -p pong -p pong-app
+    cargo build --release -p ping-app -p ping-core -p pong -p pong-app
     $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed ($LASTEXITCODE)" }
 
@@ -56,6 +56,8 @@ try {
     zip "Ping-$version-windows-x86_64" {
         param($dir)
         Copy-Item (Join-Path $release 'ping-app.exe') (Join-Path $dir 'Ping.exe')
+        # The command line, beside Ping.exe and the DLLs it needs too.
+        Copy-Item (Join-Path $release 'pingctl.exe') $dir
         # The DLLs tools\build-ping-win.ps1 puts beside Ping.exe: avcodec,
         # avutil, and swresample (some decoders).
         Get-ChildItem (Join-Path $FFmpeg 'bin') -Filter '*.dll' |
@@ -69,6 +71,7 @@ try {
     zip "Pong-$version-windows-x86_64" {
         param($dir)
         Copy-Item (Join-Path $release 'pong.exe') $dir
+        Copy-Item (Join-Path $release 'pongctl.exe') $dir
         Copy-Item (Join-Path $release 'pong-app.exe') (Join-Path $dir 'Pong Control.exe')
         Copy-Item (Join-Path $PSScriptRoot 'host-deploy.ps1') (Join-Path $dir 'install.ps1')
         # What a person double-clicks: install.ps1 asks Windows for an

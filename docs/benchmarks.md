@@ -30,9 +30,9 @@ Unless a section says otherwise:
   ```
 
 - **The stream**: the statistics overlay (Ctrl+Alt+Shift+S, or
-  `ping stream NAME --stats`) shows the same figures as Moonlight's, plus the
+  `pingctl stream NAME --stats`) shows the same figures as Moonlight's, plus the
   host's capture to the client's screen. For a log of them, one line a
-  second: `RUST_LOG=info,ping_core::stats=debug ping stream NAME ...`. The
+  second: `RUST_LOG=info,ping_core::stats=debug pingctl stream NAME ...`. The
   host logs a line a second too (`pong.log`: frames, capture to encoded,
   Mbit/s, recoveries).
 - **The client's presentation alone** (macOS), with no host: synthetic
@@ -153,6 +153,36 @@ straight to the display again, with some frames a refresh late: 105–117 of
 120 shown at 120 fps, before as after (at 60 fps, all of them). Real
 streams with a recording running, through CleanShot X: 39 of 60 and 40 of
 120 shown before.
+
+### Low Power Mode and 60 Hz (macOS client)
+
+Measured 2026-10-08 with `mac-present` on an M4 Pro's built-in 120 Hz
+display at 3600x2338, a 60 fps 1920x1080 picture (an Xbox stream's), full
+screen, nothing over it; `--hz 60` runs it with the display in its 60 Hz
+mode. Low Power Mode holds the panel at 60 Hz while macOS still reports
+120 Hz; Metal's HUD calls the layer's path "Direct" in both.
+
+| Case | Shown | Decode to glass (avg / max) |
+|---|---|---|
+| 120 Hz, V-Sync on (the default) | 60 of 60 | 6.0 / 11.9 ms |
+| 60 Hz mode, V-Sync on | 59 of 60 | 38.4 / 56.4 ms |
+| 60 Hz mode, frame pacing | 59 of 60 | 28.3 / 45.0 ms |
+| 60 Hz mode, V-Sync off | 60 of 60 | 7.1 / 9.4 ms |
+| Low Power Mode, V-Sync on | 60 of 60 | 33.1–39.2 / 41–57 ms |
+| Low Power Mode, Game Mode forced on | 60 of 60 | 34.0 / 51.7 ms |
+| Low Power Mode, frame pacing | 59 of 60 | 42.5 / 60.2 ms |
+| Low Power Mode, V-Sync off | 59 of 60 | 3.6 / 53.3 ms |
+| Low Power Mode, a stream from the mock console, V-Sync held off by Ping | 60 of 60 | 2.5–3.1 ms (a second's average) |
+
+At 60 Hz a drawable committed with V-Sync on with nothing ahead of it is on
+the glass 32.7 ms later (two refreshes); at 120 Hz, 2.8–11.3 ms. Presenting
+at a time or after a minimum duration (`presentDrawable:atTime:`,
+`afterMinimumDuration:`) measured 33–46 ms; a `CAMetalDisplayLink` at
+60 fps (in a test of its own, from a frame's arrival to the glass) 42.1 ms
+with a frame's latency and 42.7 ms with two, against 49.5 ms presenting each
+frame as it arrives. Under Low Power Mode a 120 fps picture shows 241 of
+480 frames. While Low Power Mode is on, Ping holds V-Sync off (not with
+frame pacing) and says so in the stream's corner.
 
 ## Against Moonlight + Apollo
 
@@ -284,6 +314,41 @@ such stall empties the audio buffer (about 2 underruns a minute in the long
 run). AWDL (AirDrop, Continuity) was up on that Mac and is a common cause of
 exactly this pattern; not yet confirmed here by turning it off
 (`sudo ifconfig awdl0 down`, until the next reboot).
+
+## Xbox: a lossy link
+
+How a console's stream holds up on a poor link, before and after the
+loss handling of 2026-10-09: Ping's Xbox client against the mock console,
+both on an Apple silicon Mac (release builds), through the mock's link
+(`pingpong-xbox-mock` `examples/link.rs`) at 25 ms each way; 15 s a run,
+counted from the first frame. The mock sends 60 frames a second of a
+640×360 test picture, about 10 Mb/s, its keyframes uncompressed (353 KB,
+some 300 packets). "Stopped" is the time with no new frame for more than
+50 ms; "late" is from the console sending a frame to Ping handing it to
+the decoder.
+
+| Link | Before: str0m's frame assembly, NACK window 100 | NACK window 1,000 | And Ping's frame assembly | And a lost packet asked for at once (3 runs) |
+|---|---|---|---|---|
+| 1% loss | 54 fps; 7 keyframes asked for; stopped 24%; late at most 464 ms | 60 fps; none; 25%; 133 ms | 60 fps; none; 25%; 121 ms | 60 fps; none; 19-20%; 115-121 ms |
+| 3% loss | not one frame (63 keyframes asked for) | 60 fps; none; 48%; 149 ms | 59 fps; 1; 48%; 129 ms | 59-60 fps; 0-2; 40-45%; 116-134 ms |
+| 20 Mb/s, a 300 ms outage every 3 s | 27 fps; longest stop 2.6 s; stopped 59% | 60 fps; 0.42 s; 15% | 60 fps; 0.41 s; 14% | 60 fps; 0.38-0.39 s; 13-14% |
+| The same with 1% loss (4, 4, 7 and 3 runs) | 19-36 fps; longest stop 2.9-3.3 s; stopped 75-88%; late at most 1.0-1.5 s | 22-34 fps; 2.6-3.3 s; 76-90%; 0.58-1.3 s | 41-50 fps; 1.0-2.0 s; 46-60%; 0.42-0.47 s | 44-50 fps; 0.97-1.02 s; 45-49%; 0.39-0.40 s |
+
+Single runs vary: on the link with outages and loss, where a lost
+keyframe request or a keyframe caught in an outage costs half a second
+more, a column's runs spread as the ranges show.
+
+The first column has what a tester reported over Wi-Fi between two cities
+-- stutter, and stops of up to two seconds. On this link its causes were
+two: a retransmission that came once its packet was 100 packets behind
+the newest was dropped (str0m's NACK window), and str0m's frame assembly
+held every later frame for up to two seconds behind a packet that never
+came. The rest of the time
+stopped at 1% and 3% loss is a round trip for each lost packet: the
+console sends no FEC, so a lost packet is only had back by asking for it.
+Asking at once, rather than at str0m's next NACK interval (33 ms, so 16
+ms later on average), takes a fifth off that time and 16 ms off the 95th
+percentile of how late frames come (97 to 81 ms at 1% loss).
 
 ## Starting a stream
 

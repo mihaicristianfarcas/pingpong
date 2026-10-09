@@ -291,7 +291,7 @@ impl Stats {
                 Incoming frame rate from network: {} FPS\n\
                 Decoding frame rate: {} FPS\n\
                 Rendering frame rate: {} FPS\n\
-                Bitrate: {:.1} Mbps (target {:.0})\n\
+                Bitrate: {:.1} Mbps{}\n\
                 Frames dropped by network: {:.2}% packets, {} frames lost, {} recoveries\n\
                 Average network latency: {:.1} ms (RTT)\n\
                 Host processing latency: {:.1} ms avg / {:.1} ms max\n\
@@ -307,7 +307,12 @@ impl Stats {
             self.decoded_fps,
             self.presented_fps,
             self.mbps,
-            self.bitrate_kbps as f32 / 1000.0,
+            // An Xbox chooses its own bitrate: there is no target to say.
+            if self.bitrate_kbps > 0 {
+                format!(" (target {:.0})", self.bitrate_kbps as f32 / 1000.0)
+            } else {
+                String::new()
+            },
             self.packet_loss_pct,
             self.lost_frames,
             self.recoveries,

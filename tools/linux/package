@@ -23,7 +23,7 @@ DIST="$REPO/target/dist"
 
 export PINGPONG_RELEASE=1
 cd "$REPO"
-cargo build --release -p ping-app -p pong-app
+cargo build --release -p ping-app -p pong-app -p ping-core
 # The host on its own: it and the GPUI apps ask one dependency for different
 # async runtimes (docs/development.md).
 cargo build --release -p pong
@@ -50,10 +50,12 @@ archive() {
 
 archive Ping \
     "$TARGET/release/ping-app" \
+    "$TARGET/release/pingctl" \
     "$REPO/tools/linux/dev.pingpong.Ping.desktop" \
     "$REPO/ping-app/assets/icon-256.png:dev.pingpong.Ping.png"
 archive Pong \
     "$TARGET/release/pong" \
+    "$TARGET/release/pongctl" \
     "$TARGET/release/pong-app" \
     "$REPO/tools/linux/pong.service" \
     "$REPO/tools/linux/dev.pingpong.PongApp.desktop" \

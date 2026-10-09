@@ -5,7 +5,7 @@
 //! winit allows one event loop per process, and the app's is the launcher's:
 //! so the app streams from a process of its own -- itself, started with
 //! `--ping-stream` ([`child_main`]) -- which it watches ([`Session`]). The
-//! `ping` CLI runs the stream in its own process directly ([`run`]).
+//! `pingctl` CLI runs the stream in its own process directly ([`run`]).
 
 pub mod gamepad;
 pub mod keymap;
@@ -38,7 +38,7 @@ use crate::keyboard::{Hotkey, KeyAction, Keyboard};
 use crate::pointer::PointerState;
 use crate::session::{EndCallback, StreamRequest};
 use crate::stats::StatsCollector;
-use crate::stream::{Codec, ControlSender, Event, FrameTiming, HostTarget, Stream, VideoOut};
+use crate::stream::{Codec, ControlSender, Event, FrameTiming, Source, Stream, VideoOut};
 use render::{Gpu, Layout, RenderShared};
 
 // ---------------------------------------------------------------------------
@@ -62,10 +62,35 @@ pub fn spawn(
     request: &StreamRequest,
     on_end: EndCallback,
 ) -> Result<Session, String> {
+    spawn_with(STREAM_FLAG, key_or_name, request, on_end)
+}
+
+/// Stream from an Xbox in a process of its own, as [`spawn`].
+pub fn spawn_xbox(
+    source: &crate::xbox::XboxSource,
+    request: &StreamRequest,
+    on_end: EndCallback,
+) -> Result<Session, String> {
+    let source = serde_json::to_string(source).map_err(|e| e.to_string())?;
+    spawn_with(XBOX_STREAM_FLAG, &source, request, on_end)
+}
+
+/// What the app is started with to be a stream process: from a Pong host
+/// (`KEY_OR_NAME REQUEST_JSON`), or from an Xbox (`SOURCE_JSON
+/// REQUEST_JSON`).
+pub const STREAM_FLAG: &str = "--ping-stream";
+pub const XBOX_STREAM_FLAG: &str = "--ping-stream-xbox";
+
+fn spawn_with(
+    flag: &str,
+    what: &str,
+    request: &StreamRequest,
+    on_end: EndCallback,
+) -> Result<Session, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let request = serde_json::to_string(request).map_err(|e| e.to_string())?;
     let mut child = Command::new(exe)
-        .args(["--ping-stream", key_or_name, &request])
+        .args([flag, what, &request])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -153,24 +178,30 @@ impl Drop for Session {
     }
 }
 
-/// The stream process: `PROGRAM --ping-stream KEY REQUEST_JSON`. Runs the
+/// The stream process: `PROGRAM --ping-stream KEY REQUEST_JSON`, or
+/// `--ping-stream-xbox SOURCE_JSON REQUEST_JSON`. Runs the
 /// stream, says how it ended on stdout, and exits. "quit" on stdin ends it.
 pub fn child_main() -> ! {
     crate::logging::init();
     let args: Vec<String> = std::env::args().collect();
-    let (Some(key), Some(request)) = (args.get(2), args.get(3)) else {
-        eprintln!("usage: --ping-stream KEY REQUEST_JSON");
+    let (Some(flag), Some(what), Some(request)) = (args.get(1), args.get(2), args.get(3)) else {
+        eprintln!(
+            "usage: --ping-stream KEY REQUEST_JSON | --ping-stream-xbox SOURCE_JSON REQUEST_JSON"
+        );
         std::process::exit(2)
     };
+    let hooks = Hooks {
+        stdin_quit: true,
+        ..Default::default()
+    };
     let outcome = match serde_json::from_str::<StreamRequest>(request) {
-        Ok(request) => run(
-            key,
-            &request,
-            Hooks {
-                stdin_quit: true,
-                ..Default::default()
-            },
-        ),
+        Ok(request) if flag == XBOX_STREAM_FLAG => {
+            match serde_json::from_str::<crate::xbox::XboxSource>(what) {
+                Ok(source) => run_source(Source::Xbox(source), &request, hooks),
+                Err(e) => Err(format!("bad Xbox source: {e}")),
+            }
+        }
+        Ok(request) => run(what, &request, hooks),
         Err(e) => Err(format!("bad stream request: {e}")),
     };
     let reason = match outcome {
@@ -330,8 +361,7 @@ struct Running {
 
 struct StreamApp {
     request: StreamRequest,
-    host: Option<HostTarget>,
-    identity: Arc<pingpong_transport::Identity>,
+    source: Option<Source>,
     dir: std::path::PathBuf,
     proxy: EventLoopProxy<UserEvent>,
     hooks: Option<StartedHook>,
@@ -361,9 +391,9 @@ fn cursor_icon(shape: CursorShape) -> CursorIcon {
 impl StreamApp {
     fn open(&mut self, el: &ActiveEventLoop) -> Result<Running, String> {
         let r = &self.request;
-        let host = self.host.take().ok_or("no host")?;
+        let source = self.source.take().ok_or("nothing to stream")?;
         let mut attributes = Window::default_attributes()
-            .with_title(format!("Ping — {}", host.name))
+            .with_title(format!("Ping — {}", source.name()))
             .with_inner_size(PhysicalSize::new(r.width as u32, r.height as u32));
         if r.fullscreen {
             attributes = attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
@@ -407,7 +437,7 @@ impl StreamApp {
             r.vsync,
         );
         render.set_overlay(r.show_stats);
-        render.set_status(Some(format!("Connecting to {}…", host.name)));
+        render.set_status(Some(format!("Connecting to {}…", source.name())));
         render.set_layout(Layout {
             width: size.width,
             height: size.height,
@@ -465,14 +495,18 @@ impl StreamApp {
                 }
             })
         };
-        let host_id = host.public.short_id();
+        let host_id = source.host_id();
         let video = Box::new(LinuxVideo::start(render.clone())?);
-        let stream = Stream::start(self.identity.clone(), host, settings, video, events, stats)?;
+        let stream = Stream::open(source, settings, video, events, stats)?;
 
-        // Look for the host on the local network meanwhile, and race that
-        // path too.
-        if !r.wan_only && r.via.is_empty() {
-            let (candidates, dir) = (stream.candidates(), self.dir.clone());
+        // Look for a Pong host on the local network meanwhile, and race
+        // that path too.
+        if let (Some(candidates), Some(host_id), true) = (
+            stream.candidates(),
+            host_id,
+            !r.wan_only && r.via.is_empty(),
+        ) {
+            let dir = self.dir.clone();
             std::thread::spawn(move || {
                 let found =
                     crate::pair::discover(&dir, Duration::from_millis(1500)).unwrap_or_default();
@@ -813,6 +847,16 @@ pub fn run(
         host.wan = None;
     }
     let identity = Arc::new(crate::store::identity(&dir)?);
+    run_source(Source::Pong { identity, host }, request, hooks)
+}
+
+/// Run a stream from `source` on this thread, as [`run`].
+pub fn run_source(
+    source: Source,
+    request: &StreamRequest,
+    hooks: Hooks,
+) -> Result<Option<String>, String> {
+    let dir = crate::store::data_dir();
     let event_loop = EventLoop::<UserEvent>::with_user_event()
         .build()
         .map_err(|e| format!("no display: {e}"))?;
@@ -832,8 +876,7 @@ pub fn run(
     }
     let mut app = StreamApp {
         request: request.clone(),
-        host: Some(host),
-        identity,
+        source: Some(source),
         dir,
         proxy,
         hooks: hooks.started,

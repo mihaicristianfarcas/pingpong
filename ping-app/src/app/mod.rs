@@ -1,7 +1,7 @@
 //! The window: a sidebar (Hosts, Agents, the open sessions, the settings
 //! pages) beside the page it selects, and the sheets over them (pairing,
 //! adding a host, unpairing, alerts). The logic under it is the same the
-//! `ping` CLI drives.
+//! `pingctl` CLI drives.
 //!
 //! Sessions: your own desktop streams (until the stream ends, from its window
 //! or its hotkey) and agent sessions (until you end them). Neither outlives
@@ -49,6 +49,8 @@ pub enum Page {
     Chat(u64),
     /// One of your desktop streams.
     Desktop(u64),
+    /// Xbox: the account's consoles and cloud games.
+    Xbox,
     Settings(Tab),
 }
 
@@ -73,6 +75,8 @@ struct StreamSession {
     /// The mode asked for, to say.
     mode: (u16, u16, u32),
     fullscreen: bool,
+    /// From an Xbox, not a Pong host.
+    xbox: bool,
 }
 
 struct Alert {
@@ -102,6 +106,7 @@ pub struct PingApp {
     demo: Demo,
     pub waker: Waker,
     pub agents: AgentsState,
+    pub xbox: crate::xbox::XboxState,
     /// Notifications about agent sessions not on screen.
     pub notifier: crate::notify::Notifier,
     /// The update check, and what it said when last looked at.
@@ -171,6 +176,10 @@ impl PingApp {
             )
         };
         let agents = AgentsState::new(dir.clone(), window, cx);
+        let xbox = {
+            let waker = waker.clone();
+            crate::xbox::XboxState::new(std::sync::Arc::new(move || waker.wake()))
+        };
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         PingApp {
@@ -193,6 +202,7 @@ impl PingApp {
             notifier: crate::notify::Notifier::new(waker.clone()),
             waker,
             agents,
+            xbox,
             updates,
             update_status: pingpong_update::Status::default(),
             update_sheet: false,
@@ -237,6 +247,7 @@ impl PingApp {
             changed |= p.state != before;
         }
         changed |= self.agents.update();
+        changed |= self.xbox.update();
         changed |= self.notifications(window, cx);
         let updates = self.updates.status();
         if updates != self.update_status {
@@ -507,6 +518,7 @@ impl PingApp {
                 chat: Some(chat),
                 mode: (width, height, 30),
                 fullscreen: false,
+                xbox: false,
             }),
             Err(e) => {
                 tracing::warn!(host, error = e, "could not log in to the agent's desktop");
@@ -599,12 +611,71 @@ impl PingApp {
                     chat: None,
                     mode: (request.width, request.height, request.fps),
                     fullscreen: request.fullscreen,
+                    xbox: false,
                 });
             }
             Err(e) => {
                 tracing::warn!(host = item.name, error = e, "stream not started");
                 self.alert = Some(Alert {
                     title: format!("Cannot stream from {}", item.name),
+                    message: e,
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// Stream from an Xbox: a console of the account's, or a cloud game. As
+    /// [`PingApp::stream`], in a window of its own.
+    pub fn stream_xbox(
+        &mut self,
+        target: ping_core::xbox::Target,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(open) = self.streams.iter().find(|s| s.chat.is_none()) {
+            let id = open.id;
+            self.set_page(Page::Desktop(id), cx);
+            return;
+        }
+        let native = self.native(window, cx);
+        let request = self.prefs.request(&native, false);
+        let name = target.name().to_owned();
+        tracing::info!(
+            target = name,
+            width = request.width,
+            height = request.height,
+            keyboard_mouse = ?self.prefs.xbox_input,
+            "streaming from an Xbox"
+        );
+        let source = ping_core::xbox::XboxSource {
+            target,
+            keyboard_mouse: self.prefs.xbox_input,
+            region: None,
+            // A bitrate chosen in Settings is the most the console sends;
+            // Automatic leaves it to the console.
+            max_kbps: (!self.prefs.auto_bitrate).then_some(request.bitrate_kbps),
+        };
+        let id = self.next_stream;
+        self.next_stream += 1;
+        match session::start_xbox(source, &request, self.on_end(id)) {
+            Ok(session) => {
+                self.model.set_paused(true);
+                self.streams.push(StreamSession {
+                    id,
+                    host: name,
+                    session,
+                    since: Instant::now(),
+                    chat: None,
+                    mode: (request.width, request.height, 60),
+                    fullscreen: request.fullscreen,
+                    xbox: true,
+                });
+            }
+            Err(e) => {
+                tracing::warn!(target = name, error = e, "Xbox stream not started");
+                self.alert = Some(Alert {
+                    title: format!("Cannot stream {name}"),
                     message: e,
                 });
             }
@@ -638,7 +709,7 @@ impl PingApp {
             return;
         }
         if self.page == Page::Desktop(id) {
-            self.page = Page::Hosts;
+            self.page = if s.xbox { Page::Xbox } else { Page::Hosts };
         }
         self.model.set_paused(false);
         if self.demo.at.is_some() {
@@ -687,9 +758,11 @@ impl PingApp {
         if !closed {
             if let Some(p) = self.pairing.take() {
                 p.cancel();
+            } else if self.xbox.sign_in.is_some() {
+                self.xbox.cancel_sign_in();
             } else if matches!(
                 self.page,
-                Page::Settings(_) | Page::Agents | Page::Desktop(_)
+                Page::Settings(_) | Page::Agents | Page::Desktop(_) | Page::Xbox
             ) {
                 self.page = Page::Hosts;
             }
@@ -706,6 +779,7 @@ impl PingApp {
 
     fn sheet_open(&self) -> bool {
         self.pairing.is_some()
+            || self.xbox.sign_in.is_some()
             || self.add_host.is_some()
             || self.confirm_unpair.is_some()
             || self.alert.is_some()
@@ -727,6 +801,7 @@ impl Render for PingApp {
             Page::Agents => self.render_agents(t, window, cx),
             Page::Chat(id) => self.render_chat(id, t, window, cx),
             Page::Desktop(id) => self.render_desktop(id, t, cx),
+            Page::Xbox => self.render_xbox(t, window, cx),
             Page::Settings(tab) => self.render_settings(tab, t, window, cx),
         };
         let sheet = self.sheets(t, window, cx);

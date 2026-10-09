@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Linux Ping against the mock Xbox, in one container: the mock (sign-in,
+# Xbox Live, the console list, the streaming service and a console that
+# streams a test picture and a tone) on loopback, then Ping signs in to it
+# and streams its console on X screen :2 with a scripted controller, and
+# saves a picture. The picture shows the input the mock received (A lit,
+# the left stick off centre, the right trigger pulled). Logs and the
+# picture land in target/linux-out/xbox.
+#
+#   tools/linux-dev tools/linux/xbox-test [PING STREAM ARGS]
+set -euo pipefail
+cargo build -q -p ping-core --bin pingctl
+cargo build -q -p pingpong-xbox-mock --bin xbox-mock
+bin=${CARGO_TARGET_DIR:-/src/target}/debug
+OUT=/src/target/linux-out/xbox
+rm -rf "$OUT"
+mkdir -p "$OUT/ping"
+export PING_DATA_DIR=$OUT/ping NO_COLOR=1
+
+pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || echo "no PulseAudio: no sound"
+Xvfb :2 -screen 0 1920x1080x24 -nolisten tcp >/dev/null 2>&1 &
+sleep 1
+
+"$bin/xbox-mock" --listen 127.0.0.1:47920 >"$OUT/mock.log" 2>&1 &
+mock=$!
+sleep 1
+export PING_XBOX_MOCK=http://127.0.0.1:47920
+
+"$bin/pingctl" xbox sign-in >"$OUT/sign-in.log" 2>&1
+"$bin/pingctl" xbox consoles | tee "$OUT/consoles.txt"
+
+args=("$@")
+[[ ${#args[@]} -eq 0 ]] && args=(--windowed --size 1280x720 --stats)
+export PING_TEST_SNAPSHOT=${PING_TEST_SNAPSHOT:-$OUT/stream.png@240}
+# A, the left stick right, the right trigger; held through the picture.
+export PING_TEST_INPUT=${PING_TEST_INPUT:-"wait 3000; pad 0x1000 24000 0 0 255; wait 5000; pad 0 0 0; wait 500; quit"}
+DISPLAY=:2 RUST_LOG=${RUST_LOG:-info,mainline=error,ping_core::stats=debug} \
+    "$bin/pingctl" xbox stream "Mock Xbox" "${args[@]}" >"$OUT/ping.log" 2>&1 || echo "pingctl exited with $?"
+
+kill "$mock" 2>/dev/null || true
+wait "$mock" 2>/dev/null || true
+echo "logs in $OUT"

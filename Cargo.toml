@@ -18,6 +18,8 @@ members = [
     "pingpong-transport",
     "pingpong-ui",
     "pingpong-update",
+    "pingpong-xbox",
+    "pingpong-xbox-mock",
     "pong-app",
 ]
 # spikes/* are deliberately NOT members -- a throwaway probe must never gate a
@@ -47,6 +49,15 @@ publish = false
 [workspace.dependencies]
 gpui = { git = "https://github.com/zed-industries/zed.git", rev = "4278ff36ef76916c719dfdd1557efd4401206985" }
 gpui_platform = { git = "https://github.com/zed-industries/zed.git", rev = "4278ff36ef76916c719dfdd1557efd4401206985", features = ["font-kit", "wayland", "x11"] }
+
+[patch.crates-io]
+# str0m's pure-Rust crypto (the Xbox client's WebRTC) without aws-lc-rs: see
+# vendor/str0m-rust-crypto/Cargo.toml.
+str0m-rust-crypto = { path = "vendor/str0m-rust-crypto" }
+# str0m with a NACK window of 1,000 packets instead of 100, without which a
+# console's retransmissions arrive too late to be used, and a missing packet
+# NACKed at once: see vendor/str0m/Cargo.toml.
+str0m = { path = "vendor/str0m" }
 
 [patch."https://github.com/zed-industries/zed.git"]
 # GPUI's sum_tree names Zed's GPL-licensed profiling shim though profiling is

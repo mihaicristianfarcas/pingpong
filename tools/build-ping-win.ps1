@@ -1,5 +1,5 @@
 # Build Ping for Windows: Ping.exe (the app) beside FFmpeg's DLLs, in
-# target\Ping; and ping.exe and ping-agent.exe, the CLIs, in target\release.
+# target\Ping; and pingctl.exe and ping-agent.exe, the CLIs, in target\release.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-ping-win.ps1 [-FFmpeg DIR] [-Install]
 #

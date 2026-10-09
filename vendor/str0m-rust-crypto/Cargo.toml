@@ -1,0 +1,30 @@
+# str0m-rust-crypto 0.6.0 (github.com/algesten/str0m, MIT OR Apache-2.0;
+# LICENSE-MIT here, LICENSE-APACHE in vendor/), with one change: the DTLS
+# certificate is made by rcgen on ring, as Pong's web certificate is,
+# instead of by dimpl's rcgen feature, which brings aws-lc-rs -- a C
+# library that needs NASM to build on Windows -- into every build of the
+# workspace. src/dtls.rs `generate_certificate` is the only code changed.
+[package]
+name = "str0m-rust-crypto"
+version = "0.6.0"
+edition = "2024"
+rust-version = "1.85.0"
+authors = ["Martin Algesten <martin@algesten.se>"]
+description = "Pure Rust crypto backend for str0m WebRTC"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/algesten/str0m"
+publish = false
+
+[dependencies]
+aes = "0.8"
+aes-gcm = "0.10"
+ctr = "0.9"
+dimpl = { version = "0.7.1", default-features = false, features = ["rust-crypto"] }
+getrandom = "0.3"
+hmac = "0.12.1"
+p256 = { version = "0.13", features = ["ecdh"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+sha1 = "0.10"
+sha2 = "0.10"
+str0m-proto = { version = "0.7.0", default-features = false, features = ["dtls"] }
+time = "0.3"

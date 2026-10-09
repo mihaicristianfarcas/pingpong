@@ -16,6 +16,7 @@ if-addrs = "0.15"
 pingpong-nat = { path = "../pingpong-nat" }
 pingpong-audio = { path = "../pingpong-audio" }
 pingpong-clipboard = { path = "../pingpong-clipboard" }
+pingpong-xbox = { path = "../pingpong-xbox" }
 crossbeam-channel = "0.5"
 parking_lot = "0.12"
 rand_core = { version = "0.6.4", features = ["getrandom"] }
@@ -82,5 +83,5 @@ wgpu = "30"
 winit = "0.30"
 
 [[bin]]
-name = "ping"
-path = "src/bin/ping/main.rs"
+name = "pingctl"
+path = "src/bin/pingctl/main.rs"

@@ -70,6 +70,13 @@ pub fn init() {
         tracing::info!(
             version = env!("CARGO_PKG_VERSION"),
             os = std::env::consts::OS,
+            // A debug build's pure-Rust crypto is slow enough to delay an
+            // Xbox stream's video and input: worth knowing from a log.
+            build = if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            },
             "Ping started"
         );
     });

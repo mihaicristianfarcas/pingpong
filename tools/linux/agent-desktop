@@ -22,7 +22,7 @@ inside() { docker exec -i -e DISPLAY=:1 -e PONG_DATA_DIR=$OUT/pong -e PING_DATA_
 case "${1:-}" in
 start)
     docker build -q -t pingpong-linux "$REPO/tools/linux" >/dev/null
-    "$REPO/tools/linux-dev" cargo build -q -p pong -p ping-agent -p ping-core --bin pong --bin ping-agent --bin ping
+    "$REPO/tools/linux-dev" cargo build -q -p pong -p ping-agent -p ping-core --bin pong --bin pongctl --bin ping-agent --bin pingctl
     docker rm -f "$NAME" >/dev/null 2>&1 || true
     docker run -d --name "$NAME" \
         -v "$REPO":/src -w /src \
@@ -48,11 +48,11 @@ TOML
         (cd $OUT/home && xterm -geometry 90x24+40+60 -title Terminal >>$OUT/desktop.log 2>&1 &)
         sleep 1
         # Pair by hand: the agent (as an agent) and a person, both ways.
-        host=\$(/target/debug/pong identity | sed -E 's/.*= \"(.*)\"/\\1/' | paste -sd' ')
-        /target/debug/pong add-client 'test agent' \$(/target/debug/ping-agent identity) --agent >/dev/null
-        /target/debug/pong add-client 'test person' \$(/target/debug/ping identity) >/dev/null
+        host=\$(/target/debug/pongctl identity | sed -E 's/.*= \"(.*)\"/\\1/' | paste -sd' ')
+        /target/debug/pongctl add-client 'test agent' \$(/target/debug/ping-agent identity) --agent >/dev/null
+        /target/debug/pongctl add-client 'test person' \$(/target/debug/pingctl identity) >/dev/null
         /target/debug/ping-agent add-host linux-desk 127.0.0.1:47820 \$host
-        /target/debug/ping add-host linux-desk 127.0.0.1:47820 \$host
+        /target/debug/pingctl add-host linux-desk 127.0.0.1:47820 \$host
         (HOME=$OUT/home RUST_LOG=info,mainline=error /target/debug/pong host >$OUT/pong.log 2>&1 &)
         sleep 2
     "

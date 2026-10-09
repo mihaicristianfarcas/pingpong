@@ -17,6 +17,8 @@ mod messages;
 mod net;
 mod quality;
 
+pub(crate) use net::start_audio;
+
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -130,6 +132,38 @@ impl Default for StreamSettings {
     }
 }
 
+/// What a stream comes from.
+// One is made per stream and moved once: boxing the larger variant would
+// save nothing worth an allocation.
+#[allow(clippy::large_enum_variant)]
+pub enum Source {
+    /// A paired Pong host, through the tunnel.
+    Pong {
+        identity: Arc<Identity>,
+        host: HostTarget,
+    },
+    /// An Xbox console or a cloud game, over WebRTC (`crate::xbox`).
+    Xbox(crate::xbox::XboxSource),
+}
+
+impl Source {
+    /// What to call it ("Connecting to …", the window's title).
+    pub fn name(&self) -> &str {
+        match self {
+            Source::Pong { host, .. } => &host.name,
+            Source::Xbox(x) => x.target.name(),
+        }
+    }
+
+    /// The Pong host's short id, for finding it on the local network.
+    pub fn host_id(&self) -> Option<String> {
+        match self {
+            Source::Pong { host, .. } => Some(host.public.short_id()),
+            Source::Xbox(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HostTarget {
     pub name: String,
@@ -225,7 +259,16 @@ pub enum Event {
 
 pub type EventSink = Arc<dyn Fn(Event) + Send + Sync>;
 
-pub struct Stream {
+/// A running stream, from whichever [`Source`].
+pub struct Stream(Inner);
+
+enum Inner {
+    Pong(PongStream),
+    Xbox(crate::xbox::XboxStream),
+}
+
+/// A stream from a Pong host.
+struct PongStream {
     ctx: Arc<Ctx>,
     net: Option<JoinHandle<()>>,
     input: Option<InputThread>,
@@ -264,25 +307,43 @@ struct Ctx {
 
 /// Sends control messages to the host from another thread (controllers).
 #[derive(Clone)]
-pub struct ControlSender(Arc<Ctx>);
+pub struct ControlSender(Controls);
+
+#[derive(Clone)]
+enum Controls {
+    Pong(Arc<Ctx>),
+    Xbox(crate::xbox::Controls),
+}
 
 impl ControlSender {
     /// Silence the host's audio (or not), without stopping the stream.
     pub fn set_audio_muted(&self, muted: bool) {
-        self.0.audio_muted.store(muted, Ordering::Relaxed);
+        match &self.0 {
+            Controls::Pong(ctx) => ctx.audio_muted.store(muted, Ordering::Relaxed),
+            Controls::Xbox(c) => c.set_audio_muted(muted),
+        }
     }
 
     pub fn send(&self, msg: Control) {
-        send_control(&self.0, msg);
+        match &self.0 {
+            Controls::Pong(ctx) => send_control(ctx, msg),
+            Controls::Xbox(c) => c.send(msg),
+        }
     }
 
     /// Who drives the agent's session, as the host last said.
     pub fn agent_state(&self) -> Option<AgentState> {
-        *self.0.agent_state.lock()
+        match &self.0 {
+            Controls::Pong(ctx) => *ctx.agent_state.lock(),
+            Controls::Xbox(_) => None,
+        }
     }
 
     /// Watching an agent: take the keyboard and mouse, or give them back.
     pub fn toggle_take_over(&self) {
+        let Controls::Pong(ctx) = &self.0 else {
+            return;
+        };
         let taken = self
             .agent_state()
             .is_some_and(|s| s.flags & agent_state::TAKEN_OVER != 0);
@@ -294,7 +355,7 @@ impl ControlSender {
         tracing::info!(take_over = !taken, "agent control");
         // Twice: control messages are not retransmitted, and repeats are harmless.
         for _ in 0..2 {
-            send_control(&self.0, Control::AgentControl(op));
+            send_control(ctx, Control::AgentControl(op));
         }
     }
 }
@@ -324,6 +385,25 @@ impl Candidates {
 }
 
 impl Stream {
+    /// Start streaming from `source`.
+    pub fn open(
+        source: Source,
+        settings: StreamSettings,
+        video: Box<dyn VideoOut>,
+        events: EventSink,
+        stats: Arc<StatsCollector>,
+    ) -> Result<Stream, String> {
+        match source {
+            Source::Pong { identity, host } => {
+                Stream::start(identity, host, settings, video, events, stats)
+            }
+            Source::Xbox(x) => Ok(Stream(Inner::Xbox(crate::xbox::XboxStream::start(
+                x, settings, video, events, stats,
+            )?))),
+        }
+    }
+
+    /// Start streaming from a Pong host.
     pub fn start(
         identity: Arc<Identity>,
         host: HostTarget,
@@ -412,46 +492,75 @@ impl Stream {
                 .spawn(move || net::run(ctx, video))
                 .map_err(|e| e.to_string())?
         };
-        Ok(Stream {
+        Ok(Stream(Inner::Pong(PongStream {
             ctx,
             net: Some(net),
             input: Some(input),
             input_tx,
-        })
+        })))
     }
 
     pub fn input(&self) -> &InputSender {
-        &self.input_tx
+        match &self.0 {
+            Inner::Pong(p) => &p.input_tx,
+            Inner::Xbox(x) => x.input(),
+        }
     }
 
     pub fn controls(&self) -> ControlSender {
-        ControlSender(self.ctx.clone())
+        match &self.0 {
+            Inner::Pong(p) => ControlSender(Controls::Pong(p.ctx.clone())),
+            Inner::Xbox(x) => ControlSender(Controls::Xbox(x.controls())),
+        }
     }
 
-    /// For adding paths to the host while the handshake is under way.
-    pub fn candidates(&self) -> Candidates {
-        Candidates(self.ctx.clone())
+    /// For adding paths to a Pong host while the handshake is under way.
+    pub fn candidates(&self) -> Option<Candidates> {
+        match &self.0 {
+            Inner::Pong(p) => Some(Candidates(p.ctx.clone())),
+            Inner::Xbox(_) => None,
+        }
     }
 
     pub fn stats(&self) -> Stats {
-        self.ctx.stats.snapshot()
+        self.stats_collector().snapshot()
     }
 
     pub fn stats_collector(&self) -> &Arc<StatsCollector> {
-        &self.ctx.stats
+        match &self.0 {
+            Inner::Pong(p) => &p.ctx.stats,
+            Inner::Xbox(x) => x.stats_collector(),
+        }
     }
 
+    /// The Pong host's answer to the session, once it has given one.
     pub fn ack(&self) -> Option<SessionAck> {
-        *self.ctx.ack.lock()
+        match &self.0 {
+            Inner::Pong(p) => *p.ctx.ack.lock(),
+            Inner::Xbox(_) => None,
+        }
     }
 
     pub fn is_running(&self) -> bool {
-        self.net.as_ref().is_some_and(|n| !n.is_finished())
+        match &self.0 {
+            Inner::Pong(p) => p.net.as_ref().is_some_and(|n| !n.is_finished()),
+            Inner::Xbox(x) => x.is_running(),
+        }
     }
 
+    /// End the stream and stop every thread.
+    pub fn stop(&mut self) {
+        match &mut self.0 {
+            Inner::Pong(p) => p.stop(),
+            Inner::Xbox(x) => x.stop(),
+        }
+    }
+}
+
+impl PongStream {
     /// End the session: tell the host (so it restores its displays now rather
     /// than after the silence timeout) and stop every thread.
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         self.ctx.stopped.store(true, Ordering::Relaxed);
         if !self.ctx.stop.swap(true, Ordering::Relaxed) {
             for _ in 0..3 {

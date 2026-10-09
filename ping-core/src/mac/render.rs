@@ -13,7 +13,9 @@
 //!   its drawable a refresh or more before the one it targets: 20 ms at
 //!   120 Hz, 29 ms at 60 Hz, decode to glass.)
 //! - **V-Sync off**: `displaySyncEnabled = NO`, frames drawn as they are
-//!   decoded without waiting for a refresh. Lowest latency, tears.
+//!   decoded without waiting for a refresh. Lowest latency, tears. Also
+//!   while Low Power Mode holds the display at 60 Hz, where V-Sync costs
+//!   two refreshes (`power`).
 //!
 //! Zero-copy: VideoToolbox's CVPixelBuffer is bound to Metal through
 //! `CVMetalTextureCache`. The buffer and its texture wrappers are held until
@@ -187,7 +189,11 @@ pub struct RenderShared {
     layout: Mutex<Layout>,
     stop: AtomicBool,
     stats: Arc<StatsCollector>,
+    /// V-Sync, as the person chose it.
     vsync: bool,
+    /// V-Sync held off for now, whatever was chosen: Low Power Mode holds
+    /// the display at 60 Hz, where V-Sync costs two refreshes (`power`).
+    vsync_held_off: AtomicBool,
     /// Frame pacing: present on the display's refresh (see `VsyncClock`).
     paced: bool,
     vsync_ticks: Mutex<u64>,
@@ -222,6 +228,7 @@ impl RenderShared {
             stop: AtomicBool::new(false),
             stats,
             vsync,
+            vsync_held_off: AtomicBool::new(false),
             paced: paced && vsync,
             vsync_ticks: Mutex::new(0),
             vsync_tick: Condvar::new(),
@@ -311,7 +318,7 @@ impl RenderShared {
     /// shown two refreshes late (29 ms decode to glass at 120 Hz, against
     /// 10 ms at 60 fps, where the display drains it).
     fn wait_for_glass(&self) {
-        if !self.vsync {
+        if !self.vsync_on() {
             return;
         }
         let (path, reached_glass) = &*self.glass;
@@ -407,6 +414,31 @@ impl RenderShared {
         self.overlay_enabled.store(on, Ordering::Release);
         self.dirty.store(true, Ordering::Release);
         self.frame_ready.notify_one();
+    }
+
+    /// Whether frames wait for a refresh, as chosen (V-Sync, with or without
+    /// frame pacing).
+    pub fn waits_for_refresh(&self) -> bool {
+        self.vsync
+    }
+
+    /// V-Sync as it is now: as chosen, unless held off.
+    fn vsync_on(&self) -> bool {
+        self.vsync && !self.vsync_held_off.load(Ordering::Acquire)
+    }
+
+    /// Hold V-Sync off, or let it be as chosen again. Whether holding it
+    /// off changes anything: not when it is off already, nor with frame
+    /// pacing, which asks for evenness that tearing would undo.
+    pub fn hold_vsync_off(&self, off: bool) -> bool {
+        if !self.vsync || self.paced {
+            return false;
+        }
+        if self.vsync_held_off.swap(off, Ordering::AcqRel) != off {
+            self.dirty.store(true, Ordering::Release);
+            self.frame_ready.notify_one();
+        }
+        true
     }
 
     /// The window went into or out of full screen, or to another display:
@@ -649,9 +681,7 @@ impl Renderer {
         layer.setDevice(Some(&device));
         layer.setPixelFormat(SDR_FORMAT);
         layer.setFramebufferOnly(true);
-        layer.setDisplaySyncEnabled(vsync);
-        // How many of them may queue for the glass is `wait_for_glass`'s.
-        layer.setMaximumDrawableCount((if vsync { DRAWABLES } else { 2 }) as usize);
+        Renderer::set_layer_vsync(&layer, vsync);
         let library = device
             .newLibraryWithSource_options_error(&NSString::from_str(SHADERS), None)
             .map_err(|e| format!("shaders: {e}"))?;
@@ -1042,7 +1072,7 @@ impl Renderer {
         // The display link has already scheduled its drawable for the target
         // vsync; presentAtTime is refused (CAMetalDrawableInvalidOperation).
         let _ = target_time;
-        if shared.vsync {
+        if shared.vsync_on() {
             let glass = shared.glass.clone();
             let trip = glass.0.lock().commit(CACurrentMediaTime());
             let refresh = layout.refresh;
@@ -1150,6 +1180,19 @@ impl Renderer {
         };
         shared.new_frame.store(!q.is_empty(), Ordering::Release);
         frame
+    }
+
+    /// V-Sync on the layer: on, each drawable waits for a refresh; off, it
+    /// goes at once and may tear. How many may queue for the glass is
+    /// `wait_for_glass`'s.
+    fn set_layer_vsync(layer: &CAMetalLayer, vsync: bool) {
+        layer.setDisplaySyncEnabled(vsync);
+        layer.setMaximumDrawableCount((if vsync { DRAWABLES } else { 2 }) as usize);
+    }
+
+    fn set_vsync(&self, vsync: bool) {
+        Renderer::set_layer_vsync(&self.layer, vsync);
+        tracing::info!(vsync, "V-Sync");
     }
 
     /// Keep the layer's drawable in step with the layout the window published.
@@ -1290,7 +1333,14 @@ pub fn run(
         }
     } else {
         let mut renderer = renderer;
+        let mut vsync = shared.vsync;
         while !shared.stop.load(Ordering::Acquire) {
+            if shared.vsync_on() != vsync {
+                vsync = shared.vsync_on();
+                renderer.set_vsync(vsync);
+                shared.glass.0.lock().forget_queued();
+                shared.new_path();
+            }
             {
                 let mut guard = shared.pending.lock();
                 if guard.is_empty() && !shared.dirty.load(Ordering::Acquire) {

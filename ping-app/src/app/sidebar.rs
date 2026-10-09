@@ -138,6 +138,14 @@ impl PingApp {
                         agent_badge,
                         cx,
                     ))
+                    .child(nav(
+                        "nav-xbox",
+                        "Xbox",
+                        IconName::Gamepad,
+                        Page::Xbox,
+                        None,
+                        cx,
+                    ))
                     .children(self.session_rows(t, cx))
                     .child(header("Settings"))
                     .child(nav(
@@ -204,11 +212,11 @@ impl PingApp {
         use crate::chat::ChatState;
         let page = self.page;
         let mut out = Vec::new();
-        let desktops: Vec<(u64, String, u64)> = self
+        let desktops: Vec<(u64, String, u64, bool)> = self
             .streams
             .iter()
             .filter(|s| s.chat.is_none())
-            .map(|s| (s.id, s.host.clone(), s.since.elapsed().as_secs()))
+            .map(|s| (s.id, s.host.clone(), s.since.elapsed().as_secs(), s.xbox))
             .collect();
         if self.agents.chats.is_empty() && desktops.is_empty() {
             return out;
@@ -325,9 +333,10 @@ impl PingApp {
                 .into_any_element(),
             );
         }
-        for (id, host, secs) in desktops {
+        for (id, host, secs, xbox) in desktops {
             let sub = format!(
-                "Your desktop · {}",
+                "{} · {}",
+                if xbox { "Xbox" } else { "Your desktop" },
                 if secs < 60 {
                     "now".to_string()
                 } else {
@@ -338,7 +347,11 @@ impl PingApp {
                 row(
                     ElementId::Name(format!("side-desk-{id}").into()),
                     page == Page::Desktop(id),
-                    IconName::Display,
+                    if xbox {
+                        IconName::Gamepad
+                    } else {
+                        IconName::Display
+                    },
                     host,
                     sub,
                     pingpong_ui::live_dot(Ink::FRESH).into_any_element(),

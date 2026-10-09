@@ -31,6 +31,21 @@ measurements here are from an M4 Pro).
   and shows some of its frames a refresh late; at the display's full rate
   (120 fps at 120 Hz), Ping then shows 105–117 frames of 120 rather than
   add a refresh to every one.
+- **Low Power Mode.** On a MacBook Pro it holds the 120 Hz panel at
+  60 Hz, and at 60 Hz a frame reaches the screen two refreshes after it
+  is drawn with V-Sync on: 33–39 ms from decode to the screen, against
+  6 ms with Low Power Mode off (an Xbox stream's 60 fps, measured on an M4
+  Pro; [benchmarks](../benchmarks.md#low-power-mode-and-60-hz-macos-client)).
+  Nothing asked of macOS shortens that (Game Mode, a `CAMetalDisplayLink`
+  at 60 fps, presenting at a time: 34–46 ms), but V-Sync off does, at the
+  cost of tearing. So while Low Power Mode is on, Ping holds V-Sync off
+  for the stream, and puts it back when it ends: 2.5–3.1 ms from decode to
+  the screen in a stream from the mock console, and the corner says "Low
+  Power Mode: V-Sync off, so the picture may tear" (with **Connection
+  warnings** on, Settings > Video). With frame pacing on, V-Sync stays and
+  the corner says the picture is about 30 ms late. The log says when Low
+  Power Mode and V-Sync change. A 60 Hz external display costs the same
+  with V-Sync on; there, turning it off is your choice.
 - **AV1.** On a Mac with an AV1 decoder (M3 and later), VideoToolbox
   decodes it in hardware, 8- and 10-bit: the format description carries an
   `av1C` record built from the stream's sequence header, and samples go in

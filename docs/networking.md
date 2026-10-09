@@ -81,7 +81,7 @@ networks. Until then a silent host keeps the state its card showed
 the host's network a silent host is asleep at once.
 
 The probe never runs while a stream as the same identity does, from this
-app or another process (`ping stream`): its handshake would replace that
+app or another process (`pingctl stream`): its handshake would replace that
 stream's keys on the host. Streams hold `tunnel.lock` in the data folder,
 shared; the probe takes it alone or waits for the next poll.
 
@@ -106,7 +106,7 @@ router to forward the port** turns it off.
   ones do not. On the local network nothing of this is used.
 - A router that does not loop traffic for its own public address back inside
   ("hairpinning") means a client on the same network as the host cannot
-  test the internet path; `ping stream NAME --wan-only` needs the client on
+  test the internet path; `pingctl stream NAME --wan-only` needs the client on
   another network.
 
 ## Measured

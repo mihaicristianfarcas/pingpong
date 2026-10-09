@@ -1,4 +1,4 @@
-//! `ping stream` and `ping watch`: the stream in a window of the platform's
+//! `pingctl stream` and `pingctl watch`: the stream in a window of the platform's
 //! own, until it ends.
 
 use std::process::ExitCode;
@@ -12,8 +12,29 @@ use pingpong_proto::control::codec;
 
 use crate::script::run_script;
 
+/// What `run` streams from.
+pub enum What {
+    /// A paired Pong host, by name or key.
+    Host(String),
+    Xbox(ping_core::xbox::XboxSource),
+}
+
+impl What {
+    #[cfg(any(target_os = "macos", windows))]
+    fn start(
+        &self,
+        request: &StreamRequest,
+        on_end: EndCallback,
+    ) -> Result<ping_core::session::Session, String> {
+        match self {
+            What::Host(name) => ping_core::session::start(name, request, on_end),
+            What::Xbox(source) => ping_core::session::start_xbox(source.clone(), request, on_end),
+        }
+    }
+}
+
 /// The request the flags make, from this display's native mode at 60 fps.
-fn request(flags: &[String]) -> StreamRequest {
+pub fn request(flags: &[String]) -> StreamRequest {
     let native = ping_core::session::native_mode();
     let mut r = StreamRequest {
         width: native.width,
@@ -88,8 +109,7 @@ fn request(flags: &[String]) -> StreamRequest {
 }
 
 #[cfg(target_os = "linux")]
-pub fn run(name: &str, flags: &[String]) -> ExitCode {
-    let request = request(flags);
+pub fn run(what: What, request: StreamRequest) -> ExitCode {
     let hooks = ping_core::linux::Hooks {
         stdin_quit: false,
         started: Some(Box::new(|input, controls, quit: EndCallback| {
@@ -100,7 +120,13 @@ pub fn run(name: &str, flags: &[String]) -> ExitCode {
             let _ = ctrlc::set_handler(move || quit(None));
         })),
     };
-    match ping_core::linux::run(name, &request, hooks) {
+    let outcome = match what {
+        What::Host(name) => ping_core::linux::run(&name, &request, hooks),
+        What::Xbox(source) => {
+            ping_core::linux::run_source(ping_core::stream::Source::Xbox(source), &request, hooks)
+        }
+    };
+    match outcome {
         Ok(None) => ExitCode::SUCCESS,
         Ok(Some(r)) => {
             eprintln!("{r}");
@@ -128,7 +154,7 @@ fn attach(session: &Session, on_end: &EndCallback) {
 }
 
 #[cfg(target_os = "macos")]
-pub fn run(name: &str, flags: &[String]) -> ExitCode {
+pub fn run(what: What, request: StreamRequest) -> ExitCode {
     use std::cell::RefCell;
 
     use objc2::MainThreadMarker;
@@ -143,7 +169,6 @@ pub fn run(name: &str, flags: &[String]) -> ExitCode {
     };
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-    let request = request(flags);
 
     // A reason means the stream ended without the user quitting: exit 1,
     // so scripts can tell (NSApplication's terminate would always exit 0).
@@ -166,7 +191,7 @@ pub fn run(name: &str, flags: &[String]) -> ExitCode {
             }
         });
     });
-    match ping_core::session::start(name, &request, on_end.clone()) {
+    match what.start(&request, on_end.clone()) {
         Ok(session) => {
             attach(&session, &on_end);
             SESSION.with(|s| *s.borrow_mut() = Some(session));
@@ -181,13 +206,12 @@ pub fn run(name: &str, flags: &[String]) -> ExitCode {
 }
 
 #[cfg(windows)]
-pub fn run(name: &str, flags: &[String]) -> ExitCode {
-    let request = request(flags);
+pub fn run(what: What, request: StreamRequest) -> ExitCode {
     let (tx, rx) = crossbeam_channel::bounded::<Option<String>>(1);
     let on_end: EndCallback = Arc::new(move |reason| {
         let _ = tx.try_send(reason);
     });
-    let mut session = match ping_core::session::start(name, &request, on_end.clone()) {
+    let mut session = match what.start(&request, on_end.clone()) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("{e}");

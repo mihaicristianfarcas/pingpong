@@ -16,12 +16,16 @@ use pingpong_proto::input::{
 };
 use pingpong_transport::{Endpoint, Peer};
 
-enum Msg {
+pub(crate) enum Msg {
     Event(InputEvent),
     /// Relative motion in (fractional) pixels: the batcher carries the residue
     /// so slow movements are not truncated away.
     Motion(f64, f64),
 }
+
+/// Wakes whatever reads the input when some is queued (an Xbox stream's
+/// connection thread, which waits on its socket rather than the queue).
+pub(crate) type Wake = Arc<dyn Fn() + Send + Sync>;
 
 /// Gap between the packets of a burst of keys; see `run`.
 const BURST_SPACING: Duration = Duration::from_millis(2);
@@ -40,9 +44,31 @@ pub struct MouseOptions {
 pub struct InputSender {
     tx: Sender<(Msg, u32)>,
     mouse: MouseOptions,
+    wake: Option<Wake>,
 }
 
 impl InputSender {
+    /// A sender whose input is read from the receiver, by someone `wake`
+    /// wakes.
+    pub(crate) fn channel(mouse: MouseOptions, wake: Wake) -> (InputSender, Receiver<(Msg, u32)>) {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        (
+            InputSender {
+                tx,
+                mouse,
+                wake: Some(wake),
+            },
+            rx,
+        )
+    }
+
+    fn put(&self, msg: Msg) {
+        let _ = self.tx.send((msg, clock::now_us()));
+        if let Some(wake) = &self.wake {
+            wake();
+        }
+    }
+
     /// A sender whose events come out of the receiver (motion dropped).
     #[cfg(test)]
     pub(crate) fn for_test() -> (InputSender, crossbeam_channel::Receiver<InputEvent>) {
@@ -60,13 +86,14 @@ impl InputSender {
             InputSender {
                 tx,
                 mouse: MouseOptions::default(),
+                wake: None,
             },
             out_rx,
         )
     }
 
     pub fn send(&self, ev: InputEvent) {
-        let _ = self.tx.send((Msg::Event(ev), clock::now_us()));
+        self.put(Msg::Event(ev));
     }
 
     /// A button of this computer's mouse went down or up (swapped, if the
@@ -97,7 +124,7 @@ impl InputSender {
     }
 
     pub fn motion(&self, dx: f64, dy: f64) {
-        let _ = self.tx.send((Msg::Motion(dx, dy), clock::now_us()));
+        self.put(Msg::Motion(dx, dy));
     }
 
     /// Type `text` on the host (Moonlight's paste): characters as text, right
@@ -152,7 +179,14 @@ impl InputThread {
                 .spawn(move || run(endpoint, peer, rx, stop))
                 .expect("spawning the input thread")
         };
-        (InputThread { stop, handle }, InputSender { tx, mouse })
+        (
+            InputThread { stop, handle },
+            InputSender {
+                tx,
+                mouse,
+                wake: None,
+            },
+        )
     }
 
     pub fn stop(self) {

@@ -1,19 +1,20 @@
-//! `ping`: the command-line client. The same streaming code as the app.
+//! `pingctl`: the command-line client. The same streaming code as the app.
 //!
-//!   ping identity                               this client's public keys
-//!   ping discover                               hosts on the local network
-//!   ping pair HOST[:PORT]                       pair (shows a PIN to type on the host)
-//!   ping pair-agent HOST[:PORT]                 pair this device's AI agent (its own key)
-//!   ping watch NAME [stream flags]              watch the AI agent working on NAME
-//!   ping hosts                                  paired hosts
-//!   ping add-host NAME ADDR X25519 MLKEM        pair by hand (see `pong identity`)
-//!   ping remove-host NAME
-//!   ping wake NAME                              Wake-on-LAN
-//!   ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]
-//!                    [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]
-//!                    [--mute-in-background] [--audio-channels 2|6|8] [--steam]
-//!                    [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays]
-//!                    [--via ADDR] [--no-clipboard] [--hdr] [--yuv444]
+//!   pingctl identity                            this client's public keys
+//!   pingctl discover                            hosts on the local network
+//!   pingctl pair HOST[:PORT]                    pair (shows a PIN to type on the host)
+//!   pingctl pair-agent HOST[:PORT]              pair this device's AI agent (its own key)
+//!   pingctl watch NAME [stream flags]           watch the AI agent working on NAME
+//!   pingctl hosts                               paired hosts
+//!   pingctl add-host NAME ADDR X25519 MLKEM     pair by hand (see `pongctl identity`)
+//!   pingctl remove-host NAME
+//!   pingctl wake NAME                           Wake-on-LAN
+//!   pingctl stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]
+//!                       [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]
+//!                       [--mute-in-background] [--audio-channels 2|6|8] [--steam]
+//!                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays]
+//!                       [--via ADDR] [--no-clipboard] [--hdr] [--yuv444]
+//!   pingctl xbox …                              an Xbox console or cloud game (`xbox`)
 //!
 //! `PING_TEST_INPUT` scripts input into a stream (see `script`).
 
@@ -21,20 +22,26 @@
 mod script;
 #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
 mod stream;
+#[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+mod xbox;
 
 use std::path::Path;
 use std::process::ExitCode;
 
-fn usage() -> ExitCode {
+pub(crate) fn usage() -> ExitCode {
     eprintln!(
-        "usage: ping identity | discover | pair HOST[:PORT] | pair-agent HOST[:PORT] | hosts | remove-host NAME | wake NAME\n\
-            \x20      ping watch NAME [stream flags]\n\
-            \x20      ping add-host NAME ADDR X25519 MLKEM\n\
-            \x20      ping stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]\n\
-            \x20                       [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]\n\
-            \x20                       [--mute-in-background] [--audio-channels 2|6|8] [--steam]\n\
-            \x20                       [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
-            \x20                       [--no-clipboard] [--hdr] [--yuv444]"
+        "usage: pingctl identity | discover | pair HOST[:PORT] | pair-agent HOST[:PORT] | hosts | remove-host NAME | wake NAME\n\
+            \x20      pingctl watch NAME [stream flags]\n\
+            \x20      pingctl add-host NAME ADDR X25519 MLKEM\n\
+            \x20      pingctl stream NAME [--size WxH] [--fps N] [--mbps N] [--codec h264|hevc|av1]\n\
+            \x20                          [--windowed] [--no-vsync] [--frame-pacing] [--stats] [--cmd-is-win]\n\
+            \x20                          [--mute-in-background] [--audio-channels 2|6|8] [--steam]\n\
+            \x20                          [--no-audio] [--host-audio] [--wan-only] [--keep-host-displays] [--via ADDR]\n\
+            \x20                          [--no-clipboard] [--hdr] [--yuv444]\n\
+            \x20      pingctl xbox sign-in | sign-out | consoles | wake NAME | off NAME | games | friends\n\
+            \x20      pingctl xbox stream CONSOLE [--controller | --shooter | --keyboard] [stream flags]\n\
+            \x20      pingctl xbox play GAME [--controller | --shooter | --keyboard] [--region NAME]\n\
+            \x20                        [stream flags]"
     );
     ExitCode::FAILURE
 }
@@ -83,15 +90,20 @@ fn main() -> ExitCode {
         },
         #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
         Some("stream") => match args.get(1) {
-            Some(name) => stream::run(name, &args[2..]),
+            Some(name) => stream::run(
+                stream::What::Host(name.clone()),
+                stream::request(&args[2..]),
+            ),
             None => usage(),
         },
+        #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+        Some("xbox") => xbox::run(&args[1..]),
         #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
         Some("watch") => match args.get(1) {
             Some(name) => {
                 let mut flags = args[2..].to_vec();
                 flags.push("--watch".into());
-                stream::run(name, &flags)
+                stream::run(stream::What::Host(name.clone()), stream::request(&flags))
             }
             None => usage(),
         },
@@ -100,7 +112,7 @@ fn main() -> ExitCode {
 }
 
 /// Print `e` and fail.
-fn fail(e: impl std::fmt::Display) -> ExitCode {
+pub(crate) fn fail(e: impl std::fmt::Display) -> ExitCode {
     eprintln!("{e}");
     ExitCode::FAILURE
 }
@@ -120,7 +132,7 @@ fn discover(dir: &Path) -> ExitCode {
     match ping_core::pair::discover(dir, std::time::Duration::from_secs(3)) {
         Ok(found) if found.is_empty() => {
             eprintln!(
-                "no hosts found on the local network (add one by address with `ping pair \
+                "no hosts found on the local network (add one by address with `pingctl pair \
                     HOST`)"
             );
             ExitCode::SUCCESS
@@ -160,7 +172,7 @@ fn pair(dir: &Path, spec: &str) -> ExitCode {
     match ping_core::pair::pair(dir, addr, &name, &pin, || show_pin(&pin)) {
         Ok(host) => {
             println!(
-                "Paired with {} ({}). Stream with: ping stream {}",
+                "Paired with {} ({}). Stream with: pingctl stream {}",
                 host.name, host.address, host.name
             );
             ExitCode::SUCCESS
@@ -208,7 +220,7 @@ fn add_host(dir: &Path, args: &[String]) -> ExitCode {
 fn wake(dir: &Path, name: &str) -> ExitCode {
     let hosts = ping_core::store::Hosts::load(dir);
     let Some(host) = hosts.find(name) else {
-        return fail(format!("no paired host named {name}; see `ping hosts`"));
+        return fail(format!("no paired host named {name}; see `pingctl hosts`"));
     };
     match ping_core::wake::wake(host) {
         Ok(n) => {

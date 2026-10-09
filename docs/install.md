@@ -234,7 +234,7 @@ networks.
 
 ```sh
 cargo build --release -p ping-app          # the app: target/release/ping-app
-cargo build --release -p ping-core --bin ping   # the CLI, if you want it
+cargo build --release -p ping-core --bin pingctl   # the CLI, if you want it
 ```
 
 Run `target/release/ping-app`, or install it as a desktop app for your
@@ -255,6 +255,7 @@ async runtimes, and one build cannot have both.
 ```sh
 cargo build --release -p pong
 install -Dm755 target/release/pong ~/.local/bin/pong
+install -Dm755 target/release/pongctl ~/.local/bin/pongctl
 install -Dm644 tools/linux/pong.service ~/.config/systemd/user/pong.service
 systemctl --user enable --now pong
 ```

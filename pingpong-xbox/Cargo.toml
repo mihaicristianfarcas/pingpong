@@ -1,0 +1,29 @@
+[package]
+name = "pingpong-xbox"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Streaming from an Xbox console and from Xbox Cloud Gaming: sign-in, the console and session APIs, and the WebRTC connection"
+
+[dependencies]
+pingpong-proto = { path = "../pingpong-proto" }
+pingpong-nat = { path = "../pingpong-nat" }
+pingpong-transport = { path = "../pingpong-transport" }
+crossbeam-channel = "0.5"
+getrandom = "0.3"
+if-addrs = "0.15"
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+socket2 = { version = "0.5", features = ["all"] }
+# Pure-Rust DTLS and SRTP (dimpl + RustCrypto): no OpenSSL or aws-lc to
+# build on any platform.
+str0m = { version = "0.24", default-features = false, features = ["rust-crypto"] }
+tracing = "0.1"
+ureq = { version = "3", features = ["json"] }
+
+[dev-dependencies]
+tempfile = "3"

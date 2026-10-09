@@ -6,10 +6,12 @@
 #   powershell -File host-deploy.ps1 [-Source <path to pong.exe>] [-NoStart] [-Log <file>]
 #
 # In a release archive (tools/package-windows.ps1) this script is
-# install.ps1, beside pong.exe and Pong Control.exe, and takes them from
-# there; in a checkout, from target\release. Pong's window runs the new
-# archive's install.ps1 to install an update (pingpong-update), with -Log:
-# why it failed, if it does, goes there for the window to show.
+# install.ps1, beside pong.exe, pongctl.exe and Pong Control.exe, and takes
+# them from there; in a checkout, from target\release. pongctl.exe, the
+# host's command line, is copied beside pong.exe when it is there. Pong's
+# window runs the new archive's install.ps1 to install an update
+# (pingpong-update), with -Log: why it failed, if it does, goes there for
+# the window to show.
 param(
     [string]$Source = $(if (Test-Path (Join-Path $PSScriptRoot 'pong.exe')) { Join-Path $PSScriptRoot 'pong.exe' }
         else { Join-Path $PSScriptRoot '..\target\release\pong.exe' }),
@@ -35,6 +37,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     Start-Process powershell -Verb RunAs -ArgumentList $again
     return
 }
+$Ctl = Join-Path (Split-Path $Source) 'pongctl.exe'
 $dest = 'C:\Program Files\Pong'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
@@ -64,6 +67,10 @@ try {
     # The host child may outlive a forced stop by a moment.
     Stop-Program pong
     Copy-Program $Source (Join-Path $dest 'pong.exe')
+    if (Test-Path $Ctl) {
+        Stop-Program pongctl
+        Copy-Program $Ctl (Join-Path $dest 'pongctl.exe')
+    }
     if (Test-Path $Window) {
         Stop-Program 'Pong Control'
         Copy-Program $Window (Join-Path $dest 'Pong Control.exe')
@@ -78,6 +85,7 @@ try {
 # question Pong's window at its first start: the copies are trusted as this
 # installer is.
 Unblock-File (Join-Path $dest 'pong.exe')
+if (Test-Path $Ctl) { Unblock-File (Join-Path $dest 'pongctl.exe') }
 if (Test-Path $Window) {
     $control = Join-Path $dest 'Pong Control.exe'
     Unblock-File $control

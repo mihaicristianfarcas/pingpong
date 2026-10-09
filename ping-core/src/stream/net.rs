@@ -1035,7 +1035,7 @@ fn race(ctx: &Ctx, r: &mut Racing) {
     }
 }
 
-fn start_audio(channels: u8) -> Option<Player> {
+pub(crate) fn start_audio(channels: u8) -> Option<Player> {
     #[cfg(target_os = "macos")]
     let result = Player::start(channels, pingpong_audio::coreaudio::open);
     #[cfg(windows)]

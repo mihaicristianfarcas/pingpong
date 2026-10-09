@@ -7,7 +7,7 @@
 #[allow(clippy::unsafe_removed_from_name)]
 use unsafe_libopus as ffi;
 
-use pingpong_proto::audio::{FRAME_SAMPLES, SAMPLE_RATE};
+use pingpong_proto::audio::SAMPLE_RATE;
 
 /// Sunshine's rates, normal and high quality (Moonlight asks for high quality
 /// when the stream's bitrate leaves room for it). 7.1's high-quality rate is
@@ -105,10 +105,16 @@ impl Encoder {
         self.channels
     }
 
-    /// Encode one 5 ms frame (`FRAME_SAMPLES` × channels interleaved floats).
+    /// Encode one frame, channels interleaved: 5 ms
+    /// ([`FRAME_SAMPLES`](pingpong_proto::audio::FRAME_SAMPLES)) as
+    /// the host sends, or any length Opus takes in this mode (2.5, 5, 10 or
+    /// 20 ms).
     pub fn encode(&mut self, pcm: &[f32], out: &mut [u8]) -> Result<usize, String> {
-        assert_eq!(pcm.len(), FRAME_SAMPLES * self.channels);
-        let (frame, cap) = (FRAME_SAMPLES as i32, out.len() as i32);
+        let frame = pcm.len() / self.channels;
+        if !pcm.len().is_multiple_of(self.channels) || ![120, 240, 480, 960].contains(&frame) {
+            return Err(format!("{frame} samples is not an Opus frame"));
+        }
+        let (frame, cap) = (frame as i32, out.len() as i32);
         let n = match self.st {
             EncoderState::Plain(st) => unsafe {
                 ffi::opus_encode_float(st, pcm.as_ptr(), frame, out.as_mut_ptr(), cap)
@@ -220,6 +226,7 @@ impl Drop for Decoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pingpong_proto::audio::FRAME_SAMPLES;
 
     fn tone(n: usize, offset: usize) -> Vec<f32> {
         (0..n)

@@ -8,14 +8,14 @@
 #   tools/linux-dev tools/linux/loopback-test [PING STREAM ARGS]
 #   PING_TEST_INPUT="..." tools/linux-dev tools/linux/loopback-test
 #
-# LOOPBACK_PERMISSIONS pairs the client with those permissions (`pong
+# LOOPBACK_PERMISSIONS pairs the client with those permissions (`pongctl
 # permissions` names, or see-only), to see the host hold back what it may
 # not do: PINGPONG_DOCKER_ARGS="-e LOOPBACK_PERMISSIONS=view,mouse".
 #
 # The Wayland host is tested by hand in tools/linux/gnome-desktop.
 set -euo pipefail
 cargo build -q -p pong
-cargo build -q -p ping-core --bin ping
+cargo build -q -p ping-core --bin pingctl
 cargo build -q -p pingpong-capture --example x11-scene
 bin=${CARGO_TARGET_DIR:-/src/target}/debug
 OUT=/src/target/linux-out/loopback
@@ -40,13 +40,13 @@ sleep 1
 DISPLAY=:1 "$bin/examples/x11-scene" 60 >"$OUT/scene.log" &
 
 # Pair by hand, both ways.
-host_keys=$("$bin/pong" identity | sed -E 's/.*= "(.*)"/\1/' | paste -sd' ')
-client_keys=$("$bin/ping" identity)
+host_keys=$("$bin/pongctl" identity | sed -E 's/.*= "(.*)"/\1/' | paste -sd' ')
+client_keys=$("$bin/pingctl" identity)
 # shellcheck disable=SC2086
-"$bin/pong" add-client linux-ping $client_keys \
+"$bin/pongctl" add-client linux-ping $client_keys \
     ${LOOPBACK_PERMISSIONS:+--permissions "$LOOPBACK_PERMISSIONS"} >/dev/null
 # shellcheck disable=SC2086
-"$bin/ping" add-host linux-loop 127.0.0.1:47810 $host_keys >/dev/null
+"$bin/pingctl" add-host linux-loop 127.0.0.1:47810 $host_keys >/dev/null
 
 DISPLAY=:1 "$bin/pong" host >"$OUT/pong.log" 2>&1 &
 pong=$!
@@ -57,7 +57,7 @@ args=("$@")
 export PING_TEST_SNAPSHOT=${PING_TEST_SNAPSHOT:-$OUT/stream.png@240}
 export PING_TEST_INPUT=${PING_TEST_INPUT:-"wait 3000; abs 640 360; click; key 1e; key 30; text Hé!; wheel 120; wait 4000; quit"}
 DISPLAY=:2 RUST_LOG=${RUST_LOG:-info,mainline=error,ping_core::stats=debug} \
-    "$bin/ping" stream linux-loop "${args[@]}" >"$OUT/ping.log" 2>&1 || echo "ping exited with $?"
+    "$bin/pingctl" stream linux-loop "${args[@]}" >"$OUT/ping.log" 2>&1 || echo "pingctl exited with $?"
 
 kill -INT "$pong" 2>/dev/null || true
 for _ in $(seq 100); do kill -0 "$pong" 2>/dev/null || break; sleep 0.2; done

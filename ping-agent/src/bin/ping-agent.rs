@@ -4,9 +4,9 @@
 //!   ping-agent mcp install APP ... | --all       the MCP server in other agents' settings
 //!   ping-agent mcp uninstall APP ... | --all     (claude-code, codex, opencode, ...)
 //!   ping-agent mcp status
-//!   ping-agent identity                          the agent's public keys (for `pong add-client --agent`)
+//!   ping-agent identity                          the agent's public keys (for `pongctl add-client --agent`)
 //!   ping-agent hosts                             hosts the agent is paired with
-//!   ping-agent add-host NAME ADDR X25519 MLKEM   pair the agent by hand (see `pong identity`)
+//!   ping-agent add-host NAME ADDR X25519 MLKEM   pair the agent by hand (see `pongctl identity`)
 //!   ping-agent run --host NAME [--provider P] [--model M] [--effort E] [--max-actions N]
 //!                  [--max-minutes N] [--base-url URL] [--approvals off|risky|every] [--confirm] [--yes] TASK
 //!   ping-agent converse --host NAME [--provider P] [--model M] [--approvals A] [--answer yes|no]

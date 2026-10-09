@@ -74,13 +74,16 @@ for the host takes over the session (the first is told) unless the host's
 
 ### The statistics
 
-Ctrl+Alt+Shift+S (or `ping stream --stats`) shows Moonlight's figures —
+Ctrl+Alt+Shift+S (or `pingctl stream --stats`) shows Moonlight's figures —
 incoming, decoded and rendered frame rates, bitrate, frames dropped,
 network round trip, host processing, decode and render times — and one more:
 **host capture to screen**, the time from the host capturing a frame to it
 being on your display, measured with the two machines' clocks related
 through the stream itself. A note in the corner warns while the network is
-losing frames or lagging (**Connection warnings**).
+losing frames or lagging, or while a Mac's Low Power Mode holds its display
+at 60 Hz, where V-Sync would make the picture about 30 ms late: Ping turns
+V-Sync off for as long as it lasts, and the note says so (**Connection
+warnings**).
 
 ## Ping's settings
 
@@ -97,11 +100,11 @@ Windows and Linux) opens them.
 | | Display mode | Full screen or a window |
 | | HDR | Stream in HDR (HEVC Main10, BT.2020, PQ), as Moonlight's "HDR": offered on a Mac whose display shows HDR, from a host that can (NVIDIA on Windows, macOS 15 or later). Off by default, as in Moonlight |
 | | YUV 4:4:4 | Colour at full resolution: text without coloured fringes, for about a fifth more bitrate; offered where this computer decodes it (Apple silicon), from a host that encodes it (NVIDIA on Windows). Off by default, as in Moonlight |
-| | Bitrate | Automatic (Moonlight's table for the resolution and frame rate), or a fixed figure |
-| | V-Sync | Off: frames shown the moment they are decoded, tearing allowed |
+| | Bitrate | Automatic (Moonlight's table for the resolution and frame rate), or a fixed figure. From an Xbox, a fixed figure is the most the console sends; Automatic lets it choose |
+| | V-Sync | Off: frames shown the moment they are decoded, tearing allowed. On a Mac, off while Low Power Mode holds the display at 60 Hz |
 | | Frame pacing | One frame per display refresh (Moonlight's pacer): smoother, about a refresh more latency. Off by default, as in Moonlight |
 | | Performance statistics | The statistics from the start of each stream |
-| | Connection warnings | The note in the corner |
+| | Connection warnings | The note in the corner when the network loses frames or lags; from an Xbox, also how far behind the picture runs ("Living room is 0.6 s behind: a lower bitrate helps") |
 | | Import from Moonlight | Copies Moonlight's own settings (its preferences on macOS, the registry on Windows, its `.conf` on Linux; never its keys) |
 | Audio | Stream audio, Channels | Play the host's sound here: stereo, 5.1 or 7.1 (a Mac host has surround only with a surround output: see [platforms/macos.md](platforms/macos.md#sound-in-surround)) |
 | | Play on the host too | Otherwise the host's speakers stay quiet during a session (Windows host with Steam Streaming Speakers) |
@@ -111,6 +114,7 @@ Windows and Linux) opens them.
 | | Controller as a mouse | Hold Start to drive the mouse with a controller |
 | | Swap mouse buttons | The left button clicks right on the host, and the right one left (Moonlight's option) |
 | | Reverse scrolling | The wheel and the trackpad scroll the host the other way (Moonlight's option) |
+| | Keyboard and mouse on an Xbox | In an Xbox stream: **Automatic**, the default, a console gets a keyboard and a mouse, as from Microsoft's app, and a cloud game the keys as a controller; **Controller**, the keys are the first controller (Enter is A, Backspace B, the arrows the D-pad), as in Greenlight; **Shooter**, the keys and the mouse are, WASD moving and the mouse aiming, as Better xCloud's virtual controller; **Keyboard and mouse**, a cloud game gets those too. See [xbox.md](xbox.md#using-it) |
 
 Settings are kept in `settings.toml` in Ping's data folder, beside the paired
 hosts (`hosts.toml`) and this device's keys:
@@ -121,7 +125,7 @@ hosts (`hosts.toml`) and this device's keys:
 | Windows | `%APPDATA%\Ping` |
 | Linux | `~/.config/ping` (`$XDG_CONFIG_HOME/ping`) |
 
-`PING_DATA_DIR` points Ping (and `ping`, `ping-agent`) elsewhere.
+`PING_DATA_DIR` points Ping (and `pingctl`, `ping-agent`) elsewhere.
 
 ## Pong's window and web UI
 
@@ -193,7 +197,7 @@ which way the clipboard goes, and more. Set them in Pong's window under
 **Devices** (the button beside each device) or in the web UI under
 **Clients**. A change applies at once, to a stream that is running too.
 
-| Permission | Lets the device | Name (`pong permissions`) |
+| Permission | Lets the device | Name (`pongctl permissions`) |
 |---|---|---|
 | See the screen | Stream the screen and sound. Off: the device stays paired, but is turned away | `view` |
 | Start apps | Open an app with the stream, such as Steam Big Picture | `launch` |
@@ -234,8 +238,14 @@ What the device hears:
   read on the side that may not send them. Sharing that was off when a
   stream started comes on with the next stream.
 
-From a terminal: `pong permissions X25519 view,keyboard,mouse`
-([cli.md](cli.md#pong--the-host)).
+From a terminal: `pongctl permissions X25519 view,keyboard,mouse`
+([cli.md](cli.md#pongctl--the-hosts-command-line)).
+
+## Xbox
+
+The sidebar's **Xbox** page streams your Xbox consoles and Xbox Cloud
+Gaming, after you sign in with your Microsoft account: see
+[xbox.md](xbox.md).
 
 ## Updates
 
@@ -277,7 +287,7 @@ folder.
 
 Copy on one side, paste on the other: text, images, and files and folders,
 both ways, for as long as your stream runs. Ping asks for it (**Share the
-clipboard**, on by default; `ping stream --no-clipboard` for one stream),
+clipboard**, on by default; `pingctl stream --no-clipboard` for one stream),
 and the host agrees unless its **Share the clipboard with clients** is off,
 the ways the device's permissions allow (**Copy from this computer**,
 **Paste to this computer**; see
@@ -301,7 +311,7 @@ does, for places that do not take a paste.
 
 Pong announces its network adapters on the local network, and Ping
 remembers them, so an offline host can be woken: **Wake** in the host's
-menu, a click on an offline host, or `ping wake NAME`. The host must be on a
+menu, a click on an offline host, or `pingctl wake NAME`. The host must be on a
 wired connection with Wake-on-LAN enabled: in its firmware (often called
 "Resume by PCI-E device" or "Wake on LAN"; with ErP off), and in the network
 adapter's settings (power-saving features such as Energy-Efficient Ethernet
@@ -325,7 +335,7 @@ same.
 
 - **Ping finds no hosts (macOS).** Allow Ping on the local network: System
   Settings > Privacy & Security > Local Network.
-- **Windows asks about the firewall.** Allow Ping (and `ping.exe`) on private
+- **Windows asks about the firewall.** Allow Ping (and `pingctl.exe`) on private
   networks. The host's firewall rules are added by `pong install`.
 - **"The host did not answer."** Is Pong running (its window says; on
   Windows, `PongService` in Services)? Is this device still paired (the host's
@@ -353,4 +363,4 @@ same.
   them, e.g. `RUST_LOG=info,ping_core::stats=debug` for a line of
   statistics a second.
 
-The command line (`ping`, `pong`, `ping-agent`) is in [cli.md](cli.md).
+The command line (`pingctl`, `pong`, `pongctl`, `ping-agent`) is in [cli.md](cli.md).
