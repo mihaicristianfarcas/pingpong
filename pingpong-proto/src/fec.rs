@@ -43,6 +43,13 @@ impl FecPolicy {
         min_parity: 2,
     };
 
+    /// The most parity a host sends: Pong raises its policy no further on
+    /// the lossiest link (`pong/src/bitrate.rs`).
+    pub const MAX: FecPolicy = FecPolicy {
+        percent: 60,
+        min_parity: 8,
+    };
+
     pub fn parity(self, data_shards: usize) -> usize {
         (data_shards * self.percent as usize)
             .div_ceil(100)
@@ -201,14 +208,7 @@ mod tests {
             FecPolicy::DEFAULT.max_data_per_block(),
             MAX_DATA_SHARDS_PER_BLOCK
         );
-        assert_eq!(
-            FecPolicy {
-                percent: 60,
-                min_parity: 8
-            }
-            .max_data_per_block(),
-            159
-        );
+        assert_eq!(FecPolicy::MAX.max_data_per_block(), 159);
         assert_eq!(
             FecPolicy {
                 percent: 50,

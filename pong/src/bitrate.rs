@@ -118,7 +118,7 @@ impl BitrateController {
         let wanted = if p < LOSSY_LINK {
             20.0
         } else {
-            (20.0 + 300.0 * p).min(60.0)
+            (20.0 + 300.0 * p).min(FecPolicy::MAX.percent as f64)
         };
         // Steps of 5 points, changed only once the estimate is well past the
         // current one: a loss hovering at a boundary does not flap it.
@@ -483,5 +483,21 @@ mod tests {
     fn an_idle_stream_says_nothing() {
         let mut c = BitrateController::new(50_000, true);
         assert_eq!(c.on_report(&report(0, 0, 0, 3)), None);
+    }
+
+    #[test]
+    fn parity_never_passes_the_most_a_host_sends() {
+        let mut c = BitrateController::new(50_000, true);
+        for loss in 0..=100 {
+            c.link_loss = loss as f64 / 100.0;
+            c.update_fec();
+            let fec = c.fec();
+            assert!(
+                fec.percent <= FecPolicy::MAX.percent
+                    && fec.min_parity <= FecPolicy::MAX.min_parity,
+                "{loss}% loss: {fec:?}"
+            );
+        }
+        assert_eq!(c.fec(), FecPolicy::MAX, "the lossiest link reaches it");
     }
 }
