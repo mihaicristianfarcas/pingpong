@@ -19,8 +19,9 @@ pub const MAX_DATA_SHARDS_PER_BLOCK: usize = 200;
 const PARITY_SEARCH_LIMIT: usize = 255;
 
 /// Data + parity shards in one block: the header counts each in a byte, and
-/// the block's shards share one 8-bit index space on the client.
-const MAX_SHARDS_PER_BLOCK: usize = 255;
+/// the block's shards share one 8-bit index space on the client, which
+/// drops a block claiming more.
+pub const MAX_SHARDS_PER_BLOCK: usize = 255;
 
 /// How much parity each block carries. The default is Moonlight's 20% with a
 /// floor of 2; the host raises both on a link that loses packets whatever
@@ -44,7 +45,9 @@ impl FecPolicy {
     };
 
     /// The most parity a host sends: Pong raises its policy no further on
-    /// the lossiest link (`pong/src/bitrate.rs`).
+    /// the lossiest link (`pong/src/bitrate.rs`), and the client's
+    /// reassembly budget holds two of the largest frames carrying this much
+    /// (`reassemble.rs`).
     pub const MAX: FecPolicy = FecPolicy {
         percent: 60,
         min_parity: 8,

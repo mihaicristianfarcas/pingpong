@@ -12,7 +12,15 @@
 //! block (anything up to ~230 KB) is handed out as that buffer itself. Give
 //! finished frames' buffers back with [`Reassembler::recycle`] and a steady
 //! stream allocates nothing at all.
+//!
+//! Placing shards straight into a block-sized buffer means a single
+//! datagram's header can ask for the whole block before anything else
+//! arrives. Moonlight (`RtpVideoQueue.c`) keeps each packet that arrives
+//! in a buffer of its own, so its memory follows the traffic; here a budget
+//! does that job: a block of more shards than the header can count starts
+//! nothing, and all buffers together never pass [`MAX_HELD_BYTES`].
 
+use crate::fec::MAX_SHARDS_PER_BLOCK;
 use crate::header::Header;
 use crate::HEADER_LEN;
 use reed_solomon_simd::ReedSolomonDecoder;
@@ -30,6 +38,17 @@ pub struct CompletedFrame {
 const COMPLETED_MEMORY: usize = 32;
 /// Spare frame buffers kept for reuse.
 const SPARES: usize = 4;
+
+/// Bytes the block buffers and spares may hold in all, whatever the headers
+/// claim. Twice the largest frame a host can send: 16 MiB, the most
+/// `frame_len` counts, split into blocks with `FecPolicy::MAX` parity, is
+/// about 27 MB of blocks. A stream comes nowhere near it: at the app's
+/// highest bitrate, 150 Mbit/s, a 60 fps frame is about 0.4 MB with its
+/// parity, so eight partial frames hold a few MB. Unbounded, 2048 datagrams
+/// of 21 bytes, each claiming a block of 46 data and 255 parity shards in a
+/// 16 MiB frame, made a reassembler of eight frames hold 838 MB (macOS,
+/// release build).
+const MAX_HELD_BYTES: usize = 64 << 20;
 
 /// One FEC block's shards. `buf` holds the data shards, padded to the
 /// frame's shard size, in fragment order, then the parity shards.
@@ -171,6 +190,86 @@ impl Reassembler {
         Some(i)
     }
 
+    /// Make block `bi` of the frame in slot `si` ready for its shards. False
+    /// if its buffer cannot grow within [`MAX_HELD_BYTES`].
+    fn open_block(
+        &mut self,
+        si: usize,
+        bi: usize,
+        data_shards: usize,
+        parity_shards: usize,
+    ) -> bool {
+        let len = (data_shards + parity_shards) * self.slots[si].shard;
+        if self.slots[si].blocks[bi].buf.capacity() == 0 {
+            if let Some(spare) = self.spares.pop() {
+                self.slots[si].blocks[bi].buf = spare;
+            }
+        }
+        let have = self.slots[si].blocks[bi].buf.capacity();
+        if len > have && !self.make_room(si, len - have) {
+            return false;
+        }
+        let slot = &mut self.slots[si];
+        slot.known_shards += data_shards;
+        let block = &mut slot.blocks[bi];
+        block.known = true;
+        block.data_shards = data_shards;
+        block.parity_shards = parity_shards;
+        block.present = [0; 8];
+        block.data_count = 0;
+        block.parity_count = 0;
+        block.done = false;
+        // Exactly `len`, so what the budget counted is what is held. Only
+        // growth is zeroed: every shard read later is written first.
+        block.buf.reserve_exact(len.saturating_sub(block.buf.len()));
+        block.buf.resize(len, 0);
+        true
+    }
+
+    /// Free buffers until `need` more bytes fit within [`MAX_HELD_BYTES`]:
+    /// the spares first, then blocks no partial frame is using, then the
+    /// oldest partial frames other than slot `keep`'s, dropped as an
+    /// eviction drops them. False if `need` does not fit even then.
+    ///
+    /// A stream never gets here; a peer whose headers claim more than any
+    /// host sends does, and pays for it with its own partial frames.
+    fn make_room(&mut self, keep: usize, need: usize) -> bool {
+        let mut held = self.held_bytes();
+        if held + need <= MAX_HELD_BYTES {
+            return true;
+        }
+        held -= self.spares.drain(..).map(|b| b.capacity()).sum::<usize>();
+        for s in &mut self.slots {
+            let idle = if s.in_use { s.used } else { 0 };
+            for b in &mut s.blocks[idle..] {
+                held -= std::mem::take(&mut b.buf).capacity();
+            }
+        }
+        while held + need > MAX_HELD_BYTES {
+            let Some(i) = (0..self.slots.len())
+                .filter(|&i| i != keep && self.slots[i].in_use)
+                .min_by_key(|&i| self.slots[i].seq)
+            else {
+                return false;
+            };
+            let s = &mut self.slots[i];
+            s.in_use = false;
+            for b in &mut s.blocks[..s.used] {
+                b.known = false;
+                held -= std::mem::take(&mut b.buf).capacity();
+            }
+            s.used = 0;
+        }
+        true
+    }
+
+    /// Capacity of every block buffer and spare.
+    fn held_bytes(&self) -> usize {
+        let blocks = self.slots.iter().flat_map(|s| &s.blocks);
+        let spares = self.spares.iter().map(Vec::capacity);
+        blocks.map(|b| b.buf.capacity()).chain(spares).sum()
+    }
+
     pub fn push(&mut self, datagram: &[u8]) -> Option<CompletedFrame> {
         let h = Header::decode(datagram).ok()?;
         let payload = datagram.get(HEADER_LEN..h.total_len as usize)?;
@@ -179,47 +278,37 @@ impl Reassembler {
         if h.data_shards == 0 || payload.len() > shard {
             return None;
         }
+        let (data_shards, parity_shards) = (h.data_shards as usize, h.parity_shards as usize);
+        let idx = h.fragment_idx as usize;
+        if data_shards + parity_shards > MAX_SHARDS_PER_BLOCK || idx >= data_shards + parity_shards
+        {
+            return None;
+        }
         if self.was_completed(h.frame_id) {
             return None;
         }
         let si = self.slot_for(&h)?;
 
-        let (data_shards, parity_shards) = (h.data_shards as usize, h.parity_shards as usize);
-        let idx = h.fragment_idx as usize;
-        if idx >= data_shards + parity_shards {
-            return None;
-        }
         let bi = h.fec_block_idx as usize;
         let slot = &mut self.slots[si];
         if slot.blocks.len() <= bi {
             slot.blocks.resize_with(bi + 1, Block::default);
         }
         slot.used = slot.used.max(bi + 1);
-        let block = &mut slot.blocks[bi];
+        let block = &slot.blocks[bi];
         if !block.known {
             // More data shards than the frame has left: not one of its blocks.
             if slot.known_shards + data_shards > slot.total_shards {
                 return None;
             }
-            slot.known_shards += data_shards;
-            block.known = true;
-            block.data_shards = data_shards;
-            block.parity_shards = parity_shards;
-            block.present = [0; 8];
-            block.data_count = 0;
-            block.parity_count = 0;
-            block.done = false;
-            let len = (data_shards + parity_shards) * shard;
-            if block.buf.capacity() == 0 {
-                if let Some(spare) = self.spares.pop() {
-                    block.buf = spare;
-                }
+            if !self.open_block(si, bi, data_shards, parity_shards) {
+                return None;
             }
-            // Only growth is zeroed: every shard read later is written first.
-            block.buf.resize(len, 0);
         } else if block.data_shards != data_shards || block.parity_shards != parity_shards {
             return None;
         }
+        let slot = &mut self.slots[si];
+        let block = &mut slot.blocks[bi];
         if block.done || block.has(idx) {
             return None;
         }
@@ -560,6 +649,93 @@ mod tests {
         }
         let got: Vec<_> = done.iter().map(|f| (f.frame_id, f.data.clone())).collect();
         assert!(got.contains(&(10, small)) && got.contains(&(11, large)));
+    }
+
+    /// One byte of block `block` of a 16 MiB frame whose header claims
+    /// `data` + `parity` shards of `LAN_PAYLOAD_LEN`: what a peer writes to
+    /// make the reassembler allocate the most for the least it sends.
+    fn claim(frame_id: u32, block: u8, data: u8, parity: u8) -> Vec<u8> {
+        let h = Header {
+            keyframe: false,
+            recovery: false,
+            lan_shards: true,
+            frame_end: false,
+            kind: crate::header::Kind::Video,
+            total_len: HEADER_LEN as u16 + 1,
+            fragment_idx: 0,
+            data_shards: data,
+            parity_shards: parity,
+            fec_block_idx: block,
+            frame_len: 0x00FF_FFFF,
+            capture_ts_us: 0,
+            frame_id,
+        };
+        let mut hdr = [0u8; HEADER_LEN];
+        h.encode(&mut hdr).unwrap();
+        let mut datagram = hdr.to_vec();
+        datagram.push(0);
+        datagram
+    }
+
+    #[test]
+    fn a_block_of_more_shards_than_the_header_counts_starts_no_frame() {
+        let mut r = Reassembler::new(8);
+        assert!(r.push(&claim(1, 0, 46, 255)).is_none());
+        assert_eq!(r.tracked_frames(), 0);
+        assert_eq!(r.held_bytes(), 0);
+    }
+
+    #[test]
+    fn headers_claiming_large_blocks_hold_no_more_than_the_budget() {
+        let mut r = Reassembler::new(8);
+        for frame_id in 0..12 {
+            for block in 0..=255 {
+                assert!(r.push(&claim(frame_id, block, 100, 155)).is_none());
+                assert!(
+                    r.held_bytes() <= MAX_HELD_BYTES,
+                    "frame {frame_id} block {block}: {} bytes",
+                    r.held_bytes()
+                );
+            }
+        }
+        // The claims were taken up to the budget, not refused outright.
+        assert!(r.held_bytes() > MAX_HELD_BYTES / 2);
+    }
+
+    #[test]
+    fn a_stream_goes_on_after_headers_filled_the_budget() {
+        use crate::fec::FecPolicy;
+        let mut r = Reassembler::new(8);
+        for frame_id in 0..8 {
+            for block in 0..=255 {
+                r.push(&claim(frame_id, block, 100, 155));
+            }
+        }
+        let mut p = Packetizer::new();
+        p.set_fec(FecPolicy::MAX);
+        let original = frame(PAYLOAD_LEN * 450 + 99);
+        let pkts = p.packetize(&original, 100, 0, true, false).unwrap();
+        let f = pkts
+            .iter()
+            .filter(|d| Header::decode(d).unwrap().fragment_idx != 0)
+            .find_map(|d| r.push(d))
+            .expect("every block recovers");
+        assert_eq!(f.data, original);
+    }
+
+    #[test]
+    fn the_largest_frame_a_host_sends_fits_the_budget_twice() {
+        use crate::fec::{block_sizes_max, supported_parity, FecPolicy};
+        use crate::LAN_PAYLOAD_LEN;
+        let max = FecPolicy::MAX;
+        for shard in [PAYLOAD_LEN, LAN_PAYLOAD_LEN] {
+            let total = 0x00FF_FFFF_usize.div_ceil(shard);
+            let bytes: usize = block_sizes_max(total, max.max_data_per_block())
+                .into_iter()
+                .map(|d| (d + supported_parity(d, max.parity(d)).unwrap()) * shard)
+                .sum();
+            assert!(2 * bytes <= MAX_HELD_BYTES, "{shard}-byte shards: {bytes}");
+        }
     }
 
     #[test]
